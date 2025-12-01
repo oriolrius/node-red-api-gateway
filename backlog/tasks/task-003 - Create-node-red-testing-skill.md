@@ -1,10 +1,11 @@
 ---
 id: task-003
 title: Create node-red-testing skill
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - Claude
 created_date: '2025-12-01 14:59'
-updated_date: '2025-12-01 15:17'
+updated_date: '2025-12-01 15:26'
 labels:
   - skill
   - testing
