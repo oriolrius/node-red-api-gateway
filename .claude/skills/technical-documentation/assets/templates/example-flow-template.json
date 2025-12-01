@@ -1,0 +1,135 @@
+[
+    {
+        "id": "example-flow-tab",
+        "type": "tab",
+        "label": "Example: [Feature Name]",
+        "disabled": false,
+        "info": "# Example: [Feature Name]\n\nThis flow demonstrates [brief description].\n\n## Prerequisites\n\n- [Prerequisite 1]\n- [Prerequisite 2]\n\n## How It Works\n\n1. [Step 1 description]\n2. [Step 2 description]\n3. [Step 3 description]\n\n## Configuration\n\n[Any configuration needed before running]\n\n## Expected Output\n\n[What the user should see when the flow runs correctly]"
+    },
+    {
+        "id": "comment-overview",
+        "type": "comment",
+        "z": "example-flow-tab",
+        "name": "Overview: [Feature demonstration]",
+        "info": "This example shows how to [description].\n\nModify the configuration node to match your environment.",
+        "x": 160,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "inject-trigger",
+        "type": "inject",
+        "z": "example-flow-tab",
+        "name": "Trigger",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{}",
+        "payloadType": "json",
+        "x": 110,
+        "y": 120,
+        "wires": [
+            [
+                "function-prepare"
+            ]
+        ]
+    },
+    {
+        "id": "function-prepare",
+        "type": "function",
+        "z": "example-flow-tab",
+        "name": "Prepare Request",
+        "func": "// Prepare the request\nmsg.payload = {\n    // Add request data here\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 280,
+        "y": 120,
+        "wires": [
+            [
+                "node-main"
+            ]
+        ]
+    },
+    {
+        "id": "node-main",
+        "type": "comment",
+        "z": "example-flow-tab",
+        "name": "[Replace: Your node here]",
+        "info": "Replace this comment node with the actual node being demonstrated.",
+        "x": 490,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "debug-output",
+        "type": "debug",
+        "z": "example-flow-tab",
+        "name": "Response",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "payload.status",
+        "statusType": "auto",
+        "x": 700,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "comment-error-handling",
+        "type": "comment",
+        "z": "example-flow-tab",
+        "name": "Error Handling",
+        "info": "The catch node below captures any errors from the main node.",
+        "x": 130,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "catch-errors",
+        "type": "catch",
+        "z": "example-flow-tab",
+        "name": "Catch Errors",
+        "scope": [
+            "node-main"
+        ],
+        "uncaught": false,
+        "x": 130,
+        "y": 260,
+        "wires": [
+            [
+                "debug-errors"
+            ]
+        ]
+    },
+    {
+        "id": "debug-errors",
+        "type": "debug",
+        "z": "example-flow-tab",
+        "name": "Error Details",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 310,
+        "y": 260,
+        "wires": []
+    }
+]
