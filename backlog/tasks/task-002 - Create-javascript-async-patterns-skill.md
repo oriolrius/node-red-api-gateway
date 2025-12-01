@@ -1,7 +1,7 @@
 ---
 id: task-002
 title: Create javascript-async-patterns skill
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-01 14:59'
 updated_date: '2025-12-01 15:17'
