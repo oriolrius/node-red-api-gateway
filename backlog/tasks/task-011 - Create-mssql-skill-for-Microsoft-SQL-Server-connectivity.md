@@ -1,9 +1,10 @@
 ---
 id: task-011
 title: Create mssql skill for Microsoft SQL Server connectivity
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-01 16:43'
+updated_date: '2025-12-01 16:44'
 labels:
   - skill
   - mssql
