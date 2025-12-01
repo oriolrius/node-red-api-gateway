@@ -1,7 +1,7 @@
 ---
 id: task-006
 title: Create security-practices skill
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-12-01 14:59'
 updated_date: '2025-12-01 16:08'
