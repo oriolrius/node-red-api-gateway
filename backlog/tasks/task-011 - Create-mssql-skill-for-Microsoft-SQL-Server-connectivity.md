@@ -1,10 +1,10 @@
 ---
 id: task-011
 title: Create mssql skill for Microsoft SQL Server connectivity
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-12-01 16:43'
-updated_date: '2025-12-01 16:44'
+updated_date: '2025-12-01 16:50'
 labels:
   - skill
   - mssql
@@ -44,12 +44,39 @@ Key topics:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 SKILL.md created with YAML frontmatter
-- [ ] #2 Covers connection configuration and pooling
-- [ ] #3 Covers query execution patterns (simple, parameterized, stored procedures)
-- [ ] #4 Covers transaction handling
-- [ ] #5 Covers bulk operations and streaming
-- [ ] #6 Covers error handling patterns
-- [ ] #7 Covers Node-RED integration (connection config node, query node)
-- [ ] #8 References include data type mappings and examples
+- [x] #1 SKILL.md created with YAML frontmatter
+- [x] #2 Covers connection configuration and pooling
+- [x] #3 Covers query execution patterns (simple, parameterized, stored procedures)
+- [x] #4 Covers transaction handling
+- [x] #5 Covers bulk operations and streaming
+- [x] #6 Covers error handling patterns
+- [x] #7 Covers Node-RED integration (connection config node, query node)
+- [x] #8 References include data type mappings and examples
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Summary
+
+Created comprehensive mssql skill at `.claude/skills/mssql/` with:
+
+### Main SKILL.md
+- YAML frontmatter with skill name and description
+- Quick reference table for common operations
+- Connection configuration (basic, pooling, authentication methods)
+- Query execution (simple, parameterized, prepared statements, stored procedures)
+- Transaction handling (basic, isolation levels, savepoints)
+- Bulk operations and streaming patterns
+- Comprehensive error handling
+- Data type mappings table
+- Node-RED integration patterns (config node, query node, stored procedure node, transaction node)
+- Testing patterns with mocking
+- Graceful shutdown patterns
+
+### Reference Documents
+- `references/data-type-mappings.md` - Complete SQL Server to JavaScript type mappings
+- `references/connection-strings.md` - Connection formats, authentication examples, Azure configurations
+- `references/error-codes.md` - SQL Server error codes with handling strategies
+- `references/performance-tuning.md` - Pool optimization, query optimization, streaming, bulk operations
+<!-- SECTION:NOTES:END -->
