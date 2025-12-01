@@ -1,10 +1,10 @@
 ---
 id: task-001
 title: Create node-red-node-development skill
-status: Done
+status: To Do
 assignee: []
 created_date: '2025-12-01 14:59'
-updated_date: '2025-12-01 15:07'
+updated_date: '2025-12-01 15:17'
 labels:
   - skill
   - node-red
@@ -12,6 +12,7 @@ labels:
 dependencies:
   - task-008
 priority: high
+ordinal: 8000
 ---
 
 ## Description

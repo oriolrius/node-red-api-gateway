@@ -4,12 +4,14 @@ title: Create advanced-patterns skill
 status: To Do
 assignee: []
 created_date: '2025-12-01 14:59'
+updated_date: '2025-12-01 15:17'
 labels:
   - skill
   - patterns
   - architecture
 dependencies: []
 priority: low
+ordinal: 6000
 ---
 
 ## Description

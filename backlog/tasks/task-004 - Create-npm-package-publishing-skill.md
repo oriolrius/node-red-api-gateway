@@ -4,6 +4,7 @@ title: Create npm-package-publishing skill
 status: To Do
 assignee: []
 created_date: '2025-12-01 14:59'
+updated_date: '2025-12-01 15:17'
 labels:
   - skill
   - npm
@@ -11,6 +12,7 @@ labels:
   - github-actions
 dependencies: []
 priority: medium
+ordinal: 3000
 ---
 
 ## Description

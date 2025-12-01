@@ -4,7 +4,7 @@ title: Fetch and document latest Node-RED API documentation
 status: Done
 assignee: []
 created_date: '2025-12-01 15:00'
-updated_date: '2025-12-01 15:07'
+updated_date: '2025-12-01 15:17'
 labels:
   - skill
   - node-red
@@ -12,6 +12,7 @@ labels:
   - prerequisite
 dependencies: []
 priority: high
+ordinal: 7000
 ---
 
 ## Description

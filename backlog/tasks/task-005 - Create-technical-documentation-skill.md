@@ -4,11 +4,13 @@ title: Create technical-documentation skill
 status: To Do
 assignee: []
 created_date: '2025-12-01 14:59'
+updated_date: '2025-12-01 15:17'
 labels:
   - skill
   - documentation
 dependencies: []
 priority: medium
+ordinal: 4000
 ---
 
 ## Description
