@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - Claude
 created_date: '2025-12-01 14:59'
-updated_date: '2025-12-01 15:26'
+updated_date: '2025-12-01 15:27'
 labels:
   - skill
   - testing
@@ -35,3 +35,39 @@ Create a Claude skill for Node-RED testing strategies covering:
 - [ ] #5 Scripts contain test scaffolding generator
 - [ ] #6 References contain testcontainers setup guide
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+## Implementation Plan
+
+### Directory Structure
+```
+.claude/skills/node-red-testing/
+├── SKILL.md                     # Main skill documentation
+├── scripts/
+│   └── init_test.py             # Test scaffolding generator
+└── references/
+    └── testcontainers-setup.md  # Docker/testcontainers guide
+```
+
+### SKILL.md Content
+1. **YAML Frontmatter** - name: node-red-testing, description for skill trigger
+2. **Unit Testing Section** - Mock RED framework, test node initialization, mock messages
+3. **Integration Testing Section** - Testcontainers, Docker Compose patterns, health checks
+4. **E2E Testing Section** - Node-RED runtime integration, HTTP testing, UI testing
+5. **Test Organization** - Jest/Mocha setup, test isolation, fixtures
+
+### Scripts
+- `init_test.py` - Generate test file scaffolding for a given node (unit, integration, or E2E tests)
+
+### References
+- `testcontainers-setup.md` - Detailed testcontainers/Docker Compose configuration for Node-RED testing
+
+### Implementation Steps
+1. Create skill directory structure
+2. Write SKILL.md with comprehensive testing coverage
+3. Create init_test.py scaffolding generator script
+4. Create testcontainers-setup.md reference guide
+5. Validate skill and update backlog task
+<!-- SECTION:PLAN:END -->
