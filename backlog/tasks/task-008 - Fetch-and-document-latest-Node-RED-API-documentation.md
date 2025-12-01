@@ -1,9 +1,10 @@
 ---
 id: task-008
 title: Fetch and document latest Node-RED API documentation
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-01 15:00'
+updated_date: '2025-12-01 15:02'
 labels:
   - skill
   - node-red
