@@ -1,10 +1,10 @@
 ---
 id: task-008
 title: Fetch and document latest Node-RED API documentation
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-12-01 15:00'
-updated_date: '2025-12-01 15:02'
+updated_date: '2025-12-01 15:07'
 labels:
   - skill
   - node-red
@@ -34,12 +34,12 @@ This documentation should be stored in a central location (e.g., `.claude/skills
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fetch latest Node-RED Creating Nodes documentation
-- [ ] #2 Fetch Node JS file documentation
-- [ ] #3 Fetch Node HTML file documentation
-- [ ] #4 Fetch Configuration nodes documentation
-- [ ] #5 Fetch Node context and status documentation
-- [ ] #6 Fetch Packaging documentation
-- [ ] #7 Store all docs in references/ directory
-- [ ] #8 Create summary of API changes/deprecations if any
+- [x] #1 Fetch latest Node-RED Creating Nodes documentation
+- [x] #2 Fetch Node JS file documentation
+- [x] #3 Fetch Node HTML file documentation
+- [x] #4 Fetch Configuration nodes documentation
+- [x] #5 Fetch Node context and status documentation
+- [x] #6 Fetch Packaging documentation
+- [x] #7 Store all docs in references/ directory
+- [x] #8 Create summary of API changes/deprecations if any
 <!-- AC:END -->
