@@ -1,9 +1,10 @@
 ---
 id: task-010
 title: Create OpenAPI-Fastify skill for Node-RED endpoint nodes
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-01 16:29'
+updated_date: '2025-12-01 16:30'
 labels:
   - skill
   - openapi
