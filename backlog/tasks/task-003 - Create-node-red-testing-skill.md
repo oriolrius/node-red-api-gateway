@@ -4,11 +4,13 @@ title: Create node-red-testing skill
 status: To Do
 assignee: []
 created_date: '2025-12-01 14:59'
+updated_date: '2025-12-01 15:00'
 labels:
   - skill
   - testing
   - node-red
-dependencies: []
+dependencies:
+  - task-008
 priority: high
 ---
 
