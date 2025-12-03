@@ -73,4 +73,6 @@ Implementation Summary:
 - Graceful shutdown implemented with proper signal handling
 
 - Tested: port configuration, HTTP responses, node registration, shutdown cleanup
+
+Commit: 3d8346b - feat(test): add standalone Node-RED launcher for manual testing
 <!-- SECTION:NOTES:END -->
