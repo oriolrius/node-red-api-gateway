@@ -68,12 +68,19 @@ npm run lint:fix
 node-red-api-gateway/
 ├── nodes/                 # Node-RED nodes
 │   ├── icons/            # Custom node icons (SVG preferred)
-│   ├── lower-case.js     # Example node runtime
-│   └── lower-case.html   # Example node editor
-├── test/                  # Test files
-│   └── lower-case_spec.js
+│   ├── api-server.js     # API server node runtime
+│   ├── api-server.html   # API server node editor
+│   ├── api-endpoint.js   # API endpoint node runtime
+│   └── api-endpoint.html # API endpoint node editor
+├── tests/                 # All test files
+│   ├── unit/             # Unit tests (mocha + node-red-node-test-helper)
+│   │   ├── api-server_spec.js
+│   │   └── api-endpoint_spec.js
+│   ├── e2e/              # End-to-end tests (Docker Compose)
+│   │   └── docker-compose.yml
+│   └── launcher/         # Development Node-RED launcher
+│       └── launch.js
 ├── examples/              # Example flows (appear in Node-RED import menu)
-│   └── lower-case-example.json
 ├── package.json
 ├── .eslintrc.json
 └── README.md
@@ -165,7 +172,7 @@ Add the node to `package.json`:
 
 ### Testing Nodes
 
-Create a test file in `test/my-node_spec.js`:
+Create a test file in `tests/unit/my-node_spec.js`:
 
 ```javascript
 const helper = require("node-red-node-test-helper");

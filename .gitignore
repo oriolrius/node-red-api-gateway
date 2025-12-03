@@ -32,3 +32,10 @@ build/
 # Environment
 .env
 .env.local
+
+# E2E test runtime artifacts
+tests/e2e/.nodered/node_modules/
+tests/e2e/.nodered/.config.*.json
+tests/e2e/.nodered/.config.*.json.backup
+tests/e2e/.nodered/flows.json
+tests/e2e/.nodered/.flows.json.backup

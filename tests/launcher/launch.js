@@ -19,29 +19,29 @@
  *   - Settings optimized for testing (CORS enabled, no auth, minimal logging)
  */
 
-const http = require('http');
-const express = require('express');
-const RED = require('node-red');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const http = require("http");
+const express = require("express");
+const RED = require("node-red");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
 
 // Configuration
-const HOST = process.env.HOST || '0.0.0.0';
+const HOST = process.env.HOST || "0.0.0.0";
 const PORT = parseInt(process.env.PORT, 10) || 1880;
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 
 // Create temporary directory for Node-RED user data
 // Using /tmp ensures Node-RED won't walk up the tree and find packages in /home
-const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nodered-test-'));
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodered-test-"));
 
 // Create node_modules directory
-const nodeModulesDir = path.join(tempDir, 'node_modules');
+const nodeModulesDir = path.join(tempDir, "node_modules");
 fs.mkdirSync(nodeModulesDir, { recursive: true });
 
 // Helper function to symlink a package (handles scoped packages)
 function symlinkPackage(packagePath, targetDir) {
-    const pkgJson = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json'), 'utf8'));
+    const pkgJson = JSON.parse(fs.readFileSync(path.join(packagePath, "package.json"), "utf8"));
     const pkgName = pkgJson.name;
     const linkPath = path.join(targetDir, pkgName);
     const linkDir = path.dirname(linkPath);
@@ -58,15 +58,15 @@ console.log(`Linked ${packageName} -> ${PROJECT_ROOT}`);
 
 // Symlink @node-red/nodes to temp directory so coreNodesDir points here
 // This prevents Node-RED from walking up and finding packages in /home
-const nodeRedNodesPath = path.join(PROJECT_ROOT, 'node_modules', '@node-red', 'nodes');
+const nodeRedNodesPath = path.join(PROJECT_ROOT, "node_modules", "@node-red", "nodes");
 const coreNodesSymlink = symlinkPackage(nodeRedNodesPath, nodeModulesDir);
 console.log(`Linked ${coreNodesSymlink} -> ${nodeRedNodesPath}`);
 
 // Copy test flows to temp directory for automatic provisioning
-const testFlowsPath = path.join(__dirname, 'flows.json');
+const testFlowsPath = path.join(__dirname, "flows.json");
 if (fs.existsSync(testFlowsPath)) {
-    fs.copyFileSync(testFlowsPath, path.join(tempDir, 'flows.json'));
-    console.log('Provisioned test flows from flows.json');
+    fs.copyFileSync(testFlowsPath, path.join(tempDir, "flows.json"));
+    console.log("Provisioned test flows from flows.json");
 }
 
 // Express app setup
@@ -74,14 +74,14 @@ const app = express();
 const server = http.createServer(app);
 
 // Path to core nodes in our temp directory (symlinked from node_modules/@node-red/nodes)
-const coreNodesDir = path.join(nodeModulesDir, '@node-red', 'nodes');
+const coreNodesDir = path.join(nodeModulesDir, "@node-red", "nodes");
 
 // Node-RED settings optimized for testing
 const settings = {
-    httpAdminRoot: '/',
-    httpNodeRoot: '/api',
+    httpAdminRoot: "/",
+    httpNodeRoot: "/api",
     userDir: tempDir,
-    flowFile: 'flows.json',
+    flowFile: "flows.json",
     flowFilePretty: true,
     uiPort: PORT,
 
@@ -93,13 +93,13 @@ const settings = {
 
     // CORS for API testing
     httpAdminCors: {
-        origin: '*',
-        methods: 'GET,PUT,POST,DELETE',
+        origin: "*",
+        methods: "GET,PUT,POST,DELETE",
         credentials: true
     },
     httpNodeCors: {
-        origin: '*',
-        methods: 'GET,PUT,POST,DELETE'
+        origin: "*",
+        methods: "GET,PUT,POST,DELETE"
     },
 
     // Disable authentication for testing
@@ -108,7 +108,7 @@ const settings = {
     // Minimal logging
     logging: {
         console: {
-            level: 'info',
+            level: "info",
             metrics: false,
             audit: false
         }
@@ -155,7 +155,7 @@ async function start() {
                 await RED.start();
                 console.log(`Node-RED started at http://${HOST}:${PORT}`);
                 console.log(`User directory: ${tempDir}`);
-                console.log('Press Ctrl+C to stop');
+                console.log("Press Ctrl+C to stop");
                 resolve();
             } catch (startErr) {
                 reject(startErr);
@@ -166,24 +166,24 @@ async function start() {
 
 // Graceful shutdown
 async function shutdown() {
-    console.log('\nShutting down...');
+    console.log("\nShutting down...");
 
     try {
         await RED.stop();
-        console.log('Node-RED stopped');
+        console.log("Node-RED stopped");
     } catch (err) {
-        console.error('Error stopping Node-RED:', err.message);
+        console.error("Error stopping Node-RED:", err.message);
     }
 
     server.close(() => {
-        console.log('HTTP server closed');
+        console.log("HTTP server closed");
 
         // Clean up temporary directory
         try {
             fs.rmSync(tempDir, { recursive: true, force: true });
-            console.log('Temporary directory cleaned up');
+            console.log("Temporary directory cleaned up");
         } catch (err) {
-            console.error('Error cleaning up temp directory:', err.message);
+            console.error("Error cleaning up temp directory:", err.message);
         }
 
         process.exit(0);
@@ -191,18 +191,18 @@ async function shutdown() {
 
     // Force exit after timeout
     setTimeout(() => {
-        console.error('Forced shutdown after timeout');
+        console.error("Forced shutdown after timeout");
         process.exit(1);
     }, 5000);
 }
 
 // Handle shutdown signals
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 // Start the launcher
 start().catch((err) => {
-    console.error('Failed to start Node-RED:', err.message);
+    console.error("Failed to start Node-RED:", err.message);
     fs.rmSync(tempDir, { recursive: true, force: true });
     process.exit(1);
 });
