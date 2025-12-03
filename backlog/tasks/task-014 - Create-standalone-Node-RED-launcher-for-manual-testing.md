@@ -4,7 +4,7 @@ title: Create standalone Node-RED launcher for manual testing
 status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 11:11'
+updated_date: '2025-12-03 11:15'
 labels:
   - testing
   - infrastructure
@@ -75,4 +75,6 @@ Implementation Summary:
 - Tested: port configuration, HTTP responses, node registration, shutdown cleanup
 
 Commit: 3d8346b - feat(test): add standalone Node-RED launcher for manual testing
+
+Commit: 9cab460 - fix(test): bind launcher to 0.0.0.0 for container/network access
 <!-- SECTION:NOTES:END -->
