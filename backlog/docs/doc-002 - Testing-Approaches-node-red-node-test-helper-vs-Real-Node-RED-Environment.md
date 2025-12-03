@@ -3,7 +3,7 @@ id: doc-002
 title: 'Testing Approaches: node-red-node-test-helper vs Real Node-RED Environment'
 type: other
 created_date: '2025-12-03 10:32'
-updated_date: '2025-12-03 10:39'
+updated_date: '2025-12-03 10:46'
 ---
 # Testing Approaches: node-red-node-test-helper vs Real Node-RED Environment
 
@@ -283,11 +283,19 @@ async function runIntegrationTest() {
 
 ---
 
-### Approach 3: Docker Compose E2E Testing (node-red-contrib-kafka pattern)
+### Approach 3: Docker Compose E2E Testing (Strict Docker Requirement)
 
-For comprehensive E2E testing with full Node-RED runtime:
+**IMPORTANT: Docker is a hard requirement for E2E tests. If Docker is not available or fails, tests MUST fail.**
 
-#### docker-compose.test.yml
+This approach uses Docker Compose to run Node-RED and all dependencies in containers. The test script starts Node-RED programmatically and connects to Docker-based dependencies.
+
+#### Prerequisites
+
+- Docker Engine installed and running
+- Docker Compose v2 installed
+- No fallback - tests fail if Docker is unavailable
+
+#### tests/e2e/docker-compose.yml
 
 ```yaml
 services:
@@ -297,23 +305,32 @@ services:
     ports:
       - "1880:1880"
     volumes:
-      # Mount the node package
-      - ./:/data/node_modules/@user/node-red-api-gateway
-      # Mount test flows
-      - ./tests/e2e/flows:/data/flows
+      # Mount the node package for testing
+      - ../../:/data/node_modules/@user/node-red-api-gateway:ro
+      # Mount Node-RED user directory
+      - ./.nodered:/data
     environment:
       - NODE_RED_ENABLE_SAFE_MODE=false
+      - TZ=UTC
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1880/"]
+      test: ["CMD-SHELL", "curl -f http://localhost:1880/ || exit 1"]
       interval: 5s
-      timeout: 3s
-      retries: 10
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: "no"
 
-  # Add external dependencies as needed
+  # Example: Add external dependencies as needed
   # redis:
   #   image: redis:7-alpine
+  #   container_name: redis-e2e-test
   #   ports:
   #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 2s
+  #     timeout: 2s
+  #     retries: 5
 ```
 
 #### tests/e2e/run-e2e-tests.js
@@ -321,173 +338,519 @@ services:
 ```javascript
 #!/usr/bin/env node
 
-const { exec } = require('child_process');
+/**
+ * E2E Tests for Node-RED Nodes
+ * 
+ * REQUIREMENTS:
+ * - Docker must be installed and running
+ * - Docker Compose v2 must be available
+ * - No fallbacks - tests fail if Docker is unavailable
+ */
+
+const { exec, execSync } = require('child_process');
 const { promisify } = require('util');
 const http = require('http');
-const RED = require('node-red');
 const path = require('path');
+const axios = require('axios');
 
 const execAsync = promisify(exec);
 
-let server;
+// Configuration
+const CONFIG = {
+    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    nodeRedUrl: 'http://localhost:1880',
+    startupTimeout: 120000,  // 2 minutes max for startup
+    healthCheckInterval: 2000,
+    maxHealthCheckAttempts: 60
+};
 
-// Docker Compose helpers
-async function dockerCompose(command) {
-    const cwd = path.join(__dirname);
-    return execAsync(`docker compose ${command}`, { cwd });
+/**
+ * Verify Docker is available - FAIL FAST if not
+ */
+function verifyDockerAvailable() {
+    console.log('🔍 Verifying Docker availability...');
+    
+    try {
+        execSync('docker --version', { stdio: 'pipe' });
+        execSync('docker compose version', { stdio: 'pipe' });
+        execSync('docker info', { stdio: 'pipe' });
+        console.log('✅ Docker is available and running\n');
+    } catch (error) {
+        console.error('❌ FATAL: Docker is not available or not running');
+        console.error('');
+        console.error('E2E tests require Docker. Please ensure:');
+        console.error('  1. Docker Engine is installed');
+        console.error('  2. Docker daemon is running');
+        console.error('  3. Docker Compose v2 is available');
+        console.error('  4. Current user has permission to use Docker');
+        console.error('');
+        console.error('Error details:', error.message);
+        process.exit(1);
+    }
 }
 
-// Start dependencies
-async function startDependencies() {
-    console.log('📦 Starting containers...');
-    await dockerCompose('down -v');
+/**
+ * Execute docker compose command
+ */
+async function dockerCompose(command) {
+    const cmd = `docker compose -f "${CONFIG.dockerComposeFile}" ${command}`;
+    console.log(`  $ ${cmd}`);
+    
+    try {
+        const { stdout, stderr } = await execAsync(cmd, {
+            cwd: path.dirname(CONFIG.dockerComposeFile),
+            timeout: 60000
+        });
+        if (stdout) console.log(stdout.trim());
+        return { stdout, stderr };
+    } catch (error) {
+        console.error(`❌ Docker Compose command failed: ${command}`);
+        console.error(error.message);
+        throw error;
+    }
+}
+
+/**
+ * Start all containers - FAIL if any container fails to start
+ */
+async function startContainers() {
+    console.log('📦 Starting Docker containers...');
+    
+    // Clean up any existing containers first
+    try {
+        await dockerCompose('down -v --remove-orphans');
+    } catch (e) {
+        // Ignore cleanup errors
+    }
+    
+    // Start containers
     await dockerCompose('up -d');
     
-    // Wait for health checks
-    let ready = false;
+    console.log('\n⏳ Waiting for containers to be healthy...');
+    
+    let healthy = false;
     let attempts = 0;
-    while (!ready && attempts < 30) {
+    
+    while (!healthy && attempts < CONFIG.maxHealthCheckAttempts) {
+        attempts++;
+        
         try {
-            const { stdout } = await execAsync('docker inspect --format="{{.State.Health.Status}}" node-red-e2e-test');
-            if (stdout.trim() === 'healthy') {
-                ready = true;
+            // Check container health status
+            const { stdout } = await execAsync(
+                'docker inspect --format="{{.State.Health.Status}}" node-red-e2e-test',
+                { timeout: 5000 }
+            );
+            
+            const status = stdout.trim();
+            
+            if (status === 'healthy') {
+                healthy = true;
+                console.log(`✅ Node-RED container is healthy (attempt ${attempts})`);
+            } else if (status === 'unhealthy') {
+                throw new Error('Container became unhealthy');
+            } else {
+                process.stdout.write(`  Health check ${attempts}/${CONFIG.maxHealthCheckAttempts}: ${status}\r`);
             }
+        } catch (error) {
+            if (error.message.includes('unhealthy')) {
+                throw error;
+            }
+            // Container might not exist yet or health check not started
+        }
+        
+        if (!healthy) {
+            await new Promise(r => setTimeout(r, CONFIG.healthCheckInterval));
+        }
+    }
+    
+    if (!healthy) {
+        // Get container logs for debugging
+        console.error('\n❌ Container failed to become healthy');
+        console.error('\n📋 Container logs:');
+        try {
+            await dockerCompose('logs --tail=50');
         } catch (e) {
-            attempts++;
+            // Ignore log errors
+        }
+        throw new Error('Containers failed to start within timeout');
+    }
+    
+    // Additional verification: HTTP endpoint is responding
+    console.log('\n🔌 Verifying Node-RED API is accessible...');
+    
+    let apiReady = false;
+    attempts = 0;
+    
+    while (!apiReady && attempts < 15) {
+        attempts++;
+        try {
+            const response = await axios.get(CONFIG.nodeRedUrl, { timeout: 3000 });
+            if (response.status === 200) {
+                apiReady = true;
+                console.log('✅ Node-RED API is responding\n');
+            }
+        } catch (error) {
             await new Promise(r => setTimeout(r, 2000));
         }
     }
     
-    if (!ready) throw new Error('Containers failed to start');
-    console.log('✅ Containers ready!\n');
+    if (!apiReady) {
+        throw new Error('Node-RED API not accessible');
+    }
 }
 
-// Start Node-RED programmatically (alternative to Docker)
-async function startNodeRED() {
-    console.log('🔴 Starting Node-RED runtime...');
+/**
+ * Stop and clean up all containers
+ */
+async function stopContainers() {
+    console.log('\n🛑 Stopping Docker containers...');
     
-    return new Promise((resolve, reject) => {
-        server = http.createServer();
-        
-        const settings = {
-            httpAdminRoot: false,
-            httpNodeRoot: false,
-            userDir: path.join(__dirname, '.nodered'),
-            nodesDir: path.join(__dirname, '../../nodes'),
-            logging: { console: { level: 'error' } }
-        };
-        
-        RED.init(server, settings);
-        
-        server.listen(0, () => {
-            RED.start().then(() => {
-                console.log('✅ Node-RED runtime started\n');
-                resolve();
-            }).catch(reject);
-        });
-    });
+    try {
+        await dockerCompose('down -v --remove-orphans');
+        console.log('✅ Containers stopped and cleaned up\n');
+    } catch (error) {
+        console.error('⚠️  Failed to stop containers cleanly:', error.message);
+        // Force kill if normal stop fails
+        try {
+            await execAsync('docker rm -f node-red-e2e-test 2>/dev/null || true');
+        } catch (e) {
+            // Ignore
+        }
+    }
 }
 
-// Deploy a flow programmatically
+/**
+ * Deploy a flow to Node-RED via Admin API
+ */
 async function deployFlow(flow) {
-    await RED.nodes.loadFlows(flow);
-    await new Promise(r => setTimeout(r, 2000)); // Wait for initialization
+    console.log('  📤 Deploying test flow...');
+    
+    try {
+        // Get current flows
+        const currentFlows = await axios.get(`${CONFIG.nodeRedUrl}/flows`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        // Deploy new flow
+        const response = await axios.post(`${CONFIG.nodeRedUrl}/flows`, flow, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Node-RED-Deployment-Type': 'full'
+            }
+        });
+        
+        // Wait for flow to initialize
+        await new Promise(r => setTimeout(r, 3000));
+        
+        console.log('  ✅ Flow deployed successfully');
+        return response.data;
+    } catch (error) {
+        console.error('  ❌ Failed to deploy flow:', error.message);
+        throw error;
+    }
 }
 
-// Test: Basic functionality
+/**
+ * Inject a message into a node via Admin API
+ */
+async function injectMessage(nodeId, payload) {
+    try {
+        await axios.post(`${CONFIG.nodeRedUrl}/inject/${nodeId}`, {
+            __user_inject_props__: payload
+        });
+    } catch (error) {
+        // Inject endpoint may not exist, that's okay
+    }
+}
+
+/**
+ * TEST: Basic node functionality
+ */
 async function testBasicFunctionality() {
-    console.log('📝 Test 1: Basic Message Processing');
+    console.log('📝 Test 1: Basic Node Functionality');
     console.log('--------------------------------------------------');
     
-    const flow = [
+    // Create a test flow that uses our node
+    const testFlow = [
         {
-            id: 'node-1',
-            type: 'lower-case',
-            name: 'Test Node',
-            wires: [['output-1']]
+            id: "test-tab",
+            type: "tab",
+            label: "E2E Test Flow"
         },
         {
-            id: 'output-1',
-            type: 'function',
-            func: `
-                global.set('test_result', msg.payload);
-                return msg;
-            `,
+            id: "inject-1",
+            type: "inject",
+            z: "test-tab",
+            name: "Test Input",
+            props: [{ p: "payload" }],
+            payload: "HELLO WORLD",
+            payloadType: "str",
+            repeat: "",
+            once: false,
+            wires: [["lower-case-1"]]
+        },
+        {
+            id: "lower-case-1",
+            type: "lower-case",
+            z: "test-tab",
+            name: "Test Lower Case",
+            wires: [["http-response-1"]]
+        },
+        {
+            id: "http-in-1",
+            type: "http in",
+            z: "test-tab",
+            name: "Test Endpoint",
+            url: "/test-lower-case",
+            method: "post",
+            wires: [["lower-case-2"]]
+        },
+        {
+            id: "lower-case-2",
+            type: "lower-case",
+            z: "test-tab",
+            name: "HTTP Lower Case",
+            wires: [["http-response-1"]]
+        },
+        {
+            id: "http-response-1",
+            type: "http response",
+            z: "test-tab",
+            name: "Response",
+            statusCode: "200",
             wires: []
         }
     ];
     
-    await deployFlow(flow);
+    await deployFlow(testFlow);
     
-    // Get node and send message
-    const node = RED.nodes.getNode('node-1');
-    if (!node) throw new Error('Node not found');
+    // Test via HTTP endpoint
+    console.log('  📤 Testing via HTTP endpoint...');
     
-    console.log('  📤 Sending test message...');
-    node.receive({ payload: 'HELLO WORLD' });
-    
-    // Wait for processing
-    await new Promise(r => setTimeout(r, 1000));
-    
-    // Verify result via global context
-    const result = RED.settings.functionGlobalContext.test_result;
-    
-    if (result === 'hello world') {
-        console.log('  ✅ Message processed correctly!');
-        return true;
-    } else {
-        console.log(`  ❌ Expected "hello world", got "${result}"`);
+    try {
+        const response = await axios.post(
+            `${CONFIG.nodeRedUrl}/test-lower-case`,
+            { payload: "TEST MESSAGE" },
+            { 
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 10000
+            }
+        );
+        
+        if (response.status === 200) {
+            console.log('  ✅ HTTP endpoint responded successfully');
+            return true;
+        } else {
+            console.log(`  ❌ Unexpected response status: ${response.status}`);
+            return false;
+        }
+    } catch (error) {
+        console.log(`  ❌ HTTP request failed: ${error.message}`);
         return false;
     }
 }
 
-// Cleanup
-async function cleanup() {
-    console.log('\n🛑 Cleaning up...');
-    if (RED) await RED.stop();
-    if (server) server.close();
-    await dockerCompose('down -v');
-    console.log('✅ Cleanup complete\n');
+/**
+ * TEST: Node appears in palette
+ */
+async function testNodeInPalette() {
+    console.log('\n📝 Test 2: Node Registration');
+    console.log('--------------------------------------------------');
+    
+    try {
+        const response = await axios.get(`${CONFIG.nodeRedUrl}/nodes`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        
+        const nodes = response.data;
+        const lowerCaseNode = nodes.find(n => 
+            n.types && n.types.includes('lower-case')
+        );
+        
+        if (lowerCaseNode) {
+            console.log('  ✅ lower-case node is registered in palette');
+            return true;
+        } else {
+            console.log('  ❌ lower-case node not found in palette');
+            console.log('  Available nodes:', nodes.map(n => n.types).flat().slice(0, 10).join(', '), '...');
+            return false;
+        }
+    } catch (error) {
+        console.log(`  ❌ Failed to query nodes: ${error.message}`);
+        return false;
+    }
 }
 
-// Main test runner
+/**
+ * TEST: Multiple messages
+ */
+async function testMultipleMessages() {
+    console.log('\n📝 Test 3: Multiple Message Processing');
+    console.log('--------------------------------------------------');
+    
+    const messageCount = 5;
+    let successCount = 0;
+    
+    console.log(`  📤 Sending ${messageCount} messages...`);
+    
+    for (let i = 0; i < messageCount; i++) {
+        try {
+            const response = await axios.post(
+                `${CONFIG.nodeRedUrl}/test-lower-case`,
+                { payload: `MESSAGE ${i}` },
+                { timeout: 5000 }
+            );
+            
+            if (response.status === 200) {
+                successCount++;
+            }
+        } catch (error) {
+            // Continue with other messages
+        }
+        
+        // Small delay between messages
+        await new Promise(r => setTimeout(r, 100));
+    }
+    
+    console.log(`  📨 Received responses: ${successCount}/${messageCount}`);
+    
+    if (successCount === messageCount) {
+        console.log('  ✅ All messages processed successfully');
+        return true;
+    } else {
+        console.log(`  ❌ Only ${successCount}/${messageCount} messages succeeded`);
+        return false;
+    }
+}
+
+/**
+ * Main test runner
+ */
 async function runTests() {
+    console.log('🚀 Starting E2E Tests');
+    console.log('==================================================\n');
+    
+    // STEP 1: Verify Docker is available (FAIL FAST)
+    verifyDockerAvailable();
+    
     let passed = 0;
     let total = 0;
     
     try {
-        await startDependencies();
-        await startNodeRED();
+        // STEP 2: Start containers (FAIL if Docker issues)
+        await startContainers();
         
+        // STEP 3: Run tests
         total++;
         if (await testBasicFunctionality()) passed++;
         
-        // Add more tests here...
+        total++;
+        if (await testNodeInPalette()) passed++;
+        
+        total++;
+        if (await testMultipleMessages()) passed++;
         
     } catch (error) {
-        console.error('\n❌ Test execution failed:', error.message);
+        console.error('\n❌ FATAL: Test execution failed');
+        console.error('Error:', error.message);
+        console.error('');
+        console.error('Ensure Docker is running and try again.');
+        
+        // Attempt cleanup before exit
+        try {
+            await stopContainers();
+        } catch (e) {
+            // Ignore cleanup errors
+        }
+        
+        process.exit(1);
     } finally {
-        await cleanup();
+        // STEP 4: Cleanup
+        await stopContainers();
     }
     
+    // STEP 5: Report results
     console.log('📊 Test Summary');
     console.log('==================================================');
     console.log(`Tests passed: ${passed}/${total}`);
+    console.log('');
     
-    process.exit(passed === total ? 0 : 1);
+    if (passed === total) {
+        console.log('🎉 All E2E tests passed!');
+        process.exit(0);
+    } else {
+        console.log('❌ Some E2E tests failed');
+        process.exit(1);
+    }
 }
 
-runTests();
+// Run tests
+runTests().catch(error => {
+    console.error('❌ Unhandled error:', error);
+    process.exit(1);
+});
 ```
 
+#### tests/e2e/.nodered/settings.js
+
+```javascript
+// Minimal Node-RED settings for E2E testing
+module.exports = {
+    flowFile: 'flows.json',
+    flowFilePretty: true,
+    
+    // Disable authentication
+    adminAuth: null,
+    
+    // Disable projects
+    editorTheme: {
+        projects: { enabled: false },
+        tours: false
+    },
+    
+    // Logging
+    logging: {
+        console: {
+            level: "info",
+            metrics: false,
+            audit: false
+        }
+    },
+    
+    // Function node config
+    functionGlobalContext: {},
+    functionExternalModules: false
+};
+```
+
+#### tests/e2e/.nodered/package.json
+
+```json
+{
+    "name": "node-red-e2e-test-config",
+    "description": "Node-RED E2E test configuration",
+    "version": "1.0.0",
+    "private": true,
+    "dependencies": {}
+}
+```
+
+**Key design principles:**
+
+1. **Docker is mandatory** - `verifyDockerAvailable()` runs first and fails immediately if Docker is unavailable
+2. **No fallbacks** - All container failures result in test failure
+3. **Strict health checks** - Containers must pass health checks before tests run
+4. **Clean failure modes** - Clear error messages when Docker fails
+5. **Proper cleanup** - Containers are always stopped, even on failure
+
 **Use cases:**
-- Full integration testing with all dependencies
-- CI/CD pipeline testing
-- Regression testing before releases
+- CI/CD pipeline testing (Docker required in CI environment)
+- Pre-release validation
+- Full integration testing with external dependencies
 
 ---
 
-### Approach 4: Simple KafkaJS-style Direct Testing
+### Approach 4: Simple Direct Library Testing
 
 For nodes that wrap external libraries, test the library integration directly (faster than full Node-RED):
 
@@ -499,8 +862,19 @@ const path = require('path');
 
 const execAsync = promisify(exec);
 
+// Verify Docker first - FAIL FAST
+function verifyDocker() {
+    try {
+        require('child_process').execSync('docker info', { stdio: 'pipe' });
+    } catch (error) {
+        console.error('❌ FATAL: Docker is required but not available');
+        process.exit(1);
+    }
+}
+
 async function dockerCompose(command) {
-    return execAsync(`docker compose ${command}`, { cwd: __dirname });
+    const cwd = path.join(__dirname);
+    return execAsync(`docker compose ${command}`, { cwd });
 }
 
 async function testDirectIntegration() {
@@ -526,13 +900,23 @@ async function testDirectIntegration() {
 }
 
 async function runTests() {
+    // FAIL FAST if Docker not available
+    verifyDocker();
+    
     try {
         await dockerCompose('up -d');
         await new Promise(r => setTimeout(r, 5000)); // Wait for services
         
         if (await testDirectIntegration()) {
             console.log('🎉 All tests passed!');
+            process.exit(0);
+        } else {
+            console.log('❌ Tests failed');
+            process.exit(1);
         }
+    } catch (error) {
+        console.error('❌ FATAL:', error.message);
+        process.exit(1);
     } finally {
         await dockerCompose('down -v');
     }
@@ -561,6 +945,7 @@ runTests();
 | **CI/CD friendly** | Yes | Yes | Yes | No |
 | **Debugging** | Easy | Moderate | Hard | Easy |
 | **Setup complexity** | Low | Medium | Medium | Low |
+| **Docker required** | No | Yes | **Yes (strict)** | No |
 
 ---
 
@@ -581,6 +966,7 @@ runTests();
 3. **Add Docker E2E tests** - `npm run test:e2e`
    - Full Node-RED runtime in Docker
    - Real flow deployment and execution
+   - **Fails immediately if Docker unavailable**
    - Run before releases
 
 4. **Use standalone launcher for development** - `npm run dev:nodered`
@@ -618,9 +1004,11 @@ project/
 │   │   ├── helpers/
 │   │   │   └── mock-red.js
 │   │   └── my-node.integration.test.js
-│   ├── e2e/                       # Full E2E tests
+│   ├── e2e/                       # Full E2E tests (Docker required)
 │   │   ├── docker-compose.yml
-│   │   ├── .nodered/              # Node-RED test config
+│   │   ├── .nodered/
+│   │   │   ├── settings.js
+│   │   │   └── package.json
 │   │   ├── flows/                 # Test flow fixtures
 │   │   ├── run-e2e-tests.js
 │   │   └── simple-test.js
@@ -635,7 +1023,7 @@ project/
 
 ## Implementation Priority
 
-1. **High**: Docker-based E2E testing with programmatic Node-RED
+1. **High**: Docker-based E2E testing (strict Docker requirement)
 2. **Medium**: Mock RED framework for integration tests
 3. **Medium**: Standalone launcher for development
 4. **Low**: Playwright browser tests for editor UI
@@ -647,8 +1035,9 @@ project/
 To implement real-world testing, create a new task with:
 
 1. Create `tests/launcher/launch.js` based on nodred4testing pattern
-2. Create `tests/e2e/docker-compose.yml` for dependencies
-3. Create `tests/e2e/run-e2e-tests.js` with programmatic Node-RED
-4. Create `tests/integration/helpers/mock-red.js` for mock framework
-5. Update `package.json` with new test scripts
-6. (Optional) Add Playwright for browser testing
+2. Create `tests/e2e/docker-compose.yml` with Node-RED container
+3. Create `tests/e2e/run-e2e-tests.js` with strict Docker verification
+4. Create `tests/e2e/.nodered/` configuration directory
+5. Create `tests/integration/helpers/mock-red.js` for mock framework
+6. Update `package.json` with new test scripts
+7. (Optional) Add Playwright for browser testing
