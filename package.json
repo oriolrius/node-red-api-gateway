@@ -25,7 +25,8 @@
     "dev:nodered": "node tests/launcher/launch.js",
     "docker:e2e:up": "docker compose -f tests/e2e/docker-compose.yml up -d",
     "docker:e2e:down": "docker compose -f tests/e2e/docker-compose.yml down -v",
-    "docker:e2e:logs": "docker compose -f tests/e2e/docker-compose.yml logs -f"
+    "docker:e2e:logs": "docker compose -f tests/e2e/docker-compose.yml logs -f",
+    "test:e2e": "node tests/e2e/run-e2e-tests.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
