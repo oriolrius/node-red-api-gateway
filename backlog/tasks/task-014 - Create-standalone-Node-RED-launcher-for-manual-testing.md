@@ -4,7 +4,7 @@ title: Create standalone Node-RED launcher for manual testing
 status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 11:41'
+updated_date: '2025-12-03 11:44'
 labels:
   - testing
   - infrastructure
@@ -99,4 +99,6 @@ Solved the node isolation problem by creating symlinks in the temporary director
    - Complete node isolation for testing
 
 This solution ensures that manual testing with 'npm run dev:nodered' provides a clean, isolated Node-RED instance suitable for testing the API gateway node and other project nodes without interference from the parent monorepo structure.
+
+Commit: 4243226 - feat(test): improve Node-RED launcher isolation strategy - Pushed to origin/main
 <!-- SECTION:NOTES:END -->
