@@ -114,6 +114,12 @@ const settings = {
         }
     },
 
+    // Disable telemetry consent popup and update notifications
+    telemetry: {
+        enabled: false,
+        updateNotification: false
+    },
+
     // Editor configuration
     editorTheme: {
         tours: false,
