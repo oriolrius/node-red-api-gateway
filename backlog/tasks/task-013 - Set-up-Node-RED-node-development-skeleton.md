@@ -1,9 +1,10 @@
 ---
 id: task-013
 title: Set up Node-RED node development skeleton
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-03 10:24'
+updated_date: '2025-12-03 10:25'
 labels: []
 dependencies: []
 priority: high
@@ -13,6 +14,8 @@ priority: high
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Set up the foundational project structure and development environment for creating custom Node-RED nodes. This includes the standard node structure (JS + HTML files), package.json configuration, test infrastructure, and development tooling. This is a prerequisite for implementing individual Node-RED nodes like the API gateway node.
+
+It's important to get access to the official Node-RED node development documentation and best practices to ensure the skeleton adheres to community standards.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -24,3 +27,9 @@ Set up the foundational project structure and development environment for creati
 - [ ] #5 Example/template node files created as reference
 - [ ] #6 README with development instructions
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Started work on 2025-12-03
+<!-- SECTION:NOTES:END -->
