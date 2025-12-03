@@ -51,6 +51,27 @@ if (symlinkDir !== nodeModulesDir) {
 }
 fs.symlinkSync(PROJECT_ROOT, symlinkPath);
 
+// Create a package.json in the temp userDir to isolate node discovery
+// This helps Node-RED not scan parent directories for additional nodes
+const tempPackageJson = {
+    name: 'node-red-test-launcher',
+    version: '1.0.0',
+    private: true,
+    dependencies: {
+        [packageName]: `file:${PROJECT_ROOT}`
+    }
+};
+fs.writeFileSync(
+    path.join(tempDir, 'package.json'),
+    JSON.stringify(tempPackageJson, null, 2)
+);
+
+// Create an empty examples directory (required when using custom coreNodesDir)
+fs.mkdirSync(path.join(tempDir, 'examples'), { recursive: true });
+
+// Create an empty locales directory for i18n (required when using custom coreNodesDir)
+fs.mkdirSync(path.join(tempDir, 'locales'), { recursive: true });
+
 console.log(`Linked ${packageName} -> ${PROJECT_ROOT}`);
 
 // Express app setup
@@ -65,6 +86,12 @@ const settings = {
     flowFile: 'flows.json',
     flowFilePretty: true,
     uiPort: PORT,
+
+    // Only load nodes from userDir/node_modules (our symlinked project)
+    // Set coreNodesDir to tempDir to prevent Node-RED from walking up the
+    // directory tree and finding other node-red-contrib-* packages in parent dirs
+    coreNodesDir: tempDir,
+    nodesDir: nodeModulesDir,
 
     // CORS for API testing
     httpAdminCors: {
