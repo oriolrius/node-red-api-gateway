@@ -1,10 +1,10 @@
 ---
 id: task-015
 title: Create Docker Compose configuration for E2E testing
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 12:06'
+updated_date: '2025-12-03 12:09'
 labels:
   - testing
   - infrastructure
@@ -38,18 +38,57 @@ This is the container orchestration layer for full E2E testing where Node-RED ru
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 File `tests/e2e/docker-compose.yml` created
-- [ ] #2 Node-RED service configured with proper image
-- [ ] #3 Health check endpoint returns 200 OK when container is ready
-- [ ] #4 Health check has appropriate timeout and retry settings
-- [ ] #5 Volume mounts configured for node package and Node-RED config
-- [ ] #6 Port 1880 exposed and mapped correctly
-- [ ] #7 Environment variables set for testing (safe mode disabled)
-- [ ] #8 Comments included for extending with additional services
+- [x] #1 File `tests/e2e/docker-compose.yml` created
+- [x] #2 Node-RED service configured with proper image
+- [x] #3 Health check endpoint returns 200 OK when container is ready
+- [x] #4 Health check has appropriate timeout and retry settings
+- [x] #5 Volume mounts configured for node package and Node-RED config
+- [x] #6 Port 1880 exposed and mapped correctly
+- [x] #7 Environment variables set for testing (safe mode disabled)
+- [x] #8 Comments included for extending with additional services
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Started implementation on 2025-12-03
+COMPLETED - Docker Compose E2E Testing Infrastructure
+
+Created the complete Docker Compose setup for E2E testing:
+
+Files Created:
+- tests/e2e/docker-compose.yml - Node-RED container orchestration with health checks
+- tests/e2e/.nodered/settings.js - Testing-optimized Node-RED configuration
+- tests/e2e/.nodered/package.json - Node-RED package dependencies and node configuration
+
+Key Implementation Details:
+- Docker container uses official Node-RED image with proper service naming
+- Health check configured: 5s interval, 10s timeout, 12 retries, 30s start period
+- HTTP health endpoint verified to return 200 OK when container is ready
+- Port 1880 exposed for Node-RED UI and API access
+- Volume mounts configured for:
+  * Node package directory (node-red-api-gateway)
+  * Node-RED configuration directory (.nodered)
+- Environment variables set for testing mode:
+  * CORS enabled
+  * Authentication disabled
+  * Safe mode disabled
+- Node-RED loads api-server and api-endpoint nodes successfully
+
+npm Scripts Added:
+- docker:e2e:up - Start Docker Compose services
+- docker:e2e:down - Stop and remove Docker Compose services
+- docker:e2e:logs - View container logs for debugging
+
+Extensibility:
+- Included commented example configurations for Redis, PostgreSQL, and MQTT
+- Ready for future integration testing with external services
+
+Verification Complete:
+- Container starts successfully
+- Health checks pass and container becomes healthy
+- HTTP endpoint responds with 200 OK
+- API Gateway nodes (api-server, api-endpoint) load correctly
+- Volume mounts work as expected
+
+Completed on 2025-12-03. Full Docker Compose infrastructure ready for E2E testing.
 <!-- SECTION:NOTES:END -->
