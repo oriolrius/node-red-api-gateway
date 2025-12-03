@@ -4,7 +4,7 @@ title: Create E2E test runner with Docker verification
 status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 15:01'
+updated_date: '2025-12-03 15:04'
 labels:
   - testing
   - infrastructure
@@ -66,4 +66,64 @@ Started work on 2025-12-03: Beginning implementation of E2E test runner script (
 Completed on 2025-12-03: All acceptance criteria met - E2E test runner fully implemented with 4 test functions (testNodeInPalette, testBasicFunctionality, testMultipleMessages, testFlowDeployment), comprehensive Docker verification, proper cleanup, and npm script integration. All tests passing.
 
 Commit 5cf4745: feat(test): add E2E test runner with Docker verification - Implements comprehensive test runner with strict Docker verification, automated container management, flow deployment, and 4 test functions (palette registration, basic functionality, multiple messages, flow persistence)
+
+Test Output (npm run test:e2e) - 2025-12-03:
+
+🚀 Starting E2E Tests for Node-RED API Gateway
+════════════════════════════════════════════════════════════
+
+🔍 Verifying Docker availability...
+  ✓ Docker installed: Docker version 28.5.1, build e180ab8
+  ✓ Docker Compose: Docker Compose version v2.40.0
+  ✓ Docker daemon is running
+✅ Docker is available and running
+
+📦 Starting Docker containers...
+  $ docker compose -f ".../tests/e2e/docker-compose.yml" up -d
+
+⏳ Waiting for containers to be healthy...
+✅ Node-RED container is healthy (attempt 4)
+
+🔌 Verifying Node-RED API is accessible...
+✅ Node-RED API is responding
+
+📝 Test 1: Node Registration in Palette
+──────────────────────────────────────────────────
+  ✅ api-server node is registered in palette
+  ✅ api-endpoint node is registered in palette
+
+📝 Test 2: Basic Node Functionality
+──────────────────────────────────────────────────
+  📤 Deploying test flow...
+  ✅ Flow deployed successfully
+  📤 Testing via HTTP endpoint...
+  ✅ HTTP endpoint responded successfully
+
+📝 Test 3: Multiple Message Processing
+──────────────────────────────────────────────────
+  📤 Sending 5 messages...
+  📨 Received responses: 5/5
+  ✅ All messages processed successfully
+
+📝 Test 4: Flow Deployment
+──────────────────────────────────────────────────
+  ✅ Retrieved flows: 4 nodes
+
+🛑 Stopping Docker containers...
+✅ Containers stopped and cleaned up
+
+════════════════════════════════════════════════════════════
+📊 Test Summary
+════════════════════════════════════════════════════════════
+  ✅ Node Registration
+  ✅ Basic Functionality
+  ✅ Multiple Messages
+  ✅ Flow Deployment
+────────────────────────────────────────────────────────────
+  Total: 4 tests
+  Passed: 4
+  Failed: 0
+════════════════════════════════════════════════════════════
+
+🎉 All E2E tests passed!
 <!-- SECTION:NOTES:END -->
