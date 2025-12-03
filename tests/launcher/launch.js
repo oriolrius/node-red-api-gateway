@@ -27,6 +27,7 @@ const fs = require('fs');
 const os = require('os');
 
 // Configuration
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = parseInt(process.env.PORT, 10) || 1880;
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
@@ -113,7 +114,7 @@ app.use(settings.httpNodeRoot, RED.httpNode);
 // Start the server
 async function start() {
     return new Promise((resolve, reject) => {
-        server.listen(PORT, async (err) => {
+        server.listen(PORT, HOST, async (err) => {
             if (err) {
                 reject(err);
                 return;
@@ -121,7 +122,7 @@ async function start() {
 
             try {
                 await RED.start();
-                console.log(`Node-RED started at http://localhost:${PORT}`);
+                console.log(`Node-RED started at http://${HOST}:${PORT}`);
                 console.log(`User directory: ${tempDir}`);
                 console.log('Press Ctrl+C to stop');
                 resolve();
