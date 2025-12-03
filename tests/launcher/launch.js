@@ -32,51 +32,42 @@ const PORT = parseInt(process.env.PORT, 10) || 1880;
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 // Create temporary directory for Node-RED user data
+// Using /tmp ensures Node-RED won't walk up the tree and find packages in /home
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nodered-test-'));
 
-// Create node_modules directory and symlink our project
+// Create node_modules directory
 const nodeModulesDir = path.join(tempDir, 'node_modules');
 fs.mkdirSync(nodeModulesDir, { recursive: true });
 
-// Read the package name from our project
-const packageJson = JSON.parse(fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'));
-const packageName = packageJson.name;
-
-// Create symlink to our project in node_modules
-// Handle scoped packages (e.g., @user/package-name)
-const symlinkPath = path.join(nodeModulesDir, packageName);
-const symlinkDir = path.dirname(symlinkPath);
-if (symlinkDir !== nodeModulesDir) {
-    fs.mkdirSync(symlinkDir, { recursive: true });
-}
-fs.symlinkSync(PROJECT_ROOT, symlinkPath);
-
-// Create a package.json in the temp userDir to isolate node discovery
-// This helps Node-RED not scan parent directories for additional nodes
-const tempPackageJson = {
-    name: 'node-red-test-launcher',
-    version: '1.0.0',
-    private: true,
-    dependencies: {
-        [packageName]: `file:${PROJECT_ROOT}`
+// Helper function to symlink a package (handles scoped packages)
+function symlinkPackage(packagePath, targetDir) {
+    const pkgJson = JSON.parse(fs.readFileSync(path.join(packagePath, 'package.json'), 'utf8'));
+    const pkgName = pkgJson.name;
+    const linkPath = path.join(targetDir, pkgName);
+    const linkDir = path.dirname(linkPath);
+    if (linkDir !== targetDir) {
+        fs.mkdirSync(linkDir, { recursive: true });
     }
-};
-fs.writeFileSync(
-    path.join(tempDir, 'package.json'),
-    JSON.stringify(tempPackageJson, null, 2)
-);
+    fs.symlinkSync(packagePath, linkPath);
+    return pkgName;
+}
 
-// Create an empty examples directory (required when using custom coreNodesDir)
-fs.mkdirSync(path.join(tempDir, 'examples'), { recursive: true });
-
-// Create an empty locales directory for i18n (required when using custom coreNodesDir)
-fs.mkdirSync(path.join(tempDir, 'locales'), { recursive: true });
-
+// Symlink our project's nodes
+const packageName = symlinkPackage(PROJECT_ROOT, nodeModulesDir);
 console.log(`Linked ${packageName} -> ${PROJECT_ROOT}`);
+
+// Symlink @node-red/nodes to temp directory so coreNodesDir points here
+// This prevents Node-RED from walking up and finding packages in /home
+const nodeRedNodesPath = path.join(PROJECT_ROOT, 'node_modules', '@node-red', 'nodes');
+const coreNodesSymlink = symlinkPackage(nodeRedNodesPath, nodeModulesDir);
+console.log(`Linked ${coreNodesSymlink} -> ${nodeRedNodesPath}`);
 
 // Express app setup
 const app = express();
 const server = http.createServer(app);
+
+// Path to core nodes in our temp directory (symlinked from node_modules/@node-red/nodes)
+const coreNodesDir = path.join(nodeModulesDir, '@node-red', 'nodes');
 
 // Node-RED settings optimized for testing
 const settings = {
@@ -87,10 +78,10 @@ const settings = {
     flowFilePretty: true,
     uiPort: PORT,
 
-    // Only load nodes from userDir/node_modules (our symlinked project)
-    // Set coreNodesDir to tempDir to prevent Node-RED from walking up the
-    // directory tree and finding other node-red-contrib-* packages in parent dirs
-    coreNodesDir: tempDir,
+    // Point coreNodesDir to our temp location so Node-RED doesn't walk up to /home
+    coreNodesDir: coreNodesDir,
+
+    // Load our nodes from the symlinked project in temp userDir
     nodesDir: nodeModulesDir,
 
     // CORS for API testing
