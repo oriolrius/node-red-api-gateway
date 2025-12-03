@@ -1,0 +1,65 @@
+services:
+  node-red:
+    image: nodered/node-red:latest
+    container_name: node-red-e2e-test
+    ports:
+      - "1880:1880"
+    volumes:
+      # Mount the node package for testing (read-only)
+      - ../../:/data/node_modules/@oriolrius/node-red-api-gateway:ro
+      # Mount Node-RED user directory configuration
+      - ./.nodered:/data
+      # Mount E2E test flows
+      # - ./flows.json:/data/flows.json:ro
+    environment:
+      - NODE_RED_ENABLE_SAFE_MODE=false
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:1880/ || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: "no"
+
+  # Example: Add external dependencies as needed
+  # Uncomment and configure based on your node's requirements
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: redis-e2e-test
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 2s
+  #     timeout: 2s
+  #     retries: 5
+  #
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: postgres-e2e-test
+  #   ports:
+  #     - "5432:5432"
+  #   environment:
+  #     - POSTGRES_USER=test
+  #     - POSTGRES_PASSWORD=test
+  #     - POSTGRES_DB=testdb
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U test"]
+  #     interval: 2s
+  #     timeout: 2s
+  #     retries: 5
+  #
+  # mosquitto:
+  #   image: eclipse-mosquitto:2
+  #   container_name: mosquitto-e2e-test
+  #   ports:
+  #     - "1883:1883"
+  #   volumes:
+  #     - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+  #   healthcheck:
+  #     test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 3

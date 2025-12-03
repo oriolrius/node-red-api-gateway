@@ -1,0 +1,20 @@
+[
+    {
+        "id": "fb3a1f801ffd1ebb",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "df51f81517ee47aa",
+        "type": "comment",
+        "z": "fb3a1f801ffd1ebb",
+        "name": "",
+        "info": "",
+        "x": 200,
+        "y": 200,
+        "wires": []
+    }
+]

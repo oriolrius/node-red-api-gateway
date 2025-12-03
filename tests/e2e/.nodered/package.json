@@ -1,0 +1,7 @@
+{
+    "name": "node-red-e2e-test-config",
+    "description": "Node-RED E2E test configuration",
+    "version": "1.0.0",
+    "private": true,
+    "dependencies": {}
+}
