@@ -1,9 +1,9 @@
 const helper = require("node-red-node-test-helper");
-const lowerCaseNode = require("../nodes/lower-case.js");
+const apiServerNode = require("../nodes/api-server.js");
 
 helper.init(require.resolve("node-red"));
 
-describe("lower-case Node", function () {
+describe("api-server Node", function () {
     beforeEach(function (done) {
         helper.startServer(done);
     });
@@ -14,8 +14,8 @@ describe("lower-case Node", function () {
     });
 
     it("should be loaded", function (done) {
-        const flow = [{ id: "n1", type: "lower-case", name: "test name" }];
-        helper.load(lowerCaseNode, flow, function () {
+        const flow = [{ id: "n1", type: "api-server", name: "test name" }];
+        helper.load(apiServerNode, flow, function () {
             const n1 = helper.getNode("n1");
             try {
                 n1.should.have.property("name", "test name");
@@ -28,10 +28,10 @@ describe("lower-case Node", function () {
 
     it("should convert payload to lower case", function (done) {
         const flow = [
-            { id: "n1", type: "lower-case", name: "test name", wires: [["n2"]] },
+            { id: "n1", type: "api-server", name: "test name", wires: [["n2"]] },
             { id: "n2", type: "helper" }
         ];
-        helper.load(lowerCaseNode, flow, function () {
+        helper.load(apiServerNode, flow, function () {
             const n1 = helper.getNode("n1");
             const n2 = helper.getNode("n2");
             n2.on("input", function (msg) {
@@ -48,10 +48,10 @@ describe("lower-case Node", function () {
 
     it("should pass through non-string payload unchanged", function (done) {
         const flow = [
-            { id: "n1", type: "lower-case", name: "test name", wires: [["n2"]] },
+            { id: "n1", type: "api-server", name: "test name", wires: [["n2"]] },
             { id: "n2", type: "helper" }
         ];
-        helper.load(lowerCaseNode, flow, function () {
+        helper.load(apiServerNode, flow, function () {
             const n1 = helper.getNode("n1");
             const n2 = helper.getNode("n2");
             n2.on("input", function (msg) {

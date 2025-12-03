@@ -2,18 +2,18 @@
     {
         "id": "c251e58259a284ba",
         "type": "tab",
-        "label": "Flow 1",
+        "label": "API Gateway Test",
         "disabled": false,
         "info": "",
         "env": []
     },
     {
         "id": "41a4e2816a7792db",
-        "type": "lower-case",
+        "type": "api-server",
         "z": "c251e58259a284ba",
         "name": "",
         "x": 250,
-        "y": 160,
+        "y": 100,
         "wires": [
             [
                 "153eb9a51cabd773"
@@ -24,7 +24,7 @@
         "id": "3b72238ba333a444",
         "type": "inject",
         "z": "c251e58259a284ba",
-        "name": "",
+        "name": "Test Input",
         "props": [
             {
                 "p": "payload"
@@ -41,8 +41,8 @@
         "topic": "",
         "payload": "AIXÒ ÉS UPPERCASE",
         "payloadType": "str",
-        "x": 140,
-        "y": 80,
+        "x": 100,
+        "y": 100,
         "wires": [
             [
                 "41a4e2816a7792db"
@@ -53,7 +53,7 @@
         "id": "153eb9a51cabd773",
         "type": "debug",
         "z": "c251e58259a284ba",
-        "name": "debug 1",
+        "name": "Server Output",
         "active": true,
         "tosidebar": true,
         "console": false,
@@ -62,7 +62,65 @@
         "statusVal": "",
         "statusType": "auto",
         "x": 440,
-        "y": 160,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "endpoint-node-1",
+        "type": "api-endpoint",
+        "z": "c251e58259a284ba",
+        "name": "",
+        "x": 260,
+        "y": 200,
+        "wires": [
+            [
+                "endpoint-debug-1"
+            ]
+        ]
+    },
+    {
+        "id": "endpoint-inject-1",
+        "type": "inject",
+        "z": "c251e58259a284ba",
+        "name": "Endpoint Test",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "API ENDPOINT TEST",
+        "payloadType": "str",
+        "x": 110,
+        "y": 200,
+        "wires": [
+            [
+                "endpoint-node-1"
+            ]
+        ]
+    },
+    {
+        "id": "endpoint-debug-1",
+        "type": "debug",
+        "z": "c251e58259a284ba",
+        "name": "Endpoint Output",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 460,
+        "y": 200,
         "wires": []
     }
 ]

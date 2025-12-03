@@ -1,5 +1,5 @@
 module.exports = function(RED) {
-    function LowerCaseNode(config) {
+    function ApiServerNode(config) {
         RED.nodes.createNode(this, config);
         var node = this;
 
@@ -32,5 +32,5 @@ module.exports = function(RED) {
         });
     }
 
-    RED.nodes.registerType("lower-case", LowerCaseNode);
+    RED.nodes.registerType("api-server", ApiServerNode);
 };
