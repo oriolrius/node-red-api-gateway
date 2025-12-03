@@ -17,7 +17,8 @@
     "test": "mocha \"test/**/*_spec.js\" --exit",
     "test:watch": "mocha \"test/**/*_spec.js\" --watch",
     "lint": "eslint nodes/ test/",
-    "lint:fix": "eslint nodes/ test/ --fix"
+    "lint:fix": "eslint nodes/ test/ --fix",
+    "dev:nodered": "node tests/launcher/launch.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
