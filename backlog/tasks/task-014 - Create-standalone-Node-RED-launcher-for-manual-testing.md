@@ -4,7 +4,7 @@ title: Create standalone Node-RED launcher for manual testing
 status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 11:44'
+updated_date: '2025-12-03 12:05'
 labels:
   - testing
   - infrastructure
@@ -101,4 +101,14 @@ Solved the node isolation problem by creating symlinks in the temporary director
 This solution ensures that manual testing with 'npm run dev:nodered' provides a clean, isolated Node-RED instance suitable for testing the API gateway node and other project nodes without interference from the parent monorepo structure.
 
 Commit: 4243226 - feat(test): improve Node-RED launcher isolation strategy - Pushed to origin/main
+
+Latest additions (2025-12-03):
+
+- Added custom "API Gateway" palette group with two new nodes:
+  - `api-server` node (icon: fa-server) - placeholder node for API server functionality
+  - `api-endpoint` node (icon: fa-plug) - placeholder node for API endpoint functionality
+- Removed legacy `lower-case` example node
+- Updated test flows (tests/launcher/flows.json) to use the new API Gateway nodes
+- Created unit tests for both new nodes (test/api-server_spec.js, test/api-endpoint_spec.js)
+- Commit: be6961c - feat(node): Add API Gateway palette group with server and endpoint nodes
 <!-- SECTION:NOTES:END -->
