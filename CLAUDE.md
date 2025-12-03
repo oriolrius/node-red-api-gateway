@@ -57,6 +57,63 @@ feat(node)!: change default timeout from 30s to 10s
 BREAKING CHANGE: Default timeout reduced, update your flows if needed.
 ```
 
+<!-- MANDATORY SUBAGENT RULES START -->
+
+<CRITICAL_INSTRUCTION>
+
+## MANDATORY: Subagent Usage for Git and Backlog Operations
+
+This project has custom subagents that MUST be used for specific operations. **DO NOT use Bash or MCP tools directly for these operations.**
+
+### Git Operations → ALWAYS use `git-backlog-sync` subagent
+
+**NEVER run git commands directly with Bash for:**
+- `git commit` - Use subagent to ensure task linking and conventional commits
+- `git branch` / `git checkout -b` - Use subagent to link branches to tasks
+- `gh pr create` - Use subagent to include task context in PR
+
+**How to use:**
+```
+Task tool with subagent_type="git-backlog-sync"
+Prompt: "Commit the staged changes for task-XXX with message about implementing Y"
+```
+
+**Why:** The subagent enforces conventional commits, links commits to backlog tasks, and updates task status automatically.
+
+### Backlog Operations → ALWAYS use `backlog-manager` subagent
+
+**NEVER call mcp__backlog__* tools directly for:**
+- Updating task status (To Do → In Progress → Done)
+- Checking off acceptance criteria
+- Adding implementation notes
+- Creating new tasks related to current work
+
+**How to use:**
+```
+Task tool with subagent_type="backlog-manager"
+Prompt: "Update task-XXX status to In Progress and note that work has started"
+```
+
+**Why:** The subagent follows proper workflow patterns, checks task state before editing, and maintains consistent note formatting.
+
+### When Direct Tool Use IS Allowed
+
+- **Reading/searching tasks**: `mcp__backlog__task_list`, `mcp__backlog__task_search`, `mcp__backlog__task_view` - OK for quick lookups
+- **Git status/diff**: `git status`, `git diff` via Bash - OK for inspection only
+- **Non-task git operations**: Simple `git add`, `git stash` - OK when not related to task workflow
+
+### Enforcement Checklist
+
+Before ANY git commit, branch, or PR operation, ask yourself:
+- [ ] Am I using the `git-backlog-sync` subagent? If no, STOP and use it.
+
+Before ANY task status change or update, ask yourself:
+- [ ] Am I using the `backlog-manager` subagent? If no, STOP and use it.
+
+</CRITICAL_INSTRUCTION>
+
+<!-- MANDATORY SUBAGENT RULES END -->
+
 <!-- BACKLOG.MD MCP GUIDELINES START -->
 
 <CRITICAL_INSTRUCTION>

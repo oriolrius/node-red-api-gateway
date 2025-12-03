@@ -1,0 +1,48 @@
+<script type="text/javascript">
+    RED.nodes.registerType('lower-case', {
+        category: 'function',
+        color: '#a6bbcf',
+        defaults: {
+            name: { value: "" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-font",
+        label: function() {
+            return this.name || "lower-case";
+        },
+        paletteLabel: "lower case"
+    });
+</script>
+
+<script type="text/html" data-template-name="lower-case">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="lower-case">
+    <p>A simple node that converts the message payload to lower case.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The string payload to convert to lower case.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The payload converted to lower case.</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This is a template node demonstrating the basic structure of a Node-RED node.
+    It converts any string payload to lower case characters.</p>
+    <p>If the payload is not a string, it is passed through unchanged.</p>
+</script>

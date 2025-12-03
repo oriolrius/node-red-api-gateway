@@ -1,0 +1,36 @@
+{
+  "name": "@user/node-red-api-gateway",
+  "version": "0.1.0",
+  "description": "Node-RED nodes for API gateway functionality",
+  "keywords": [
+    "node-red"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/node-red-api-gateway.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "mocha \"test/**/*_spec.js\" --exit",
+    "test:watch": "mocha \"test/**/*_spec.js\" --watch",
+    "lint": "eslint nodes/ test/",
+    "lint:fix": "eslint nodes/ test/ --fix"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "mocha": "^10.4.0",
+    "node-red": "^3.1.0",
+    "node-red-node-test-helper": "^0.3.4",
+    "should": "^13.2.3",
+    "sinon": "^17.0.0"
+  },
+  "node-red": {
+    "version": ">=2.0.0",
+    "nodes": {
+      "lower-case": "nodes/lower-case.js"
+    }
+  }
+}
