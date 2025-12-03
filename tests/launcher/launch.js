@@ -62,6 +62,13 @@ const nodeRedNodesPath = path.join(PROJECT_ROOT, 'node_modules', '@node-red', 'n
 const coreNodesSymlink = symlinkPackage(nodeRedNodesPath, nodeModulesDir);
 console.log(`Linked ${coreNodesSymlink} -> ${nodeRedNodesPath}`);
 
+// Copy test flows to temp directory for automatic provisioning
+const testFlowsPath = path.join(__dirname, 'flows.json');
+if (fs.existsSync(testFlowsPath)) {
+    fs.copyFileSync(testFlowsPath, path.join(tempDir, 'flows.json'));
+    console.log('Provisioned test flows from flows.json');
+}
+
 // Express app setup
 const app = express();
 const server = http.createServer(app);

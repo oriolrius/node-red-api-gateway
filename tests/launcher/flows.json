@@ -1,0 +1,68 @@
+[
+    {
+        "id": "c251e58259a284ba",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "41a4e2816a7792db",
+        "type": "lower-case",
+        "z": "c251e58259a284ba",
+        "name": "",
+        "x": 250,
+        "y": 160,
+        "wires": [
+            [
+                "153eb9a51cabd773"
+            ]
+        ]
+    },
+    {
+        "id": "3b72238ba333a444",
+        "type": "inject",
+        "z": "c251e58259a284ba",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "AIXÒ ÉS UPPERCASE",
+        "payloadType": "str",
+        "x": 140,
+        "y": 80,
+        "wires": [
+            [
+                "41a4e2816a7792db"
+            ]
+        ]
+    },
+    {
+        "id": "153eb9a51cabd773",
+        "type": "debug",
+        "z": "c251e58259a284ba",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 440,
+        "y": 160,
+        "wires": []
+    }
+]
