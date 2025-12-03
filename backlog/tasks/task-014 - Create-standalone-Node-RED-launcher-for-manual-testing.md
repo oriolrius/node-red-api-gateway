@@ -4,7 +4,7 @@ title: Create standalone Node-RED launcher for manual testing
 status: Done
 assignee: []
 created_date: '2025-12-03 11:05'
-updated_date: '2025-12-03 11:15'
+updated_date: '2025-12-03 11:41'
 labels:
   - testing
   - infrastructure
@@ -77,4 +77,26 @@ Implementation Summary:
 Commit: 3d8346b - feat(test): add standalone Node-RED launcher for manual testing
 
 Commit: 9cab460 - fix(test): bind launcher to 0.0.0.0 for container/network access
+
+KEY IMPLEMENTATION DETAIL - Node Isolation Solution (2025-12-03):
+
+Solved the node isolation problem by creating symlinks in the temporary directory:
+
+1. Created symlinks in temp directory for both:
+   - The project's own nodes
+   - @node-red/nodes (core Node-RED nodes)
+
+2. Set coreNodesDir to point to the temp directory location
+
+3. This approach prevents Node-RED from:
+   - Walking up the directory tree and finding unwanted packages (like Kafka nodes) in parent directories
+   - Loading incorrect or conflicting node versions
+   - Polluting the test environment
+
+4. While still enabling:
+   - All core Node-RED nodes to load correctly
+   - Project-specific nodes to be available
+   - Complete node isolation for testing
+
+This solution ensures that manual testing with 'npm run dev:nodered' provides a clean, isolated Node-RED instance suitable for testing the API gateway node and other project nodes without interference from the parent monorepo structure.
 <!-- SECTION:NOTES:END -->
