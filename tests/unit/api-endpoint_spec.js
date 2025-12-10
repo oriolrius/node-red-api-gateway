@@ -1219,4 +1219,569 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Authorization Scope Configuration", function () {
+        it("should have empty scopes by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("requiredScopes").which.is.an.Array();
+                    n1.requiredScopes.should.have.length(0);
+                    n1.should.have.property("scopeOperator", "AND");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse scopes from comma-separated string", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "read:users, write:users, admin"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.requiredScopes.should.deepEqual(["read:users", "write:users", "admin"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle scopes with extra whitespace", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "  read:users  ,   write:users  "
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.requiredScopes.should.deepEqual(["read:users", "write:users"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store AND operator", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                scopeOperator: "AND"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("scopeOperator", "AND");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store OR operator", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                scopeOperator: "OR"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("scopeOperator", "OR");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid operator to AND", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                scopeOperator: "INVALID"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("scopeOperator", "AND");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include scopes in getEndpointInfo", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "read:users, admin",
+                scopeOperator: "OR"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("requiredScopes").which.deepEqual(["read:users", "admin"]);
+                    info.should.have.property("scopeOperator", "OR");
+                    info.should.have.property("hasRequiredScopes", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should set hasRequiredScopes to false when no scopes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("hasRequiredScopes", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("checkAuthorization Method", function () {
+        it("should authorize when no scopes required", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization([]);
+                    result.authorized.should.be.true();
+                    result.missingScopes.should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should authorize with AND when all scopes present", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "read:users, write:users",
+                scopeOperator: "AND"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization(["read:users", "write:users", "admin"]);
+                    result.authorized.should.be.true();
+                    result.missingScopes.should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not authorize with AND when some scopes missing", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "read:users, write:users",
+                scopeOperator: "AND"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization(["read:users"]);
+                    result.authorized.should.be.false();
+                    result.missingScopes.should.deepEqual(["write:users"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should authorize with OR when any scope present", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "admin, moderator, owner",
+                scopeOperator: "OR"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization(["moderator"]);
+                    result.authorized.should.be.true();
+                    result.missingScopes.should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not authorize with OR when no scopes present", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "admin, moderator, owner",
+                scopeOperator: "OR"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization(["user", "guest"]);
+                    result.authorized.should.be.false();
+                    result.missingScopes.should.deepEqual(["admin", "moderator", "owner"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle empty token scopes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "admin"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization([]);
+                    result.authorized.should.be.false();
+                    result.missingScopes.should.deepEqual(["admin"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle null token scopes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "admin"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkAuthorization(null);
+                    result.authorized.should.be.false();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getOpenApiSecurity Method", function () {
+        it("should return empty array when no scopes required", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const security = n1.getOpenApiSecurity();
+                    security.should.be.an.Array();
+                    security.should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return OAuth2 security with scopes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                requiredScopes: "read:users, write:users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const security = n1.getOpenApiSecurity();
+                    security.should.be.an.Array();
+                    security.should.have.length(1);
+                    security[0].should.have.property("oauth2");
+                    security[0].oauth2.should.deepEqual(["read:users", "write:users"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Authorization in Message Handling", function () {
+        it("should include authorization info in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("requiredScopes").which.deepEqual(["admin"]);
+                        msg.endpoint.should.have.property("scopeOperator", "AND");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should pass through when no scopes required", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("authorizationError");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: {} });
+            });
+        });
+
+        it("should return 401 when not authenticated", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("authorizationError");
+                        msg.authorizationError.should.have.property("statusCode", 401);
+                        msg.authorizationError.should.have.property("error", "Unauthorized");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: {} });
+            });
+        });
+
+        it("should return 401 when auth.authenticated is false", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("authorizationError");
+                        msg.authorizationError.should.have.property("statusCode", 401);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: { auth: { authenticated: false } } });
+            });
+        });
+
+        it("should return 403 when missing required scopes", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, superuser", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("authorizationError");
+                        msg.authorizationError.should.have.property("statusCode", 403);
+                        msg.authorizationError.should.have.property("error", "Forbidden");
+                        msg.authorizationError.details.should.have.property("missingScopes").which.deepEqual(["superuser"]);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: { auth: { authenticated: true, scopes: ["admin"] } } });
+            });
+        });
+
+        it("should pass through when all required scopes present (AND)", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, user", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("authorizationError");
+                        msg.payload.should.equal("test");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({
+                    payload: "test",
+                    req: { auth: { authenticated: true, scopes: ["admin", "user", "extra"] } }
+                });
+            });
+        });
+
+        it("should pass through when any required scope present (OR)", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("authorizationError");
+                        msg.payload.should.equal("test");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({
+                    payload: "test",
+                    req: { auth: { authenticated: true, scopes: ["moderator"] } }
+                });
+            });
+        });
+
+        it("should return 403 with OR operator when no scopes match", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("authorizationError");
+                        msg.authorizationError.should.have.property("statusCode", 403);
+                        msg.authorizationError.should.have.property("message", "None of the required scopes present");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({
+                    req: { auth: { authenticated: true, scopes: ["guest", "user"] } }
+                });
+            });
+        });
+
+        it("should include details in authorization error", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.authorizationError.should.have.property("details");
+                        msg.authorizationError.details.should.have.property("requiredScopes").which.deepEqual(["admin"]);
+                        msg.authorizationError.details.should.have.property("scopeOperator", "AND");
+                        msg.authorizationError.details.should.have.property("missingScopes").which.deepEqual(["admin"]);
+                        msg.authorizationError.details.should.have.property("providedScopes").which.deepEqual(["user"]);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({
+                    req: { auth: { authenticated: true, scopes: ["user"] } }
+                });
+            });
+        });
+
+        it("should skip authorization check when no req object", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("authorizationError");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+    });
 });

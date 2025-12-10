@@ -15,7 +15,10 @@
             successStatusCode: { value: "200" },
             responseContentType: { value: "application/json" },
             responseSchemas: { value: "" },
-            validateResponseEnabled: { value: false }
+            validateResponseEnabled: { value: false },
+            // Authorization configuration
+            requiredScopes: { value: "" },
+            scopeOperator: { value: "AND" }
         },
         inputs: 1,
         outputs: 1,
@@ -214,9 +217,36 @@
                 formatJson('#node-input-responseSchemas');
             });
 
+            // Update scope display
+            function updateScopeDisplay() {
+                var scopesStr = $('#node-input-requiredScopes').val();
+                var scopes = scopesStr ? scopesStr.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; }) : [];
+
+                var $scopeList = $('#scope-list');
+                $scopeList.empty();
+
+                if (scopes.length > 0) {
+                    $('#scope-display').show();
+                    var operator = $('#node-input-scopeOperator').val();
+                    scopes.forEach(function(scope, index) {
+                        $scopeList.append('<span class="scope-badge">' + scope + '</span>');
+                        if (index < scopes.length - 1) {
+                            $scopeList.append(' <span style="color: #666;">' + operator + '</span> ');
+                        }
+                    });
+                } else {
+                    $('#scope-display').hide();
+                }
+            }
+
+            // Event listeners for scopes
+            $('#node-input-requiredScopes').on('input change', updateScopeDisplay);
+            $('#node-input-scopeOperator').on('change', updateScopeDisplay);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
+            updateScopeDisplay();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -409,12 +439,49 @@
         </div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-lock"></i> Authorization</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-requiredScopes"><i class="fa fa-key"></i> Scopes</label>
+        <input type="text" id="node-input-requiredScopes" placeholder="read:users, write:users, admin">
+        <div class="form-tips" style="margin-top: 5px;">
+            Comma-separated list of OAuth2 scopes required to access this endpoint.
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-scopeOperator"><i class="fa fa-filter"></i> Operator</label>
+        <select id="node-input-scopeOperator" style="width: 200px;">
+            <option value="AND">AND (require all scopes)</option>
+            <option value="OR">OR (require any scope)</option>
+        </select>
+    </div>
+
+    <div id="scope-display" style="display: none; margin-left: 105px; margin-top: 5px;">
+        <label style="width: auto;">Required scopes:</label>
+        <div id="scope-list" style="display: inline-block;"></div>
+    </div>
+
     <style>
         .param-badge {
             display: inline-block;
             padding: 2px 8px;
             margin: 2px;
             background-color: #5bc0de;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .scope-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            background-color: #f0ad4e;
             color: white;
             border-radius: 3px;
             font-size: 12px;
@@ -519,6 +586,16 @@
             <span class="property-type">object</span>
         </dt>
         <dd>JSON object mapping HTTP status codes to JSON Schemas. Used for OpenAPI generation and optional response validation.</dd>
+
+        <dt>Required Scopes
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Comma-separated list of OAuth2 scopes required to access this endpoint. When configured, requests without valid scopes will receive 401 (unauthenticated) or 403 (insufficient permissions) responses.</dd>
+
+        <dt>Scope Operator
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Controls how multiple scopes are evaluated: <b>AND</b> requires all scopes to be present, <b>OR</b> requires at least one scope.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -591,6 +668,26 @@
         <li>The error response includes the path, message, and details for each validation failure</li>
     </ul>
 
+    <h3>Authorization</h3>
+    <p>When required scopes are configured, the endpoint checks authorization before processing requests:</p>
+    <ul>
+        <li><b>401 Unauthorized</b>: Returned when <code>msg.req.auth.authenticated</code> is not set (user not logged in)</li>
+        <li><b>403 Forbidden</b>: Returned when the user's scopes don't satisfy the required scopes</li>
+    </ul>
+    <p>The authorization check expects scopes to be provided in <code>msg.req.auth.scopes</code> as an array of strings.</p>
+
+    <h3>Example Authorization Configuration</h3>
+    <p>For an endpoint requiring admin access:</p>
+    <ul>
+        <li>Required Scopes: <code>admin:read, admin:write</code></li>
+        <li>Operator: <b>AND</b> - User must have both scopes</li>
+    </ul>
+    <p>For an endpoint accessible by multiple roles:</p>
+    <ul>
+        <li>Required Scopes: <code>admin, moderator, owner</code></li>
+        <li>Operator: <b>OR</b> - User needs at least one scope</li>
+    </ul>
+
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>req.body <span class="property-type">any</span></dt>
@@ -599,14 +696,20 @@
         <dd>Query parameters to validate against the query schema.</dd>
         <dt>req.params <span class="property-type">object</span></dt>
         <dd>Path parameters to validate against the params schema.</dd>
+        <dt>req.auth.authenticated <span class="property-type">boolean</span></dt>
+        <dd>Whether the request is authenticated (populated by upstream auth middleware).</dd>
+        <dt>req.auth.scopes <span class="property-type">array</span></dt>
+        <dd>Array of OAuth2 scope strings associated with the authenticated user/token.</dd>
     </dl>
 
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>endpoint <span class="property-type">object</span></dt>
-        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, and validateResponseEnabled.</dd>
+        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, validateResponseEnabled, requiredScopes, and scopeOperator.</dd>
         <dt>validationError <span class="property-type">object</span></dt>
         <dd>Present only when validation fails. Contains statusCode, error, message, and details.</dd>
+        <dt>authorizationError <span class="property-type">object</span></dt>
+        <dd>Present only when authorization fails. Contains statusCode (401 or 403), error, message, and details including requiredScopes, scopeOperator, and missingScopes.</dd>
     </dl>
 
     <h3>Methods Available</h3>
@@ -618,5 +721,9 @@
         <dd>Returns the JSON Schema for the given status code, or the default schema if not found.</dd>
         <dt>getOpenApiResponses()</dt>
         <dd>Returns response definitions in OpenAPI format for documentation generation.</dd>
+        <dt>checkAuthorization(tokenScopes)</dt>
+        <dd>Checks if the provided token scopes satisfy the endpoint's required scopes. Returns <code>{authorized: boolean, missingScopes: array}</code>.</dd>
+        <dt>getOpenApiSecurity()</dt>
+        <dd>Returns OpenAPI security requirements for this endpoint (OAuth2 scopes). Returns an empty array if no scopes are required.</dd>
     </dl>
 </script>

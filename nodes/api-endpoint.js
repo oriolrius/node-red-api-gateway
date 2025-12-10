@@ -21,6 +21,55 @@ const {
 } = require('../lib/schema-validator');
 
 /**
+ * Parses a scopes configuration string into an array of scope strings
+ * @param {string|Array} scopes - Comma-separated string or array of scopes
+ * @returns {Array<string>} Array of scope strings
+ */
+function parseScopes(scopes) {
+    if (!scopes) {
+        return [];
+    }
+    if (Array.isArray(scopes)) {
+        return scopes.map(s => String(s).trim()).filter(s => s.length > 0);
+    }
+    if (typeof scopes === 'string') {
+        return scopes.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    }
+    return [];
+}
+
+/**
+ * Checks if the provided token scopes satisfy the required scopes
+ * @param {Array<string>} tokenScopes - Scopes from the token/user
+ * @param {Array<string>} requiredScopes - Required scopes for the endpoint
+ * @param {string} operator - 'AND' (all required) or 'OR' (any required)
+ * @returns {{authorized: boolean, missingScopes: Array<string>}}
+ */
+function checkScopes(tokenScopes, requiredScopes, operator) {
+    if (!requiredScopes || requiredScopes.length === 0) {
+        return { authorized: true, missingScopes: [] };
+    }
+
+    const tokenScopeSet = new Set(tokenScopes || []);
+
+    if (operator === 'OR') {
+        // At least one of the required scopes must be present
+        const hasAny = requiredScopes.some(scope => tokenScopeSet.has(scope));
+        return {
+            authorized: hasAny,
+            missingScopes: hasAny ? [] : requiredScopes
+        };
+    } else {
+        // All required scopes must be present (AND)
+        const missingScopes = requiredScopes.filter(scope => !tokenScopeSet.has(scope));
+        return {
+            authorized: missingScopes.length === 0,
+            missingScopes
+        };
+    }
+}
+
+/**
  * Returns a default description for an HTTP status code
  * @param {string|number} statusCode - HTTP status code
  * @returns {string} Default description
@@ -63,6 +112,10 @@ module.exports = function(RED) {
         node.successStatusCode = parseInt(config.successStatusCode, 10) || 200;
         node.responseContentType = config.responseContentType || 'application/json';
         node.validateResponseEnabled = config.validateResponseEnabled === true;  // Dev mode only
+
+        // Authorization scope configuration
+        node.requiredScopes = parseScopes(config.requiredScopes);
+        node.scopeOperator = config.scopeOperator === 'OR' ? 'OR' : 'AND';  // Default to AND (requires all scopes)
 
         // Parse and compile schemas if validation is enabled
         if (node.validationEnabled) {
@@ -196,6 +249,11 @@ module.exports = function(RED) {
             return node.responseSchemas[statusCode] || node.responseSchemas['default'] || null;
         };
 
+        // Method to check authorization based on scopes
+        node.checkAuthorization = function(tokenScopes) {
+            return checkScopes(tokenScopes, node.requiredScopes, node.scopeOperator);
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -212,7 +270,11 @@ module.exports = function(RED) {
                 successStatusCode: node.successStatusCode,
                 responseContentType: node.responseContentType,
                 hasResponseSchemas: Object.keys(node.responseSchemas).length > 0,
-                responseStatusCodes: Object.keys(node.responseSchemas)
+                responseStatusCodes: Object.keys(node.responseSchemas),
+                // Authorization configuration
+                requiredScopes: node.requiredScopes,
+                scopeOperator: node.scopeOperator,
+                hasRequiredScopes: node.requiredScopes.length > 0
             };
         };
 
@@ -246,6 +308,17 @@ module.exports = function(RED) {
             return responses;
         };
 
+        // Method to get OpenAPI security definitions for this endpoint
+        node.getOpenApiSecurity = function() {
+            if (node.requiredScopes.length === 0) {
+                return [];
+            }
+            // Return OAuth2 security requirement with required scopes
+            return [{
+                oauth2: node.requiredScopes
+            }];
+        };
+
         node.on("input", function(msg, send, done) {
             // Node-RED 1.0+ compatibility
             send = send || function() { node.send.apply(node, arguments); };
@@ -260,7 +333,10 @@ module.exports = function(RED) {
                     // Response configuration for downstream handling
                     successStatusCode: node.successStatusCode,
                     responseContentType: node.responseContentType,
-                    validateResponseEnabled: node.validateResponseEnabled
+                    validateResponseEnabled: node.validateResponseEnabled,
+                    // Authorization configuration
+                    requiredScopes: node.requiredScopes,
+                    scopeOperator: node.scopeOperator
                 };
 
                 // If request path is provided, extract parameters
@@ -268,6 +344,75 @@ module.exports = function(RED) {
                     const extraction = node.extractRequestParams(msg.req.path);
                     if (extraction.match) {
                         msg.req.params = extraction.params;
+                    }
+                }
+
+                // Perform authorization check if scopes are required
+                if (node.requiredScopes.length > 0 && msg.req) {
+                    // Get token scopes from auth context (populated by upstream auth middleware)
+                    const tokenScopes = (msg.req.auth && msg.req.auth.scopes) || [];
+                    const isAuthenticated = msg.req.auth && msg.req.auth.authenticated;
+
+                    // Check if user is authenticated (401) vs lacks scopes (403)
+                    if (!isAuthenticated) {
+                        const authError = {
+                            statusCode: 401,
+                            error: 'Unauthorized',
+                            message: 'Authentication required',
+                            details: {
+                                requiredScopes: node.requiredScopes,
+                                scopeOperator: node.scopeOperator
+                            }
+                        };
+                        msg.authorizationError = authError;
+
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            msg.res.status(401).json(authError);
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+
+                        msg.payload = authError;
+                        send(msg);
+                        if (done) {
+                            done();
+                        }
+                        return;
+                    }
+
+                    const authResult = node.checkAuthorization(tokenScopes);
+                    if (!authResult.authorized) {
+                        const authError = {
+                            statusCode: 403,
+                            error: 'Forbidden',
+                            message: node.scopeOperator === 'AND'
+                                ? 'Missing required scopes'
+                                : 'None of the required scopes present',
+                            details: {
+                                requiredScopes: node.requiredScopes,
+                                scopeOperator: node.scopeOperator,
+                                missingScopes: authResult.missingScopes,
+                                providedScopes: tokenScopes
+                            }
+                        };
+                        msg.authorizationError = authError;
+
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            msg.res.status(403).json(authError);
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+
+                        msg.payload = authError;
+                        send(msg);
+                        if (done) {
+                            done();
+                        }
+                        return;
                     }
                 }
 

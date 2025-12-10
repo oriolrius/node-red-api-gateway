@@ -1,9 +1,10 @@
 ---
 id: task-042
 title: Add Authorization Scope Configuration
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-10 09:34'
+updated_date: '2025-12-10 14:39'
 labels:
   - api-endpoint
   - authorization
@@ -26,3 +27,9 @@ Configure required OAuth2 scopes for endpoint access. Support AND/OR operators f
 - [ ] #4 401/403 responses for unauthorized access
 - [ ] #5 Scopes exported for OpenAPI security definitions
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2025-12-10: Started work on implementing authorization scope configuration
+<!-- SECTION:NOTES:END -->
