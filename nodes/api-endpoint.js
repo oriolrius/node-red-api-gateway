@@ -52,6 +52,17 @@ const {
     parseVaryHeaders
 } = require('../lib/response-cache');
 
+const {
+    ERROR_FORMATS,
+    ERROR_DEFAULTS,
+    ApiError,
+    ErrorHandler,
+    ErrorFactory,
+    validateErrorConfig,
+    parseErrorCodeMappings,
+    fromError
+} = require('../lib/error-handler');
+
 /**
  * Parses a scopes configuration string into an array of scope strings
  * @param {string|Array} scopes - Comma-separated string or array of scopes
@@ -803,6 +814,48 @@ module.exports = function(RED) {
             });
         }
 
+        // Error handling configuration
+        node.errorHandlingEnabled = config.errorHandlingEnabled !== false;  // Enabled by default
+        node.errorFormat = ERROR_FORMATS.includes(config.errorFormat)
+            ? config.errorFormat
+            : ERROR_DEFAULTS.format;
+        node.includeStackTrace = config.includeStackTrace === true;  // Dev mode only
+        node.logErrors = config.logErrors !== false;  // Enabled by default
+        node.customErrorCodes = {};
+        node.errorHandler = null;
+
+        // Parse custom error code mappings
+        if (config.customErrorCodes) {
+            const parsed = parseErrorCodeMappings(config.customErrorCodes);
+            if (parsed.errors.length > 0) {
+                parsed.errors.forEach(error => node.warn(`Error code mapping: ${error}`));
+            }
+            node.customErrorCodes = parsed.codes;
+        }
+
+        // Initialize error handler
+        if (node.errorHandlingEnabled) {
+            const errorValidation = validateErrorConfig({
+                format: node.errorFormat,
+                includeStackTrace: node.includeStackTrace,
+                logErrors: node.logErrors,
+                customErrorCodes: node.customErrorCodes
+            });
+            if (!errorValidation.valid) {
+                errorValidation.errors.forEach(error => node.warn(`Error config: ${error}`));
+            }
+
+            node.errorHandler = new ErrorHandler({
+                format: node.errorFormat,
+                includeStackTrace: node.includeStackTrace,
+                logErrors: node.logErrors,
+                customErrorCodes: node.customErrorCodes,
+                logger: (message, context) => {
+                    node.warn(`${message} ${JSON.stringify(context)}`);
+                }
+            });
+        }
+
         // Parse and validate transformation expressions if enabled
         if (node.transformationEnabled) {
             // Request transformation expression
@@ -1249,6 +1302,69 @@ module.exports = function(RED) {
             }, node.cachePrivate);
         };
 
+        // Method to get error handling configuration
+        node.getErrorHandlingConfig = function() {
+            return {
+                enabled: node.errorHandlingEnabled,
+                format: node.errorFormat,
+                includeStackTrace: node.includeStackTrace,
+                logErrors: node.logErrors,
+                customErrorCodes: Object.keys(node.customErrorCodes)
+            };
+        };
+
+        // Method to handle errors using the error handler
+        node.handleError = function(error, context = {}) {
+            if (!node.errorHandlingEnabled || !node.errorHandler) {
+                // Return basic error response if error handling is disabled
+                const apiError = fromError(error);
+                return {
+                    statusCode: apiError.getStatusCode(),
+                    body: {
+                        error: apiError.code,
+                        message: apiError.message
+                    },
+                    headers: { 'Content-Type': 'application/json' }
+                };
+            }
+            return node.errorHandler.handle(error, context);
+        };
+
+        // Method to create a standard error
+        node.createError = function(code, message, options = {}) {
+            return new ApiError(code, message, options);
+        };
+
+        // Method to create common error types
+        node.createValidationError = function(message, errors = []) {
+            return ErrorFactory.validation(message, errors);
+        };
+
+        node.createNotFoundError = function(resource, id) {
+            return ErrorFactory.notFound(resource, id);
+        };
+
+        node.createAuthenticationError = function(message) {
+            return ErrorFactory.authentication(message);
+        };
+
+        node.createAuthorizationError = function(message, missingScopes) {
+            return ErrorFactory.authorization(message, missingScopes);
+        };
+
+        // Method to send error response (helper for message handling)
+        node.sendErrorResponse = function(res, error, context = {}) {
+            const result = node.handleError(error, context);
+            if (res && typeof res.status === 'function') {
+                for (const [name, value] of Object.entries(result.headers)) {
+                    res.set(name, value);
+                }
+                res.status(result.statusCode).json(result.body);
+                return true;
+            }
+            return false;
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -1306,7 +1422,12 @@ module.exports = function(RED) {
                 cacheMaxSize: node.cacheMaxSize,
                 cacheKeyStrategy: node.cacheKeyStrategy,
                 cacheVaryHeaders: node.cacheVaryHeaders,
-                cachePrivate: node.cachePrivate
+                cachePrivate: node.cachePrivate,
+                // Error handling configuration
+                errorHandlingEnabled: node.errorHandlingEnabled,
+                errorFormat: node.errorFormat,
+                includeStackTrace: node.includeStackTrace,
+                logErrors: node.logErrors
             };
         };
 
@@ -1403,7 +1524,11 @@ module.exports = function(RED) {
                     cacheTTL: node.cacheTTL,
                     cacheKeyStrategy: node.cacheKeyStrategy,
                     cacheVaryHeaders: node.cacheVaryHeaders,
-                    cachePrivate: node.cachePrivate
+                    cachePrivate: node.cachePrivate,
+                    // Error handling configuration
+                    errorHandlingEnabled: node.errorHandlingEnabled,
+                    errorFormat: node.errorFormat,
+                    includeStackTrace: node.includeStackTrace
                 };
 
                 // Add CRUD context if operation is configured

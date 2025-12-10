@@ -4539,4 +4539,357 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Error Handling Configuration", function () {
+        it("should be enabled by default", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("errorHandlingEnabled", true);
+                    n1.should.have.property("errorFormat", "rfc7807");
+                    n1.should.have.property("includeStackTrace", false);
+                    n1.should.have.property("logErrors", true);
+                    n1.should.have.property("errorHandler").which.is.not.null();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should allow disabling error handling", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorHandlingEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("errorHandlingEnabled", false);
+                    (n1.errorHandler === null).should.equal(true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support simple error format", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "simple"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("errorFormat", "simple");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support legacy error format", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "legacy"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("errorFormat", "legacy");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid format to rfc7807", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "invalid"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("errorFormat", "rfc7807");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should enable stack trace when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                includeStackTrace: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("includeStackTrace", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse custom error codes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                customErrorCodes: '{"MY_ERROR": {"status": 422, "title": "My Custom Error"}}'
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("customErrorCodes");
+                    n1.customErrorCodes.should.have.property("MY_ERROR");
+                    n1.customErrorCodes.MY_ERROR.status.should.equal(422);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getErrorHandlingConfig Method", function () {
+        it("should return error handling configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "simple",
+                includeStackTrace: true,
+                logErrors: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getErrorHandlingConfig();
+                    config.should.have.property("enabled", true);
+                    config.should.have.property("format", "simple");
+                    config.should.have.property("includeStackTrace", true);
+                    config.should.have.property("logErrors", false);
+                    config.should.have.property("customErrorCodes").which.is.an.Array();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("handleError Method", function () {
+        it("should handle ApiError with RFC 7807 format", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "rfc7807",
+                logErrors: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createError('VALIDATION_ERROR', 'Invalid input');
+                    const result = n1.handleError(error);
+
+                    result.should.have.property("statusCode", 400);
+                    result.should.have.property("body");
+                    result.body.should.have.property("type", "urn:error:validation");
+                    result.body.should.have.property("title", "Validation Error");
+                    result.body.should.have.property("status", 400);
+                    result.body.should.have.property("detail", "Invalid input");
+                    result.headers["Content-Type"].should.equal("application/problem+json");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle standard Error", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                logErrors: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.handleError(new Error('Something went wrong'));
+
+                    result.should.have.property("statusCode", 500);
+                    result.body.should.have.property("detail", "Something went wrong");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return basic error when error handling disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorHandlingEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createError('VALIDATION_ERROR', 'Invalid input');
+                    const result = n1.handleError(error);
+
+                    result.should.have.property("statusCode", 400);
+                    result.body.should.have.property("error", "VALIDATION_ERROR");
+                    result.body.should.have.property("message", "Invalid input");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Error Factory Methods", function () {
+        it("should create validation error", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createValidationError('Invalid input', [{ field: 'email', message: 'Invalid email' }]);
+                    const result = n1.handleError(error);
+
+                    result.statusCode.should.equal(400);
+                    result.body.errors.should.be.Array();
+                    result.body.errors[0].field.should.equal('email');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should create not found error", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createNotFoundError('User', '123');
+                    const result = n1.handleError(error);
+
+                    result.statusCode.should.equal(404);
+                    result.body.detail.should.equal("User with ID '123' not found");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should create authentication error", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createAuthenticationError('Invalid token');
+                    const result = n1.handleError(error);
+
+                    result.statusCode.should.equal(401);
+                    result.body.detail.should.equal('Invalid token');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should create authorization error", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const error = n1.createAuthorizationError('Access denied', ['admin']);
+                    const result = n1.handleError(error);
+
+                    result.statusCode.should.equal(403);
+                    result.body.missingScopes.should.containEql('admin');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Error Handling in Message Handling", function () {
+        it("should include error handling config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", errorFormat: "simple", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("endpoint");
+                        msg.endpoint.should.have.property("errorHandlingEnabled", true);
+                        msg.endpoint.should.have.property("errorFormat", "simple");
+                        msg.endpoint.should.have.property("includeStackTrace", false);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { method: 'GET', path: '/users' } });
+            });
+        });
+    });
+
+    describe("getEndpointInfo with Error Handling", function () {
+        it("should include error handling in endpoint info", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                errorFormat: "legacy",
+                includeStackTrace: true,
+                logErrors: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("errorHandlingEnabled", true);
+                    info.should.have.property("errorFormat", "legacy");
+                    info.should.have.property("includeStackTrace", true);
+                    info.should.have.property("logErrors", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });

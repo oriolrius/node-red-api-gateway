@@ -56,7 +56,13 @@
             cacheKeyStrategy: { value: "full" },
             cacheKeyExpression: { value: "" },
             cacheVaryHeaders: { value: "" },
-            cachePrivate: { value: false }
+            cachePrivate: { value: false },
+            // Error Handling
+            errorHandlingEnabled: { value: true },
+            errorFormat: { value: "rfc7807" },
+            includeStackTrace: { value: false },
+            logErrors: { value: true },
+            customErrorCodes: { value: "" }
         },
         inputs: 1,
         outputs: 1,
@@ -704,12 +710,65 @@
                 });
             }
 
+            // Error handling UI functions
+            function updateErrorHandlingVisibility() {
+                var enabled = $('#node-input-errorHandlingEnabled').is(':checked');
+                if (enabled) {
+                    $('#error-handling-options').show();
+                } else {
+                    $('#error-handling-options').hide();
+                }
+            }
+
+            // Validate custom error codes JSON
+            function validateCustomErrorCodes() {
+                var value = $('#node-input-customErrorCodes').val().trim();
+                var $warning = $('#custom-error-codes-warning');
+
+                if (!value) {
+                    $warning.hide();
+                    return true;
+                }
+
+                try {
+                    var codes = JSON.parse(value);
+                    if (typeof codes !== 'object' || codes === null || Array.isArray(codes)) {
+                        $warning.text('Error codes must be a JSON object').show();
+                        return false;
+                    }
+                    // Validate each mapping
+                    for (var code in codes) {
+                        var mapping = codes[code];
+                        if (typeof mapping !== 'object' || mapping === null) {
+                            $warning.text('Code "' + code + '" must have an object mapping').show();
+                            return false;
+                        }
+                        if (mapping.status !== undefined) {
+                            var status = parseInt(mapping.status, 10);
+                            if (isNaN(status) || status < 400 || status > 599) {
+                                $warning.text('Code "' + code + '" has invalid status (must be 400-599)').show();
+                                return false;
+                            }
+                        }
+                    }
+                    $warning.hide();
+                    return true;
+                } catch (e) {
+                    $warning.text('Invalid JSON: ' + e.message).show();
+                    return false;
+                }
+            }
+
             // Event listeners for caching
             $('#node-input-cachingEnabled').on('change', updateCachingVisibility);
             $('#node-input-cacheKeyStrategy').on('change', updateCacheKeyExpressionVisibility);
             $('#node-input-cacheTTL').on('input change', validateCachingConfig);
             $('#node-input-cacheMaxSize').on('input change', validateCachingConfig);
             $('#node-input-cacheVaryHeaders').on('input change', updateVaryHeadersDisplay);
+
+            // Event listeners for error handling
+            $('#node-input-errorHandlingEnabled').on('change', updateErrorHandlingVisibility);
+            $('#node-input-customErrorCodes').on('input change', validateCustomErrorCodes);
 
             // Initial updates
             updateParamDisplay();
@@ -726,6 +785,8 @@
             updateRateLimitingVisibility();
             updateCachingVisibility();
             updateVaryHeadersDisplay();
+            updateErrorHandlingVisibility();
+            validateCustomErrorCodes();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -1328,6 +1389,55 @@
             &nbsp;&nbsp;- Cache-Control and Vary headers<br>
             &nbsp;&nbsp;- X-Cache: HIT/MISS headers<br>
             <i class="fa fa-info-circle"></i> <b>Note:</b> Only GET and HEAD requests are cached.
+        </div>
+    </div>
+
+    <!-- Error Handling Configuration -->
+    <div class="form-row" style="margin-bottom: 0; margin-top: 15px;">
+        <label><i class="fa fa-exclamation-triangle"></i> Error Handling</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-errorHandlingEnabled" style="width: auto;">
+            <input type="checkbox" id="node-input-errorHandlingEnabled" style="width: auto; margin-right: 5px;">
+            Enable standardized error responses
+        </label>
+    </div>
+
+    <div id="error-handling-options">
+        <div class="form-row">
+            <label for="node-input-errorFormat"><i class="fa fa-file-code-o"></i> Format</label>
+            <select id="node-input-errorFormat" style="width: 70%;">
+                <option value="rfc7807">RFC 7807 Problem Details (Recommended)</option>
+                <option value="simple">Simple JSON</option>
+                <option value="legacy">Legacy Format</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-includeStackTrace" style="width: auto;">
+                <input type="checkbox" id="node-input-includeStackTrace" style="width: auto; margin-right: 5px;">
+                Include stack traces (dev mode only)
+            </label>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-logErrors" style="width: auto;">
+                <input type="checkbox" id="node-input-logErrors" style="width: auto; margin-right: 5px;">
+                Log errors to Node-RED debug
+            </label>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-customErrorCodes"><i class="fa fa-list"></i> Custom Error Codes</label>
+            <textarea id="node-input-customErrorCodes" rows="6" placeholder='{"MY_ERROR": {"status": 422, "title": "My Custom Error", "type": "urn:error:my-error"}}' style="width: 100%; font-family: monospace; font-size: 12px;"></textarea>
+            <div id="custom-error-codes-warning" style="color: #d9534f; margin-top: 5px; display: none;"></div>
+        </div>
+
+        <div class="form-tips" style="margin-top: 5px;">
+            <i class="fa fa-info-circle"></i> <b>RFC 7807 Problem Details</b> is the recommended format for API errors.<br>
+            <b>Built-in error codes:</b> VALIDATION_ERROR, AUTHENTICATION_REQUIRED, FORBIDDEN, RESOURCE_NOT_FOUND, RATE_LIMIT_EXCEEDED, INTERNAL_ERROR<br>
+            <b>Custom error codes</b> allow mapping your own error codes to HTTP status codes and RFC 7807 fields.
         </div>
     </div>
 
@@ -2147,4 +2257,118 @@ if (endpointNode) {
     // Or invalidate specific entry
     endpointNode.invalidateCache(msg.req);
 }</pre>
+
+    <h3>Error Response Handling</h3>
+    <p>When error handling is enabled, the endpoint provides standardized error responses following RFC 7807 Problem Details specification.</p>
+
+    <h4>Error Response Formats</h4>
+    <dl class="message-properties">
+        <dt>RFC 7807 (Recommended)
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Standard Problem Details format with type, title, status, detail, and instance fields.
+<pre>{
+  "type": "urn:error:validation",
+  "title": "Validation Error",
+  "status": 400,
+  "detail": "The request body is invalid",
+  "instance": "/api/users",
+  "errors": [{"field": "email", "message": "Invalid format"}]
+}</pre>
+        </dd>
+
+        <dt>Simple JSON
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Simplified error format:
+<pre>{
+  "statusCode": 400,
+  "error": "VALIDATION_ERROR",
+  "message": "The request body is invalid",
+  "details": {...}
+}</pre>
+        </dd>
+
+        <dt>Legacy
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Legacy format for backwards compatibility:
+<pre>{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "The request body is invalid",
+    "status": 400
+  }
+}</pre>
+        </dd>
+    </dl>
+
+    <h4>Built-in Error Codes</h4>
+    <p>The following error codes are available by default:</p>
+    <ul>
+        <li><code>VALIDATION_ERROR</code> (400) - Input validation failed</li>
+        <li><code>INVALID_INPUT</code> (400) - Invalid request input</li>
+        <li><code>AUTHENTICATION_REQUIRED</code> (401) - Authentication required</li>
+        <li><code>INVALID_TOKEN</code> (401) - Invalid authentication token</li>
+        <li><code>TOKEN_EXPIRED</code> (401) - Authentication token expired</li>
+        <li><code>FORBIDDEN</code> (403) - Access forbidden</li>
+        <li><code>INSUFFICIENT_PERMISSIONS</code> (403) - Insufficient permissions</li>
+        <li><code>RESOURCE_NOT_FOUND</code> (404) - Resource not found</li>
+        <li><code>METHOD_NOT_ALLOWED</code> (405) - HTTP method not allowed</li>
+        <li><code>CONFLICT</code> (409) - Resource conflict</li>
+        <li><code>RATE_LIMIT_EXCEEDED</code> (429) - Rate limit exceeded</li>
+        <li><code>INTERNAL_ERROR</code> (500) - Internal server error</li>
+        <li><code>SERVICE_UNAVAILABLE</code> (503) - Service unavailable</li>
+    </ul>
+
+    <h4>Custom Error Codes</h4>
+    <p>Define custom error codes by providing a JSON object mapping error codes to their properties:</p>
+    <pre>{
+  "PAYMENT_REQUIRED": {
+    "status": 402,
+    "title": "Payment Required",
+    "type": "urn:error:payment-required"
+  },
+  "QUOTA_EXCEEDED": {
+    "status": 429,
+    "title": "Quota Exceeded",
+    "type": "urn:error:quota-exceeded"
+  }
+}</pre>
+
+    <h4>Error Methods</h4>
+    <dl class="message-properties">
+        <dt>handleError(error, context)</dt>
+        <dd>Handles an error and returns formatted response with statusCode, body, and headers.</dd>
+        <dt>createError(code, message, options)</dt>
+        <dd>Creates an ApiError with the given code and message.</dd>
+        <dt>createValidationError(message, errors)</dt>
+        <dd>Creates a validation error with an array of field errors.</dd>
+        <dt>createNotFoundError(resource, id)</dt>
+        <dd>Creates a not found error for a specific resource.</dd>
+        <dt>createAuthenticationError(message)</dt>
+        <dd>Creates an authentication error.</dd>
+        <dt>createAuthorizationError(message, missingScopes)</dt>
+        <dd>Creates an authorization error with missing scopes.</dd>
+        <dt>sendErrorResponse(res, error, context)</dt>
+        <dd>Sends an error response directly to the HTTP response object.</dd>
+    </dl>
+
+    <h4>Using Error Handling in Flow</h4>
+    <pre>// In a function node
+const error = node.createError('PAYMENT_REQUIRED', 'Subscription expired');
+node.sendErrorResponse(msg.res, error, { req: msg.req });
+return null;  // Stop message flow
+
+// Or handle manually
+const result = node.handleError(error, { req: msg.req });
+msg.res.status(result.statusCode).json(result.body);</pre>
+
+    <h4>Content-Type Headers</h4>
+    <p>The Content-Type header is automatically set based on the error format:</p>
+    <ul>
+        <li><b>RFC 7807:</b> <code>application/problem+json</code></li>
+        <li><b>Simple/Legacy:</b> <code>application/json</code></li>
+    </ul>
 </script>
