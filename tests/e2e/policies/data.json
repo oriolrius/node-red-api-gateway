@@ -1,0 +1,41 @@
+{
+  "roles": {
+    "admin": {
+      "description": "Administrator with full access",
+      "permissions": ["api:read", "api:write", "api:delete", "api:admin"]
+    },
+    "editor": {
+      "description": "Editor with read/write access",
+      "permissions": ["api:read", "api:write"]
+    },
+    "user": {
+      "description": "Standard user with read access",
+      "permissions": ["api:read"]
+    }
+  },
+  "protected_resources": [
+    "/api/v1/users",
+    "/api/v1/orders",
+    "/api/v1/products"
+  ],
+  "public_endpoints": [
+    "/health",
+    "/ready",
+    "/api/health",
+    "/api/v1/public/"
+  ],
+  "rate_limits": {
+    "default": {
+      "requests_per_minute": 60,
+      "burst": 10
+    },
+    "authenticated": {
+      "requests_per_minute": 300,
+      "burst": 50
+    },
+    "admin": {
+      "requests_per_minute": 1000,
+      "burst": 100
+    }
+  }
+}

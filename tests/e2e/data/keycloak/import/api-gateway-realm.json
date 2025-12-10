@@ -1,0 +1,247 @@
+{
+  "realm": "api-gateway",
+  "enabled": true,
+  "displayName": "API Gateway Realm",
+  "displayNameHtml": "<strong>API Gateway</strong>",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "offlineSessionMaxLifespanEnabled": false,
+  "offlineSessionMaxLifespan": 5184000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "actionTokenGeneratedByAdminLifespan": 43200,
+  "actionTokenGeneratedByUserLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Standard API user with read access",
+        "composite": false
+      },
+      {
+        "name": "editor",
+        "description": "Editor with read/write access",
+        "composite": true,
+        "composites": {
+          "realm": ["user"]
+        }
+      },
+      {
+        "name": "admin",
+        "description": "Administrator with full access",
+        "composite": true,
+        "composites": {
+          "realm": ["editor", "user"]
+        }
+      }
+    ],
+    "client": {
+      "api-gateway-client": [
+        {
+          "name": "api:read",
+          "description": "Read access to API resources"
+        },
+        {
+          "name": "api:write",
+          "description": "Write access to API resources"
+        },
+        {
+          "name": "api:delete",
+          "description": "Delete access to API resources"
+        },
+        {
+          "name": "api:admin",
+          "description": "Administrative access to API"
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "api-gateway-client",
+      "name": "API Gateway Client",
+      "description": "OAuth2 client for API Gateway authentication",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "api-gateway-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:1880/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:1880",
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "access.token.lifespan": "300",
+        "oauth2.device.authorization.grant.enabled": "false",
+        "oidc.ciba.grant.enabled": "false"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "api-scopes"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access"
+      ]
+    },
+    {
+      "clientId": "api-gateway-bearer",
+      "name": "API Gateway Bearer-Only Client",
+      "description": "Bearer-only client for API resource validation",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect"
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "api-scopes",
+      "description": "API Gateway scopes",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true",
+        "consent.screen.text": "Access to API Gateway resources"
+      },
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "api-gateway-client",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "client-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "usermodel.clientRoleMapping.clientId": "api-gateway-client"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "testuser@example.com",
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpassword",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"],
+      "clientRoles": {
+        "api-gateway-client": ["api:read"]
+      }
+    },
+    {
+      "username": "editor",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "editor@example.com",
+      "firstName": "Editor",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "editorpassword",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["editor"],
+      "clientRoles": {
+        "api-gateway-client": ["api:read", "api:write"]
+      }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@example.com",
+      "firstName": "Admin",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "adminpassword",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin"],
+      "clientRoles": {
+        "api-gateway-client": ["api:read", "api:write", "api:delete", "api:admin"]
+      }
+    },
+    {
+      "username": "service-account",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "service@example.com",
+      "firstName": "Service",
+      "lastName": "Account",
+      "serviceAccountClientId": "api-gateway-client",
+      "realmRoles": ["user"],
+      "clientRoles": {
+        "api-gateway-client": ["api:read", "api:write"]
+      }
+    }
+  ]
+}

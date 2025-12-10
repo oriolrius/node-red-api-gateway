@@ -1,19 +1,163 @@
+# Docker Compose Development Stack for Node-RED API Gateway
+#
+# Architecture: Shared Container Network Namespace
+# All services share a single network namespace via network_mode: "container:network-base"
+# This allows services to communicate via localhost:PORT within the isolated stack.
+#
+# Usage:
+#   Basic stack (Keycloak + OPA):
+#     docker compose up -d
+#
+#   Full stack (with SQL Server):
+#     docker compose --profile sqlserver up -d
+#
+#   With Node-RED for e2e testing:
+#     docker compose --profile nodered up -d
+#
+# Services communicate via localhost:
+#   - Keycloak: localhost:8080
+#   - OPA: localhost:8181
+#   - SQL Server: localhost:1433 (requires --profile sqlserver)
+#   - Node-RED: localhost:1880 (requires --profile nodered)
+
 services:
+  # Base container that creates the shared network namespace
+  # All other services join this namespace via network_mode
+  network-base:
+    image: alpine:latest
+    container_name: api-gateway-network
+    command: sleep infinity
+    restart: unless-stopped
+    # Only expose ports from the base container
+    ports:
+      - "8080:8080"   # Keycloak
+      - "8181:8181"   # OPA
+      - "1433:1433"   # SQL Server (optional)
+      - "1880:1880"   # Node-RED (optional)
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Keycloak Identity Provider
+  # Admin Console: http://localhost:8080
+  # Realm: api-gateway (auto-imported)
+  keycloak:
+    image: quay.io/keycloak/keycloak:26-latest
+    container_name: api-gateway-keycloak
+    network_mode: "container:api-gateway-network"
+    depends_on:
+      network-base:
+        condition: service_healthy
+    env_file:
+      - ./config/keycloak.env
+    command:
+      - start-dev
+      - --import-realm
+    volumes:
+      # Realm import directory (read-only)
+      - ./data/keycloak/import:/opt/keycloak/data/import:ro
+      # H2 database persistence
+      - ./data/keycloak/h2:/opt/keycloak/data/h2
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  # Open Policy Agent (OPA) for Authorization
+  # API: http://localhost:8181
+  # Health: http://localhost:8181/health
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: api-gateway-opa
+    network_mode: "container:api-gateway-network"
+    depends_on:
+      network-base:
+        condition: service_healthy
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=info"
+      - "--log-format=json"
+      - "/policies"
+    volumes:
+      # Policy files directory (read-only)
+      - ./policies:/policies:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # SQL Server 2022 (Optional - use --profile sqlserver)
+  # Connection: localhost:1433
+  # User: sa / Password from sapassword.env
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: api-gateway-sqlserver
+    network_mode: "container:api-gateway-network"
+    profiles:
+      - sqlserver
+    depends_on:
+      network-base:
+        condition: service_healthy
+    env_file:
+      - ./config/sqlserver.env
+      - ./config/sapassword.env
+    volumes:
+      # SQL Server data directories (host bindings)
+      - ./data/sqlserver/system:/var/opt/mssql
+      - ./data/sqlserver/user:/var/opt/sqlserver/data
+      - ./data/sqlserver/log:/var/opt/sqlserver/log
+      - ./data/sqlserver/backup:/var/opt/sqlserver/backup
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  # Node-RED for E2E Testing (Optional - use --profile nodered)
+  # Editor: http://localhost:1880
   node-red:
     image: nodered/node-red:latest
-    container_name: node-red-e2e-test
-    ports:
-      - "1880:1880"
+    container_name: api-gateway-nodered
+    network_mode: "container:api-gateway-network"
+    profiles:
+      - nodered
+    depends_on:
+      network-base:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      opa:
+        condition: service_healthy
     volumes:
       # Mount the node package for testing (read-only)
       - ../../:/data/node_modules/@oriolrius/node-red-api-gateway:ro
       # Mount Node-RED user directory configuration
       - ./.nodered:/data
       # Mount E2E test flows
-      # - ./flows.json:/data/flows.json:ro
+      - ./flows.json:/data/flows.json:ro
     environment:
       - NODE_RED_ENABLE_SAFE_MODE=false
       - TZ=UTC
+      # Keycloak configuration (available via localhost in shared network)
+      - KEYCLOAK_URL=http://localhost:8080
+      - KEYCLOAK_REALM=api-gateway
+      # OPA configuration
+      - OPA_URL=http://localhost:8181
+      # SQL Server configuration (if using sqlserver profile)
+      - SQLSERVER_HOST=localhost
+      - SQLSERVER_PORT=1433
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:1880/ || exit 1"]
       interval: 5s
@@ -21,45 +165,3 @@ services:
       retries: 12
       start_period: 30s
     restart: "no"
-
-  # Example: Add external dependencies as needed
-  # Uncomment and configure based on your node's requirements
-  #
-  # redis:
-  #   image: redis:7-alpine
-  #   container_name: redis-e2e-test
-  #   ports:
-  #     - "6379:6379"
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 2s
-  #     timeout: 2s
-  #     retries: 5
-  #
-  # postgres:
-  #   image: postgres:16-alpine
-  #   container_name: postgres-e2e-test
-  #   ports:
-  #     - "5432:5432"
-  #   environment:
-  #     - POSTGRES_USER=test
-  #     - POSTGRES_PASSWORD=test
-  #     - POSTGRES_DB=testdb
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U test"]
-  #     interval: 2s
-  #     timeout: 2s
-  #     retries: 5
-  #
-  # mosquitto:
-  #   image: eclipse-mosquitto:2
-  #   container_name: mosquitto-e2e-test
-  #   ports:
-  #     - "1883:1883"
-  #   volumes:
-  #     - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-  #   healthcheck:
-  #     test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
-  #     interval: 5s
-  #     timeout: 5s
-  #     retries: 3

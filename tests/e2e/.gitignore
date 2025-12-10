@@ -1,0 +1,22 @@
+# Environment files with secrets
+.env
+config/sapassword.env
+
+# Keycloak H2 database (persistent state)
+data/keycloak/h2/
+
+# SQL Server data directories
+data/sqlserver/
+
+# Node-RED runtime data
+.nodered/lib/
+.nodered/node_modules/
+.nodered/.sessions.json
+.nodered/.config.*
+.nodered/package-lock.json
+
+# Log files
+*.log
+
+# Docker compose override (local customizations)
+docker-compose.override.yml
