@@ -3,15 +3,108 @@
         category: 'API Gateway',
         color: '#87CEEB',
         defaults: {
-            name: { value: "" }
+            name: { value: "" },
+            server: { value: "", type: "api-server" },
+            path: { value: "/", required: true },
+            method: { value: "GET", required: true }
         },
         inputs: 1,
         outputs: 1,
         icon: "font-awesome/fa-plug",
         label: function() {
-            return this.name || "API endpoint";
+            if (this.name) {
+                return this.name;
+            }
+            if (this.path && this.method) {
+                return this.method + " " + this.path;
+            }
+            return "API endpoint";
         },
-        paletteLabel: "API endpoint"
+        paletteLabel: "API endpoint",
+        oneditprepare: function() {
+            var node = this;
+
+            // Path validation function
+            function validatePath(path) {
+                if (!path || path.trim() === '') {
+                    return { valid: false, error: 'Path is required' };
+                }
+                if (!path.startsWith('/')) {
+                    return { valid: false, error: 'Path must start with /' };
+                }
+                // Check for double slashes (except at start for protocol)
+                if (path.indexOf('//') !== -1) {
+                    return { valid: false, error: 'Path cannot contain double slashes' };
+                }
+                // Validate parameter names
+                var paramRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)/g;
+                var invalidParamRegex = /:([^/]*)/g;
+                var match;
+                while ((match = invalidParamRegex.exec(path)) !== null) {
+                    var paramName = match[1];
+                    if (paramName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(paramName)) {
+                        return { valid: false, error: 'Invalid parameter name: ' + paramName };
+                    }
+                }
+                return { valid: true };
+            }
+
+            // Extract and display parameters from path
+            function updateParamDisplay() {
+                var path = $('#node-input-path').val();
+                var params = [];
+                var paramRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)/g;
+                var match;
+                while ((match = paramRegex.exec(path)) !== null) {
+                    params.push(match[1]);
+                }
+
+                var $paramList = $('#param-list');
+                $paramList.empty();
+
+                if (params.length > 0) {
+                    $('#param-display').show();
+                    params.forEach(function(param) {
+                        $paramList.append('<span class="param-badge">' + param + '</span> ');
+                    });
+                } else {
+                    $('#param-display').hide();
+                }
+
+                // Validate path
+                var validation = validatePath(path);
+                var $pathInput = $('#node-input-path');
+                var $pathError = $('#path-error');
+
+                if (!validation.valid) {
+                    $pathInput.addClass('input-error');
+                    $pathError.text(validation.error).show();
+                } else {
+                    $pathInput.removeClass('input-error');
+                    $pathError.hide();
+                }
+            }
+
+            // Attach event listener for path changes
+            $('#node-input-path').on('input change', function() {
+                updateParamDisplay();
+            });
+
+            // Initial update
+            updateParamDisplay();
+        },
+        oneditsave: function() {
+            // Normalize path on save
+            var path = $('#node-input-path').val().trim();
+            if (path && !path.startsWith('/')) {
+                path = '/' + path;
+            }
+            // Remove trailing slash unless it's the root path
+            if (path && path.length > 1 && path.endsWith('/')) {
+                path = path.slice(0, -1);
+            }
+            this.path = path || '/';
+        }
     });
 </script>
 
@@ -20,28 +113,115 @@
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
     </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-method"><i class="fa fa-exchange"></i> Method</label>
+        <select id="node-input-method">
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+            <option value="PATCH">PATCH</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-path"><i class="fa fa-globe"></i> Path</label>
+        <input type="text" id="node-input-path" placeholder="/users/:id">
+        <div id="path-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+    </div>
+    <div class="form-row" id="param-display" style="display: none;">
+        <label><i class="fa fa-list"></i> Parameters</label>
+        <div id="param-list" style="display: inline-block;"></div>
+    </div>
+    <style>
+        .param-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            background-color: #5bc0de;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .input-error {
+            border-color: #d9534f !important;
+        }
+    </style>
 </script>
 
 <script type="text/html" data-help-name="api-endpoint">
-    <p>API Endpoint node for the API Gateway.</p>
+    <p>Configures an API endpoint with path and HTTP method for the API Gateway.</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Server
+            <span class="property-type">api-server</span>
+        </dt>
+        <dd>Reference to the API Server configuration node that will handle this endpoint.</dd>
+
+        <dt>Method
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The HTTP method for this endpoint: GET, POST, PUT, DELETE, or PATCH.</dd>
+
+        <dt>Path
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The URL path pattern for this endpoint. Supports path parameters using colon notation
+            (e.g., <code>/users/:id</code>, <code>/posts/:postId/comments/:commentId</code>).</dd>
+    </dl>
+
+    <h3>Path Parameters</h3>
+    <p>Path parameters are defined using a colon followed by the parameter name. For example:</p>
+    <ul>
+        <li><code>/users/:id</code> - captures a user ID</li>
+        <li><code>/posts/:postId/comments/:commentId</code> - captures both post and comment IDs</li>
+    </ul>
+    <p>Parameter names must start with a letter or underscore, followed by alphanumeric characters or underscores.</p>
 
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>payload
+            <span class="property-type">any</span>
+        </dt>
+        <dd>The incoming message payload.</dd>
+
+        <dt class="optional">req.path
             <span class="property-type">string</span>
         </dt>
-        <dd>The string payload to process.</dd>
+        <dd>If provided, path parameters will be extracted and stored in <code>msg.req.params</code>.</dd>
     </dl>
 
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>payload
-            <span class="property-type">string</span>
+            <span class="property-type">any</span>
         </dt>
-        <dd>The processed payload (converted to lower case).</dd>
+        <dd>The original payload, passed through unchanged.</dd>
+
+        <dt>endpoint
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Endpoint metadata including path, method, and paramNames.</dd>
+
+        <dt>req.params
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Extracted path parameters (if req.path was provided and matched).</dd>
     </dl>
 
     <h3>Details</h3>
-    <p>This node represents an API endpoint in the API Gateway architecture.
-    Currently converts string payloads to lower case as a placeholder implementation.</p>
+    <p>This node defines an API endpoint within the API Gateway. It registers with an API Server
+    configuration node which handles the actual HTTP server and route registration.</p>
+
+    <p>When a message passes through this node, it adds endpoint metadata to the message and,
+    if a request path is provided, extracts any path parameters according to the configured pattern.</p>
+
+    <h3>Example</h3>
+    <p>For a path pattern <code>/users/:id</code> and a request path <code>/users/123</code>:</p>
+    <pre>msg.req.params = { id: "123" }</pre>
 </script>
