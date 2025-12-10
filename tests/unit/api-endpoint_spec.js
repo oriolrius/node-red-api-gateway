@@ -3013,4 +3013,813 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Filtering Configuration", function () {
+        it("should have filtering disabled by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("filteringEnabled", false);
+                    n1.filterableFields.should.be.an.Array().and.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should enable filtering when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name, status, created_at"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("filteringEnabled", true);
+                    n1.filterableFields.should.deepEqual(["name", "status", "created_at"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should filter out invalid field names", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name, 123invalid, valid_field, @invalid"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.filterableFields.should.deepEqual(["name", "valid_field"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include filtering in getEndpointInfo", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name, status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("filteringEnabled", true);
+                    info.filterableFields.should.deepEqual(["name", "status"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getFilteringConfig Method", function () {
+        it("should return filtering configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name, status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getFilteringConfig();
+                    config.should.have.property("enabled", true);
+                    config.filterableFields.should.deepEqual(["name", "status"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("parseFilters Method", function () {
+        it("should return null when filtering disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({ "filter[name]": "john" });
+                    (result === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse filter[field]=value format", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name, status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({ "filter[name]": "john", "filter[status]": "active" });
+                    result.filters.should.have.length(2);
+                    result.filters[0].should.have.property("field", "name");
+                    result.filters[0].should.have.property("operator", "eq");
+                    result.filters[0].should.have.property("value", "john");
+                    result.errors.should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse filter[field][operator]=value format", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "age, status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({
+                        "filter[age][gte]": "18",
+                        "filter[status][ne]": "deleted"
+                    });
+                    result.filters.should.have.length(2);
+                    result.filters[0].should.have.property("field", "age");
+                    result.filters[0].should.have.property("operator", "gte");
+                    result.filters[1].should.have.property("operator", "ne");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse in operator with comma-separated values", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({
+                        "filter[status][in]": "active,pending,review"
+                    });
+                    result.filters.should.have.length(1);
+                    result.filters[0].should.have.property("operator", "in");
+                    result.filters[0].value.should.deepEqual(["active", "pending", "review"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should reject fields not in allowed list", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "name"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({
+                        "filter[name]": "john",
+                        "filter[password]": "secret"
+                    });
+                    result.filters.should.have.length(1);
+                    result.errors.should.have.length(1);
+                    result.errors[0].should.match(/password.*not allowed/);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support simple field=value format for allowed fields", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                filteringEnabled: true,
+                filterableFields: "status"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseFilters({ "status": "active" });
+                    result.filters.should.have.length(1);
+                    result.filters[0].should.have.property("field", "status");
+                    result.filters[0].should.have.property("operator", "eq");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Sorting Configuration", function () {
+        it("should have sorting disabled by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("sortingEnabled", false);
+                    n1.sortableFields.should.be.an.Array().and.have.length(0);
+                    (n1.defaultSortField === null).should.be.true();
+                    n1.should.have.property("defaultSortDirection", "asc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should enable sorting when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name, created_at",
+                defaultSortField: "created_at",
+                defaultSortDirection: "desc"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("sortingEnabled", true);
+                    n1.sortableFields.should.deepEqual(["name", "created_at"]);
+                    n1.should.have.property("defaultSortField", "created_at");
+                    n1.should.have.property("defaultSortDirection", "desc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include sorting in getEndpointInfo", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name",
+                defaultSortField: "name",
+                defaultSortDirection: "asc"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("sortingEnabled", true);
+                    info.sortableFields.should.deepEqual(["name"]);
+                    info.should.have.property("defaultSortField", "name");
+                    info.should.have.property("defaultSortDirection", "asc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getSortingConfig Method", function () {
+        it("should return sorting configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name, date",
+                defaultSortField: "date",
+                defaultSortDirection: "desc"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getSortingConfig();
+                    config.should.have.property("enabled", true);
+                    config.sortableFields.should.deepEqual(["name", "date"]);
+                    config.should.have.property("defaultSortField", "date");
+                    config.should.have.property("defaultSortDirection", "desc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("parseSorts Method", function () {
+        it("should return null when sorting disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({ sort: "name" });
+                    (result === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse sort=field for ascending", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({ sort: "name" });
+                    result.sorts.should.have.length(1);
+                    result.sorts[0].should.have.property("field", "name");
+                    result.sorts[0].should.have.property("direction", "asc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse sort=-field for descending", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "created_at"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({ sort: "-created_at" });
+                    result.sorts.should.have.length(1);
+                    result.sorts[0].should.have.property("field", "created_at");
+                    result.sorts[0].should.have.property("direction", "desc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse multiple sort fields", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "status, created_at"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({ sort: "status,-created_at" });
+                    result.sorts.should.have.length(2);
+                    result.sorts[0].should.have.property("field", "status");
+                    result.sorts[0].should.have.property("direction", "asc");
+                    result.sorts[1].should.have.property("field", "created_at");
+                    result.sorts[1].should.have.property("direction", "desc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use default sort when no sort param provided", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name, created_at",
+                defaultSortField: "created_at",
+                defaultSortDirection: "desc"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({});
+                    result.sorts.should.have.length(1);
+                    result.sorts[0].should.have.property("field", "created_at");
+                    result.sorts[0].should.have.property("direction", "desc");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should reject fields not in allowed list", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                sortingEnabled: true,
+                sortableFields: "name"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parseSorts({ sort: "name,-password" });
+                    result.sorts.should.have.length(1);
+                    result.errors.should.have.length(1);
+                    result.errors[0].should.match(/password.*not allowed/);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("generateWhereClause Method", function () {
+        it("should return empty clause for no filters", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateWhereClause([]);
+                    result.clause.should.equal("");
+                    Object.keys(result.params).should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate WHERE clause for eq operator", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateWhereClause([
+                        { field: "status", operator: "eq", value: "active" }
+                    ]);
+                    result.clause.should.equal("WHERE status = @filter_status_0");
+                    result.params.filter_status_0.should.equal("active");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate WHERE clause for multiple filters", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateWhereClause([
+                        { field: "status", operator: "eq", value: "active" },
+                        { field: "age", operator: "gte", value: "18" }
+                    ]);
+                    result.clause.should.equal("WHERE status = @filter_status_0 AND age >= @filter_age_1");
+                    result.params.filter_status_0.should.equal("active");
+                    result.params.filter_age_1.should.equal("18");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate WHERE clause for IN operator", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateWhereClause([
+                        { field: "status", operator: "in", value: ["active", "pending"] }
+                    ]);
+                    result.clause.should.equal("WHERE status IN (@filter_status_0_0, @filter_status_0_1)");
+                    result.params.filter_status_0_0.should.equal("active");
+                    result.params.filter_status_0_1.should.equal("pending");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support all operators", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const ops = ["eq", "ne", "gt", "gte", "lt", "lte", "like"];
+                    ops.forEach(op => {
+                        const result = n1.generateWhereClause([
+                            { field: "test", operator: op, value: "val" }
+                        ]);
+                        result.clause.should.startWith("WHERE test");
+                    });
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("generateOrderByClause Method", function () {
+        it("should return empty string for no sorts", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateOrderByClause([]);
+                    result.should.equal("");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate ORDER BY clause", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateOrderByClause([
+                        { field: "name", direction: "asc" }
+                    ]);
+                    result.should.equal("ORDER BY name ASC");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate ORDER BY with multiple fields", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generateOrderByClause([
+                        { field: "status", direction: "asc" },
+                        { field: "created_at", direction: "desc" }
+                    ]);
+                    result.should.equal("ORDER BY status ASC, created_at DESC");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Filtering in Message Handling", function () {
+        it("should include filtering config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("filteringEnabled", true);
+                        msg.endpoint.filterableFields.should.deepEqual(["name", "status"]);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should not add filtering object when disabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("filtering");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { "filter[name]": "john" } } });
+            });
+        });
+
+        it("should add filtering object when enabled with query", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("filtering");
+                        msg.filtering.should.have.property("filters");
+                        msg.filtering.filters.should.have.length(1);
+                        msg.filtering.filters[0].should.have.property("field", "name");
+                        msg.filtering.should.have.property("whereClause");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { "filter[name]": "john" } } });
+            });
+        });
+    });
+
+    describe("Sorting in Message Handling", function () {
+        it("should include sorting config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("sortingEnabled", true);
+                        msg.endpoint.sortableFields.should.deepEqual(["name", "created_at"]);
+                        msg.endpoint.should.have.property("defaultSortField", "created_at");
+                        msg.endpoint.should.have.property("defaultSortDirection", "desc");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should not add sorting object when disabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("sorting");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { sort: "name" } } });
+            });
+        });
+
+        it("should add sorting object when enabled with query", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("sorting");
+                        msg.sorting.should.have.property("sorts");
+                        msg.sorting.sorts.should.have.length(1);
+                        msg.sorting.sorts[0].should.have.property("field", "name");
+                        msg.sorting.sorts[0].should.have.property("direction", "desc");
+                        msg.sorting.should.have.property("orderByClause", "ORDER BY name DESC");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { sort: "-name" } } });
+            });
+        });
+
+        it("should use default sort when no sort param", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("sorting");
+                        msg.sorting.sorts.should.have.length(1);
+                        msg.sorting.sorts[0].should.have.property("field", "created_at");
+                        msg.sorting.sorts[0].should.have.property("direction", "desc");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: {} } });
+            });
+        });
+    });
 });

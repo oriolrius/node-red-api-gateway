@@ -29,7 +29,15 @@
             paginationEnabled: { value: false },
             defaultPageSize: { value: "20" },
             maxPageSize: { value: "100" },
-            paginationStyle: { value: "offset" }
+            paginationStyle: { value: "offset" },
+            // Filtering
+            filteringEnabled: { value: false },
+            filterableFields: { value: "" },
+            // Sorting
+            sortingEnabled: { value: false },
+            sortableFields: { value: "" },
+            defaultSortField: { value: "" },
+            defaultSortDirection: { value: "asc" }
         },
         inputs: 1,
         outputs: 1,
@@ -369,12 +377,72 @@
             $('#node-input-defaultPageSize').on('input change', validatePaginationConfig);
             $('#node-input-maxPageSize').on('input change', validatePaginationConfig);
 
+            // Toggle filtering configuration visibility
+            function updateFilteringVisibility() {
+                var enabled = $('#node-input-filteringEnabled').is(':checked');
+                if (enabled) {
+                    $('#filtering-config').show();
+                } else {
+                    $('#filtering-config').hide();
+                }
+            }
+
+            // Toggle sorting configuration visibility
+            function updateSortingVisibility() {
+                var enabled = $('#node-input-sortingEnabled').is(':checked');
+                if (enabled) {
+                    $('#sorting-config').show();
+                } else {
+                    $('#sorting-config').hide();
+                }
+            }
+
+            // Display field badges for filtering
+            function updateFilterableFieldsDisplay() {
+                var fields = $('#node-input-filterableFields').val();
+                var $display = $('#filterable-fields-display');
+                $display.empty();
+                if (fields) {
+                    fields.split(',').forEach(function(field) {
+                        field = field.trim();
+                        if (field && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
+                            $display.append('<span class="field-badge">' + field + '</span>');
+                        }
+                    });
+                }
+            }
+
+            // Display field badges for sorting
+            function updateSortableFieldsDisplay() {
+                var fields = $('#node-input-sortableFields').val();
+                var $display = $('#sortable-fields-display');
+                $display.empty();
+                if (fields) {
+                    fields.split(',').forEach(function(field) {
+                        field = field.trim();
+                        if (field && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
+                            $display.append('<span class="field-badge">' + field + '</span>');
+                        }
+                    });
+                }
+            }
+
+            // Event listeners for filtering/sorting
+            $('#node-input-filteringEnabled').on('change', updateFilteringVisibility);
+            $('#node-input-sortingEnabled').on('change', updateSortingVisibility);
+            $('#node-input-filterableFields').on('input change', updateFilterableFieldsDisplay);
+            $('#node-input-sortableFields').on('input change', updateSortableFieldsDisplay);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
             updateScopeDisplay();
             updateCrudVisibility();
             updatePaginationVisibility();
+            updateFilteringVisibility();
+            updateSortingVisibility();
+            updateFilterableFieldsDisplay();
+            updateSortableFieldsDisplay();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -696,7 +764,88 @@
         </div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-filter"></i> Filtering</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-filteringEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-filteringEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable query-based filtering</span>
+    </div>
+
+    <div id="filtering-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-filterableFields"><i class="fa fa-columns"></i> Fields</label>
+            <input type="text" id="node-input-filterableFields" placeholder="name, status, created_at">
+            <div class="form-tips" style="margin-left: 105px;">Comma-separated list of filterable field names</div>
+        </div>
+
+        <div class="form-row" style="margin-left: 105px;">
+            <div id="filterable-fields-display"></div>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> Filter syntax: <code>filter[field]=value</code> or <code>filter[field][op]=value</code><br>
+            <i class="fa fa-info-circle"></i> Operators: <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>gte</code>, <code>lt</code>, <code>lte</code>, <code>like</code>, <code>in</code>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-sort"></i> Sorting</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-sortingEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-sortingEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable query-based sorting</span>
+    </div>
+
+    <div id="sorting-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-sortableFields"><i class="fa fa-columns"></i> Fields</label>
+            <input type="text" id="node-input-sortableFields" placeholder="name, created_at, updated_at">
+            <div class="form-tips" style="margin-left: 105px;">Comma-separated list of sortable field names</div>
+        </div>
+
+        <div class="form-row" style="margin-left: 105px;">
+            <div id="sortable-fields-display"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-defaultSortField"><i class="fa fa-sort-amount-asc"></i> Default Sort</label>
+            <input type="text" id="node-input-defaultSortField" style="width: 120px;" placeholder="created_at">
+            <select id="node-input-defaultSortDirection" style="width: 100px; margin-left: 5px;">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+            </select>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> Sort syntax: <code>sort=field</code> (asc) or <code>sort=-field</code> (desc)<br>
+            <i class="fa fa-info-circle"></i> Multiple fields: <code>sort=field1,-field2</code>
+        </div>
+    </div>
+
     <style>
+        .field-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            background-color: #5cb85c;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: monospace;
+        }
         .param-badge {
             display: inline-block;
             padding: 2px 8px;
@@ -871,6 +1020,36 @@
             <span class="property-type">number</span>
         </dt>
         <dd>The maximum number of items allowed per page. Requests for larger limits are capped at this value. Default is 100.</dd>
+
+        <dt>Enable Filtering
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>When enabled, the endpoint parses filter parameters from query string and provides filter context in <code>msg.filtering</code>.</dd>
+
+        <dt>Filterable Fields
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Comma-separated list of field names that can be filtered. Only these fields will be accepted in filter parameters.</dd>
+
+        <dt>Enable Sorting
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>When enabled, the endpoint parses sort parameters from query string and provides sort context in <code>msg.sorting</code>.</dd>
+
+        <dt>Sortable Fields
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Comma-separated list of field names that can be sorted. Only these fields will be accepted in sort parameters.</dd>
+
+        <dt>Default Sort Field
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The field to sort by when no sort parameter is provided. Leave empty for no default sorting.</dd>
+
+        <dt>Default Sort Direction
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The default sort direction (<b>asc</b> or <b>desc</b>) when using the default sort field.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -1031,6 +1210,10 @@
         <dd>Present when a CRUD operation is configured. Contains <code>operation</code>, <code>tableName</code>, <code>primaryKey</code>, and optionally <code>sql</code> (when Auto SQL is enabled) with the generated SQL template.</dd>
         <dt>pagination <span class="property-type">object</span></dt>
         <dd>Present when pagination is enabled and query params exist. Contains parsed pagination parameters based on the configured style.</dd>
+        <dt>filtering <span class="property-type">object</span></dt>
+        <dd>Present when filtering is enabled and query params exist. Contains <code>filters</code> array, <code>errors</code> array, and <code>whereClause</code> object with generated SQL.</dd>
+        <dt>sorting <span class="property-type">object</span></dt>
+        <dd>Present when sorting is enabled and query params exist. Contains <code>sorts</code> array, <code>errors</code> array, and <code>orderByClause</code> string with generated SQL.</dd>
     </dl>
 
     <h3>Pagination Support</h3>
@@ -1103,5 +1286,101 @@ const meta = node.context().flow.get('endpointNode').generatePaginationMeta(
         <dd>Parses pagination parameters from a query object. Returns <code>null</code> if pagination is disabled, otherwise returns the parsed pagination params.</dd>
         <dt>generatePaginationMeta(params, resultInfo)</dt>
         <dd>Generates pagination metadata for responses. Pass the parsed pagination params and result info (total, count, nextCursor, prevCursor). Returns metadata object with hasNext, hasPrev, etc.</dd>
+        <dt>getFilteringConfig()</dt>
+        <dd>Returns the filtering configuration: <code>{enabled, filterableFields}</code>.</dd>
+        <dt>getSortingConfig()</dt>
+        <dd>Returns the sorting configuration: <code>{enabled, sortableFields, defaultSortField, defaultSortDirection}</code>.</dd>
+        <dt>parseFilters(query)</dt>
+        <dd>Parses filter parameters from a query object. Returns <code>null</code> if filtering is disabled, otherwise returns <code>{filters: array, errors: array}</code>.</dd>
+        <dt>parseSorts(query)</dt>
+        <dd>Parses sort parameters from a query object. Returns <code>null</code> if sorting is disabled, otherwise returns <code>{sorts: array, errors: array}</code>.</dd>
+        <dt>generateWhereClause(filters, paramPrefix)</dt>
+        <dd>Generates SQL WHERE clause from parsed filters. Returns <code>{clause: string, params: object}</code>.</dd>
+        <dt>generateOrderByClause(sorts)</dt>
+        <dd>Generates SQL ORDER BY clause from parsed sorts. Returns a string like <code>ORDER BY field ASC</code>.</dd>
     </dl>
+
+    <h3>Filtering Support</h3>
+    <p>When filtering is enabled, the endpoint automatically parses filter parameters from the query string and adds them to <code>msg.filtering</code>.</p>
+
+    <h4>Filter Syntax</h4>
+    <p>Filters use the <code>filter[field]=value</code> format. Operators can be specified as <code>filter[field][op]=value</code>:</p>
+    <ul>
+        <li><code>filter[status]=active</code> - Equality (default)</li>
+        <li><code>filter[age][gte]=18</code> - Greater than or equal</li>
+        <li><code>filter[name][like]=%john%</code> - Pattern matching</li>
+        <li><code>filter[status][in]=active,pending</code> - In list</li>
+    </ul>
+
+    <h4>Supported Operators</h4>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+        <tr style="background: #f5f5f5;">
+            <th style="padding: 8px; border: 1px solid #ddd;">Operator</th>
+            <th style="padding: 8px; border: 1px solid #ddd;">Description</th>
+            <th style="padding: 8px; border: 1px solid #ddd;">SQL</th>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>eq</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">Equal (default)</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field = @value</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>ne</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">Not equal</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field != @value</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>gt</code>, <code>gte</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">Greater than (or equal)</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field > @value</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>lt</code>, <code>lte</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">Less than (or equal)</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field < @value</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>like</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">Pattern matching</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field LIKE @value</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>in</code></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">In list</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>field IN (@v1, @v2)</code></td>
+        </tr>
+    </table>
+
+    <p>The <code>msg.filtering</code> object contains:</p>
+    <pre>{
+  "filters": [
+    { "field": "status", "operator": "eq", "value": "active" },
+    { "field": "age", "operator": "gte", "value": "18" }
+  ],
+  "errors": [],
+  "whereClause": {
+    "clause": "WHERE status = @filter_status_0 AND age >= @filter_age_1",
+    "params": { "filter_status_0": "active", "filter_age_1": "18" }
+  }
+}</pre>
+
+    <h3>Sorting Support</h3>
+    <p>When sorting is enabled, the endpoint automatically parses sort parameters from the query string and adds them to <code>msg.sorting</code>.</p>
+
+    <h4>Sort Syntax</h4>
+    <ul>
+        <li><code>sort=name</code> - Sort by name ascending</li>
+        <li><code>sort=-created_at</code> - Sort by created_at descending (- prefix)</li>
+        <li><code>sort=status,-created_at</code> - Multiple fields (comma-separated)</li>
+    </ul>
+
+    <p>The <code>msg.sorting</code> object contains:</p>
+    <pre>{
+  "sorts": [
+    { "field": "status", "direction": "asc" },
+    { "field": "created_at", "direction": "desc" }
+  ],
+  "errors": [],
+  "orderByClause": "ORDER BY status ASC, created_at DESC"
+}</pre>
 </script>
