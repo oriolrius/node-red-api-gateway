@@ -31,6 +31,9 @@
             opaEnabled: { value: false },
             opaUrl: { value: "http://localhost:8181" },
             opaPolicyPath: { value: "" },
+            opaCacheTTL: { value: 60 },
+            opaTimeout: { value: 5000 },
+            opaRetryAttempts: { value: 3 },
             // TLS configuration
             tlsEnabled: { value: false },
             tlsRejectUnauthorized: { value: true },
@@ -283,6 +286,18 @@
         <label for="node-config-input-opaPolicyPath"><i class="fa fa-file-code-o"></i> Policy Path</label>
         <input type="text" id="node-config-input-opaPolicyPath" placeholder="v1/data/policy/allow">
     </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaCacheTTL"><i class="fa fa-clock-o"></i> Cache TTL (s)</label>
+        <input type="number" id="node-config-input-opaCacheTTL" placeholder="60" min="0" style="width: 100px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaTimeout"><i class="fa fa-hourglass-half"></i> Timeout (ms)</label>
+        <input type="number" id="node-config-input-opaTimeout" placeholder="5000" min="0" style="width: 100px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaRetryAttempts"><i class="fa fa-repeat"></i> Retry Attempts</label>
+        <input type="number" id="node-config-input-opaRetryAttempts" placeholder="3" min="0" max="10" style="width: 70px;">
+    </div>
 
     <!-- TLS/SSL Configuration Section -->
     <div class="form-row" style="margin-top: 15px;">
@@ -371,8 +386,11 @@
     <h3>OPA Configuration</h3>
     <p>Configure Open Policy Agent for authorization:</p>
     <ul>
-        <li><b>OPA URL</b> - URL of the OPA server</li>
-        <li><b>Policy Path</b> - Path to the authorization policy</li>
+        <li><b>OPA URL</b> - URL of the OPA server (default: http://localhost:8181)</li>
+        <li><b>Policy Path</b> - Path to the authorization policy (e.g., v1/data/policy/allow)</li>
+        <li><b>Cache TTL</b> - Time in seconds to cache authorization decisions (default: 60)</li>
+        <li><b>Timeout</b> - Request timeout in milliseconds (default: 5000)</li>
+        <li><b>Retry Attempts</b> - Number of retry attempts on failure (default: 3)</li>
     </ul>
 
     <h3>TLS/SSL Configuration</h3>

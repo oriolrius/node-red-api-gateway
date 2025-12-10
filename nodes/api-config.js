@@ -41,6 +41,9 @@ module.exports = function(RED) {
         node.opaEnabled = config.opaEnabled;
         node.opaUrl = config.opaUrl;
         node.opaPolicyPath = config.opaPolicyPath;
+        node.opaCacheTTL = config.opaCacheTTL;
+        node.opaTimeout = config.opaTimeout;
+        node.opaRetryAttempts = config.opaRetryAttempts;
 
         // TLS/SSL configuration
         node.tlsEnabled = config.tlsEnabled;

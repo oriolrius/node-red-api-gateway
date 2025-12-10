@@ -82,7 +82,10 @@ describe("api-config Node", function () {
             name: "OPA Config",
             opaEnabled: true,
             opaUrl: "http://opa.example.com:8181",
-            opaPolicyPath: "v1/data/authz/allow"
+            opaPolicyPath: "v1/data/authz/allow",
+            opaCacheTTL: 120,
+            opaTimeout: 10000,
+            opaRetryAttempts: 5
         }];
         helper.load(apiConfigNode, flow, function () {
             const c1 = helper.getNode("c1");
@@ -90,6 +93,34 @@ describe("api-config Node", function () {
                 c1.should.have.property("opaEnabled", true);
                 c1.should.have.property("opaUrl", "http://opa.example.com:8181");
                 c1.should.have.property("opaPolicyPath", "v1/data/authz/allow");
+                c1.should.have.property("opaCacheTTL", 120);
+                c1.should.have.property("opaTimeout", 10000);
+                c1.should.have.property("opaRetryAttempts", 5);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should store OPA cache, timeout, and retry settings", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "OPA Advanced Config",
+            opaEnabled: true,
+            opaUrl: "http://opa.example.com:8181",
+            opaPolicyPath: "v1/data/authz/allow",
+            opaCacheTTL: 300,
+            opaTimeout: 3000,
+            opaRetryAttempts: 2
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("opaCacheTTL", 300);
+                c1.should.have.property("opaTimeout", 3000);
+                c1.should.have.property("opaRetryAttempts", 2);
                 done();
             } catch (err) {
                 done(err);
