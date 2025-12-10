@@ -2319,4 +2319,698 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Pagination Configuration", function () {
+        it("should have pagination disabled by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paginationEnabled", false);
+                    n1.should.have.property("defaultPageSize", 20);
+                    n1.should.have.property("maxPageSize", 100);
+                    n1.should.have.property("paginationStyle", "offset");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should enable pagination when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paginationEnabled", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store custom page sizes", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                defaultPageSize: "10",
+                maxPageSize: "50"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("defaultPageSize", 10);
+                    n1.should.have.property("maxPageSize", 50);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store offset pagination style", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paginationStyle", "offset");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store cursor pagination style", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paginationStyle", "cursor");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid pagination style to offset", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "INVALID"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paginationStyle", "offset");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include pagination in getEndpointInfo", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                defaultPageSize: "25",
+                maxPageSize: "200",
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("paginationEnabled", true);
+                    info.should.have.property("defaultPageSize", 25);
+                    info.should.have.property("maxPageSize", 200);
+                    info.should.have.property("paginationStyle", "cursor");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getPaginationConfig Method", function () {
+        it("should return pagination configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                defaultPageSize: "15",
+                maxPageSize: "75",
+                paginationStyle: "offset"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getPaginationConfig();
+                    config.should.have.property("enabled", true);
+                    config.should.have.property("defaultPageSize", 15);
+                    config.should.have.property("maxPageSize", 75);
+                    config.should.have.property("style", "offset");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("parsePagination Method", function () {
+        it("should return null when pagination disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ page: "1", limit: "10" });
+                    (result === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse offset-based pagination with page", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset",
+                defaultPageSize: "20"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ page: "2", limit: "10" });
+                    result.should.have.property("style", "offset");
+                    result.should.have.property("page", 2);
+                    result.should.have.property("limit", 10);
+                    result.should.have.property("offset", 10);
+                    (result.cursor === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse offset-based pagination with offset", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ offset: "50", limit: "25" });
+                    result.should.have.property("style", "offset");
+                    result.should.have.property("offset", 50);
+                    result.should.have.property("limit", 25);
+                    result.should.have.property("page", 3); // offset 50 / limit 25 + 1 = 3
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use default page size when no limit provided", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset",
+                defaultPageSize: "30"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ page: "1" });
+                    result.should.have.property("limit", 30);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should cap limit at max page size", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset",
+                maxPageSize: "50"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ page: "1", limit: "200" });
+                    result.should.have.property("limit", 50);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default to page 1 offset 0 when no params", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "offset"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({});
+                    result.should.have.property("page", 1);
+                    result.should.have.property("offset", 0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse cursor-based pagination", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ cursor: "abc123", limit: "15" });
+                    result.should.have.property("style", "cursor");
+                    result.should.have.property("cursor", "abc123");
+                    result.should.have.property("limit", 15);
+                    (result.page === null).should.be.true();
+                    (result.offset === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle null cursor in cursor-based pagination", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({ limit: "20" });
+                    result.should.have.property("cursor", null);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle empty query object", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination({});
+                    result.should.have.property("style", "offset");
+                    result.should.have.property("page", 1);
+                    result.should.have.property("limit", 20);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle null query", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.parsePagination(null);
+                    result.should.have.property("style", "offset");
+                    result.should.have.property("page", 1);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("generatePaginationMeta Method", function () {
+        it("should return null for null params", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.generatePaginationMeta(null, {});
+                    (result === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate offset-based metadata with total", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "offset", page: 2, limit: 10, offset: 10 };
+                    const result = n1.generatePaginationMeta(params, { total: 45, count: 10 });
+                    result.should.have.property("style", "offset");
+                    result.should.have.property("page", 2);
+                    result.should.have.property("limit", 10);
+                    result.should.have.property("offset", 10);
+                    result.should.have.property("total", 45);
+                    result.should.have.property("totalPages", 5);
+                    result.should.have.property("count", 10);
+                    result.should.have.property("hasNext", true);
+                    result.should.have.property("hasPrev", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should detect first page (hasPrev false)", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "offset", page: 1, limit: 10, offset: 0 };
+                    const result = n1.generatePaginationMeta(params, { total: 30, count: 10 });
+                    result.should.have.property("hasPrev", false);
+                    result.should.have.property("hasNext", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should detect last page (hasNext false)", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "offset", page: 3, limit: 10, offset: 20 };
+                    const result = n1.generatePaginationMeta(params, { total: 25, count: 5 });
+                    result.should.have.property("hasPrev", true);
+                    result.should.have.property("hasNext", false);
+                    result.should.have.property("totalPages", 3);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle offset pagination without total (infer from count)", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "offset", page: 1, limit: 10, offset: 0 };
+                    const result = n1.generatePaginationMeta(params, { count: 10 });
+                    result.should.have.property("total", null);
+                    result.should.have.property("totalPages", null);
+                    result.should.have.property("hasNext", true); // count == limit
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate cursor-based metadata", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "cursor", limit: 10, cursor: "abc123" };
+                    const result = n1.generatePaginationMeta(params, {
+                        count: 10,
+                        nextCursor: "xyz789",
+                        prevCursor: "def456"
+                    });
+                    result.should.have.property("style", "cursor");
+                    result.should.have.property("limit", 10);
+                    result.should.have.property("cursor", "abc123");
+                    result.should.have.property("count", 10);
+                    result.should.have.property("hasNext", true);
+                    result.should.have.property("hasPrev", true);
+                    result.should.have.property("nextCursor", "xyz789");
+                    result.should.have.property("prevCursor", "def456");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should detect cursor first page (no prevCursor)", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "cursor", limit: 10, cursor: null };
+                    const result = n1.generatePaginationMeta(params, {
+                        count: 10,
+                        nextCursor: "xyz789"
+                    });
+                    result.should.have.property("hasPrev", false);
+                    result.should.have.property("hasNext", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should detect cursor last page (no nextCursor)", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                paginationEnabled: true,
+                paginationStyle: "cursor"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const params = { style: "cursor", limit: 10, cursor: "abc123" };
+                    const result = n1.generatePaginationMeta(params, {
+                        count: 5
+                    });
+                    result.should.have.property("hasPrev", true);
+                    result.should.have.property("hasNext", false);
+                    result.should.have.property("nextCursor", null);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Pagination in Message Handling", function () {
+        it("should include pagination config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, defaultPageSize: "15", maxPageSize: "50", paginationStyle: "offset", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("paginationEnabled", true);
+                        msg.endpoint.should.have.property("defaultPageSize", 15);
+                        msg.endpoint.should.have.property("maxPageSize", 50);
+                        msg.endpoint.should.have.property("paginationStyle", "offset");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should not add pagination object when disabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("pagination");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { page: "1" } } });
+            });
+        });
+
+        it("should not add pagination object when no query params", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("pagination");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: {} });
+            });
+        });
+
+        it("should add pagination object when enabled with query", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "offset", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("pagination");
+                        msg.pagination.should.have.property("style", "offset");
+                        msg.pagination.should.have.property("page", 2);
+                        msg.pagination.should.have.property("limit", 10);
+                        msg.pagination.should.have.property("offset", 10);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { page: "2", limit: "10" } } });
+            });
+        });
+
+        it("should add cursor pagination object when configured", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "cursor", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("pagination");
+                        msg.pagination.should.have.property("style", "cursor");
+                        msg.pagination.should.have.property("cursor", "abc123");
+                        msg.pagination.should.have.property("limit", 20);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { query: { cursor: "abc123" } } });
+            });
+        });
+    });
 });

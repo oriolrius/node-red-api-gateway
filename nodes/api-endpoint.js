@@ -70,6 +70,160 @@ function checkScopes(tokenScopes, requiredScopes, operator) {
 }
 
 /**
+ * Valid pagination styles
+ */
+const PAGINATION_STYLES = ['offset', 'cursor'];
+
+/**
+ * Default pagination settings
+ */
+const PAGINATION_DEFAULTS = {
+    defaultPageSize: 20,
+    maxPageSize: 100,
+    style: 'offset'
+};
+
+/**
+ * Validates pagination configuration
+ * @param {Object} config - Pagination configuration
+ * @returns {{valid: boolean, errors: Array<string>}}
+ */
+function validatePaginationConfig(config) {
+    const errors = [];
+
+    if (config.defaultPageSize !== undefined) {
+        const defaultSize = parseInt(config.defaultPageSize, 10);
+        if (isNaN(defaultSize) || defaultSize < 1) {
+            errors.push('Default page size must be a positive integer');
+        }
+    }
+
+    if (config.maxPageSize !== undefined) {
+        const maxSize = parseInt(config.maxPageSize, 10);
+        if (isNaN(maxSize) || maxSize < 1) {
+            errors.push('Maximum page size must be a positive integer');
+        }
+    }
+
+    if (config.defaultPageSize !== undefined && config.maxPageSize !== undefined) {
+        const defaultSize = parseInt(config.defaultPageSize, 10);
+        const maxSize = parseInt(config.maxPageSize, 10);
+        if (!isNaN(defaultSize) && !isNaN(maxSize) && defaultSize > maxSize) {
+            errors.push('Default page size cannot exceed maximum page size');
+        }
+    }
+
+    if (config.paginationStyle && !PAGINATION_STYLES.includes(config.paginationStyle)) {
+        errors.push(`Invalid pagination style. Must be one of: ${PAGINATION_STYLES.join(', ')}`);
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}
+
+/**
+ * Parses pagination parameters from query string
+ * @param {Object} query - Query parameters object
+ * @param {Object} config - Pagination configuration
+ * @returns {{page: number, limit: number, offset: number, cursor: string|null, style: string}}
+ */
+function parsePaginationParams(query, config) {
+    const style = config.paginationStyle || PAGINATION_DEFAULTS.style;
+    const defaultPageSize = parseInt(config.defaultPageSize, 10) || PAGINATION_DEFAULTS.defaultPageSize;
+    const maxPageSize = parseInt(config.maxPageSize, 10) || PAGINATION_DEFAULTS.maxPageSize;
+
+    // Parse limit (used by both styles)
+    let limit = parseInt(query.limit, 10);
+    if (isNaN(limit) || limit < 1) {
+        limit = defaultPageSize;
+    }
+    if (limit > maxPageSize) {
+        limit = maxPageSize;
+    }
+
+    if (style === 'cursor') {
+        // Cursor-based pagination
+        const cursor = query.cursor || null;
+        return {
+            style: 'cursor',
+            limit,
+            cursor,
+            // Include offset-style params as null for consistency
+            page: null,
+            offset: null
+        };
+    } else {
+        // Offset-based pagination (default)
+        let page = parseInt(query.page, 10);
+        let offset = parseInt(query.offset, 10);
+
+        // If offset is provided directly, use it
+        if (!isNaN(offset) && offset >= 0) {
+            page = Math.floor(offset / limit) + 1;
+        } else if (!isNaN(page) && page >= 1) {
+            offset = (page - 1) * limit;
+        } else {
+            page = 1;
+            offset = 0;
+        }
+
+        return {
+            style: 'offset',
+            page,
+            limit,
+            offset,
+            cursor: null
+        };
+    }
+}
+
+/**
+ * Generates pagination metadata for response
+ * @param {Object} params - Parsed pagination parameters
+ * @param {Object} resultInfo - Information about the result set
+ * @param {number} resultInfo.total - Total number of items (optional for cursor-based)
+ * @param {number} resultInfo.count - Number of items in current page
+ * @param {string} resultInfo.nextCursor - Next cursor value (for cursor-based)
+ * @param {string} resultInfo.prevCursor - Previous cursor value (for cursor-based)
+ * @returns {Object} Pagination metadata object
+ */
+function generatePaginationMetadata(params, resultInfo = {}) {
+    const { total, count, nextCursor, prevCursor } = resultInfo;
+
+    if (params.style === 'cursor') {
+        return {
+            style: 'cursor',
+            limit: params.limit,
+            cursor: params.cursor,
+            count: count !== undefined ? count : 0,
+            hasNext: !!nextCursor,
+            hasPrev: !!prevCursor || !!params.cursor,
+            nextCursor: nextCursor || null,
+            prevCursor: prevCursor || null
+        };
+    } else {
+        // Offset-based pagination
+        const totalPages = total !== undefined ? Math.ceil(total / params.limit) : null;
+        const hasNext = total !== undefined ? params.page < totalPages : (count !== undefined && count === params.limit);
+        const hasPrev = params.page > 1;
+
+        return {
+            style: 'offset',
+            page: params.page,
+            limit: params.limit,
+            offset: params.offset,
+            count: count !== undefined ? count : 0,
+            total: total !== undefined ? total : null,
+            totalPages,
+            hasNext,
+            hasPrev
+        };
+    }
+}
+
+/**
  * Valid CRUD operation types
  */
 const CRUD_OPERATIONS = ['none', 'list', 'get', 'create', 'update', 'delete'];
@@ -248,6 +402,26 @@ module.exports = function(RED) {
         node.autoGenerateSql = config.autoGenerateSql === true;
         node.useFlowOutput = config.useFlowOutput !== false;  // Default to true (delegate to flow)
 
+        // Pagination configuration
+        node.paginationEnabled = config.paginationEnabled === true;
+        node.defaultPageSize = parseInt(config.defaultPageSize, 10) || PAGINATION_DEFAULTS.defaultPageSize;
+        node.maxPageSize = parseInt(config.maxPageSize, 10) || PAGINATION_DEFAULTS.maxPageSize;
+        node.paginationStyle = PAGINATION_STYLES.includes(config.paginationStyle)
+            ? config.paginationStyle
+            : PAGINATION_DEFAULTS.style;
+
+        // Validate pagination configuration if enabled
+        if (node.paginationEnabled) {
+            const paginationValidation = validatePaginationConfig({
+                defaultPageSize: node.defaultPageSize,
+                maxPageSize: node.maxPageSize,
+                paginationStyle: node.paginationStyle
+            });
+            if (!paginationValidation.valid) {
+                paginationValidation.errors.forEach(error => node.warn(`Pagination config: ${error}`));
+            }
+        }
+
         // Validate CRUD configuration if operation is set
         if (node.crudOperation !== 'none') {
             if (node.autoGenerateSql) {
@@ -419,6 +593,36 @@ module.exports = function(RED) {
             };
         };
 
+        // Method to get pagination configuration
+        node.getPaginationConfig = function() {
+            return {
+                enabled: node.paginationEnabled,
+                defaultPageSize: node.defaultPageSize,
+                maxPageSize: node.maxPageSize,
+                style: node.paginationStyle
+            };
+        };
+
+        // Method to parse pagination parameters from request query
+        node.parsePagination = function(query) {
+            if (!node.paginationEnabled) {
+                return null;
+            }
+            return parsePaginationParams(query || {}, {
+                paginationStyle: node.paginationStyle,
+                defaultPageSize: node.defaultPageSize,
+                maxPageSize: node.maxPageSize
+            });
+        };
+
+        // Method to generate pagination metadata for response
+        node.generatePaginationMeta = function(params, resultInfo) {
+            if (!params) {
+                return null;
+            }
+            return generatePaginationMetadata(params, resultInfo);
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -446,7 +650,12 @@ module.exports = function(RED) {
                 primaryKey: node.primaryKey,
                 autoGenerateSql: node.autoGenerateSql,
                 useFlowOutput: node.useFlowOutput,
-                hasCrudOperation: node.crudOperation !== 'none'
+                hasCrudOperation: node.crudOperation !== 'none',
+                // Pagination configuration
+                paginationEnabled: node.paginationEnabled,
+                defaultPageSize: node.defaultPageSize,
+                maxPageSize: node.maxPageSize,
+                paginationStyle: node.paginationStyle
             };
         };
 
@@ -514,7 +723,12 @@ module.exports = function(RED) {
                     tableName: node.tableName,
                     primaryKey: node.primaryKey,
                     autoGenerateSql: node.autoGenerateSql,
-                    useFlowOutput: node.useFlowOutput
+                    useFlowOutput: node.useFlowOutput,
+                    // Pagination configuration
+                    paginationEnabled: node.paginationEnabled,
+                    defaultPageSize: node.defaultPageSize,
+                    maxPageSize: node.maxPageSize,
+                    paginationStyle: node.paginationStyle
                 };
 
                 // Add CRUD context if operation is configured
@@ -529,6 +743,11 @@ module.exports = function(RED) {
                     if (node.autoGenerateSql && node.tableName) {
                         msg.crud.sql = node.getCrudSql();
                     }
+                }
+
+                // Add pagination context if enabled
+                if (node.paginationEnabled && msg.req && msg.req.query) {
+                    msg.pagination = node.parsePagination(msg.req.query);
                 }
 
                 // If request path is provided, extract parameters

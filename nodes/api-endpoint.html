@@ -24,7 +24,12 @@
             tableName: { value: "" },
             primaryKey: { value: "id" },
             autoGenerateSql: { value: false },
-            useFlowOutput: { value: true }
+            useFlowOutput: { value: true },
+            // Pagination
+            paginationEnabled: { value: false },
+            defaultPageSize: { value: "20" },
+            maxPageSize: { value: "100" },
+            paginationStyle: { value: "offset" }
         },
         inputs: 1,
         outputs: 1,
@@ -325,11 +330,51 @@
             });
             $('#node-input-primaryKey').on('input change', generateSqlPreview);
 
+            // Toggle pagination configuration visibility
+            function updatePaginationVisibility() {
+                var enabled = $('#node-input-paginationEnabled').is(':checked');
+                if (enabled) {
+                    $('#pagination-config').show();
+                } else {
+                    $('#pagination-config').hide();
+                }
+            }
+
+            // Validate pagination configuration
+            function validatePaginationConfig() {
+                var defaultSize = parseInt($('#node-input-defaultPageSize').val(), 10);
+                var maxSize = parseInt($('#node-input-maxPageSize').val(), 10);
+                var $defaultError = $('#default-page-size-error');
+                var $maxError = $('#max-page-size-error');
+
+                // Validate default page size
+                if (isNaN(defaultSize) || defaultSize < 1) {
+                    $defaultError.text('Must be a positive integer').show();
+                } else {
+                    $defaultError.hide();
+                }
+
+                // Validate max page size
+                if (isNaN(maxSize) || maxSize < 1) {
+                    $maxError.text('Must be a positive integer').show();
+                } else if (!isNaN(defaultSize) && defaultSize > maxSize) {
+                    $maxError.text('Must be >= default page size').show();
+                } else {
+                    $maxError.hide();
+                }
+            }
+
+            // Event listeners for pagination
+            $('#node-input-paginationEnabled').on('change', updatePaginationVisibility);
+            $('#node-input-defaultPageSize').on('input change', validatePaginationConfig);
+            $('#node-input-maxPageSize').on('input change', validatePaginationConfig);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
             updateScopeDisplay();
             updateCrudVisibility();
+            updatePaginationVisibility();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -608,6 +653,49 @@
         </div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-list-ol"></i> Pagination</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-paginationEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-paginationEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable pagination for this endpoint</span>
+    </div>
+
+    <div id="pagination-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-paginationStyle"><i class="fa fa-sliders"></i> Style</label>
+            <select id="node-input-paginationStyle" style="width: 200px;">
+                <option value="offset">Offset-based (page, limit, offset)</option>
+                <option value="cursor">Cursor-based (cursor, limit)</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-defaultPageSize"><i class="fa fa-file-text-o"></i> Default Size</label>
+            <input type="number" id="node-input-defaultPageSize" min="1" style="width: 80px;" placeholder="20">
+            <span style="margin-left: 5px; color: #666;">items per page</span>
+            <div id="default-page-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-maxPageSize"><i class="fa fa-expand"></i> Max Size</label>
+            <input type="number" id="node-input-maxPageSize" min="1" style="width: 80px;" placeholder="100">
+            <span style="margin-left: 5px; color: #666;">maximum items per page</span>
+            <div id="max-page-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> <b>Offset-based:</b> Uses <code>page</code>, <code>limit</code>, and <code>offset</code> query params.<br>
+            <i class="fa fa-info-circle"></i> <b>Cursor-based:</b> Uses <code>cursor</code> and <code>limit</code> query params for efficient pagination of large datasets.
+        </div>
+    </div>
+
     <style>
         .param-badge {
             display: inline-block;
@@ -763,6 +851,26 @@
             <span class="property-type">boolean</span>
         </dt>
         <dd>When enabled, delegates database operations to the flow for custom business logic. The CRUD context is passed in <code>msg.crud</code>.</dd>
+
+        <dt>Enable Pagination
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>When enabled, the endpoint parses pagination parameters from query string and provides pagination context in <code>msg.pagination</code>.</dd>
+
+        <dt>Pagination Style
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Choose between <b>offset</b> (uses page/limit/offset params) or <b>cursor</b> (uses cursor/limit params) pagination.</dd>
+
+        <dt>Default Page Size
+            <span class="property-type">number</span>
+        </dt>
+        <dd>The default number of items per page when no limit is specified. Default is 20.</dd>
+
+        <dt>Max Page Size
+            <span class="property-type">number</span>
+        </dt>
+        <dd>The maximum number of items allowed per page. Requests for larger limits are capped at this value. Default is 100.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -921,7 +1029,56 @@
         <dd>Present only when authorization fails. Contains statusCode (401 or 403), error, message, and details including requiredScopes, scopeOperator, and missingScopes.</dd>
         <dt>crud <span class="property-type">object</span></dt>
         <dd>Present when a CRUD operation is configured. Contains <code>operation</code>, <code>tableName</code>, <code>primaryKey</code>, and optionally <code>sql</code> (when Auto SQL is enabled) with the generated SQL template.</dd>
+        <dt>pagination <span class="property-type">object</span></dt>
+        <dd>Present when pagination is enabled and query params exist. Contains parsed pagination parameters based on the configured style.</dd>
     </dl>
+
+    <h3>Pagination Support</h3>
+    <p>When pagination is enabled, the endpoint automatically parses pagination parameters from the query string and adds them to <code>msg.pagination</code>.</p>
+
+    <h4>Offset-Based Pagination</h4>
+    <p>Uses traditional page-based navigation with the following query parameters:</p>
+    <ul>
+        <li><code>page</code> - Page number (1-indexed)</li>
+        <li><code>limit</code> - Number of items per page</li>
+        <li><code>offset</code> - Number of items to skip (alternative to page)</li>
+    </ul>
+    <p>The <code>msg.pagination</code> object contains:</p>
+    <pre>{
+  "style": "offset",
+  "page": 1,
+  "limit": 20,
+  "offset": 0,
+  "cursor": null
+}</pre>
+
+    <h4>Cursor-Based Pagination</h4>
+    <p>Uses opaque cursors for efficient pagination of large datasets:</p>
+    <ul>
+        <li><code>cursor</code> - Opaque cursor string from previous response</li>
+        <li><code>limit</code> - Number of items per page</li>
+    </ul>
+    <p>The <code>msg.pagination</code> object contains:</p>
+    <pre>{
+  "style": "cursor",
+  "limit": 20,
+  "cursor": "eyJpZCI6MTAwfQ==",
+  "page": null,
+  "offset": null
+}</pre>
+
+    <h4>Generating Response Metadata</h4>
+    <p>Use the <code>generatePaginationMeta()</code> method to create pagination metadata for your response:</p>
+    <pre>// In a function node after database query
+const meta = node.context().flow.get('endpointNode').generatePaginationMeta(
+  msg.pagination,
+  {
+    total: 150,     // Total item count (optional for cursor-based)
+    count: 20,      // Items in current page
+    nextCursor: 'eyJpZCI6MTIwfQ==',  // For cursor-based
+    prevCursor: 'eyJpZCI6ODB9'       // For cursor-based
+  }
+);</pre>
 
     <h3>Methods Available</h3>
     <p>The node provides several methods for use by other nodes:</p>
@@ -940,5 +1097,11 @@
         <dd>Returns the generated SQL template object when Auto SQL is enabled. Returns <code>null</code> if no CRUD operation or Auto SQL is disabled.</dd>
         <dt>getCrudInfo()</dt>
         <dd>Returns the CRUD operation configuration: <code>{operation, tableName, primaryKey, autoGenerateSql, useFlowOutput, hasCrudOperation}</code>.</dd>
+        <dt>getPaginationConfig()</dt>
+        <dd>Returns the pagination configuration: <code>{enabled, defaultPageSize, maxPageSize, style}</code>.</dd>
+        <dt>parsePagination(query)</dt>
+        <dd>Parses pagination parameters from a query object. Returns <code>null</code> if pagination is disabled, otherwise returns the parsed pagination params.</dd>
+        <dt>generatePaginationMeta(params, resultInfo)</dt>
+        <dd>Generates pagination metadata for responses. Pass the parsed pagination params and result info (total, count, nextCursor, prevCursor). Returns metadata object with hasNext, hasPrev, etc.</dd>
     </dl>
 </script>
