@@ -4,7 +4,7 @@ title: Add Rate Limiting per Endpoint
 status: Done
 assignee: []
 created_date: '2025-12-10 09:34'
-updated_date: '2025-12-10 16:31'
+updated_date: '2025-12-10 16:37'
 labels:
   - api-endpoint
   - rate-limiting
@@ -34,4 +34,6 @@ Configure rate limits specific to this endpoint. Support different rate limit ke
 Implementation started on 2025-12-10
 
 Completed on 2025-12-10. Created lib/rate-limiter.js with token bucket algorithm. Added rate limiting configuration to api-endpoint.js (rateLimitingEnabled, rateLimitRequests, rateLimitWindowMs, rateLimitKeyType, rateLimitCustomKeyPath). Added rate limiting UI section in api-endpoint.html. Input handler checks rate limit and returns 429 when exceeded. Rate limit headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After) added to responses. msg.rateLimit context added to messages. 75 tests added (46 for rate limiter library, 13 for api-endpoint rate limiting, plus existing tests).
+
+Commit: 670de60 - feat(node): add rate limiting per endpoint with token bucket algorithm
 <!-- SECTION:NOTES:END -->

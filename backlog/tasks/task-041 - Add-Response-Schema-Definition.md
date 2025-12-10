@@ -4,7 +4,7 @@ title: Add Response Schema Definition
 status: Done
 assignee: []
 created_date: '2025-12-10 09:34'
-updated_date: '2025-12-10 12:48'
+updated_date: '2025-12-10 12:49'
 labels:
   - api-endpoint
   - validation
@@ -73,4 +73,6 @@ Testing:
 - Added 29 new unit tests covering all functionality
 - Total test suite: 350 passing tests
 - Comprehensive coverage for edge cases and validation logic
+
+Commit: 328e7a4 - feat(node): add response schema definition with JSON Schema support
 <!-- SECTION:NOTES:END -->

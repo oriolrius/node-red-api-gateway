@@ -1,16 +1,17 @@
 ---
 id: doc-001
-title: Skills Required for Node-RED API Gateway Project
+title: doc-001 - Skills Required for Node-RED API Gateway Project
 type: other
 created_date: '2025-12-01 14:56'
 ---
+
 # Skills Required for Node-RED API Gateway Project
 
 Based on deep analysis of the `node-red-contrib-kafka` project, this document lists the reusable skills needed to create a similar Node-RED integration library from scratch.
 
 > **Note:** Kafka-specific skills have been excluded as they are domain-specific to the original project.
 
----
+
 
 ## Category 1: Node-RED Node Development (Core Framework)
 

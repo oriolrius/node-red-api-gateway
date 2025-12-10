@@ -1,0 +1,51 @@
+---
+id: task-060
+title: Implement API Server Route Registration
+status: To Do
+assignee: []
+created_date: '2025-12-10 09:40'
+updated_date: '2025-12-10 12:40'
+labels:
+  - api-server
+  - fastify
+  - routing
+  - blocker
+  - critical
+dependencies:
+  - task-059
+priority: high
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+CRITICAL BLOCKER: Implement dynamic route registration in api-server from connected api-endpoint nodes. When flows are deployed, api-server collects all api-endpoint nodes that reference it and registers their routes with Fastify.
+
+This task is CRITICAL because:
+- api-endpoint nodes depend on registerEndpoint() method being available on the server node
+- Without route registration, the API gateway cannot handle any incoming HTTP requests
+- This completes the core HTTP server functionality that all other configuration nodes depend on
+- The system cannot be tested end-to-end without functional route registration
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Discover api-endpoint nodes referencing this server
+- [ ] #2 Register Fastify routes for each endpoint
+- [ ] #3 Handle route conflicts (duplicate paths)
+- [ ] #4 Re-register routes on redeploy
+- [ ] #5 Unregister routes when endpoints removed
+- [ ] #6 Route middleware chain (auth, validation, handler)
+<!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CRITICAL IMPLEMENTATION NOTES:
+- Must be completed AFTER task-059 (Fastify instance management)
+- Depends on registerEndpoint() method created in task-059
+- Must handle the middleware chain: authentication (OAuth2/Keycloak) → validation (schema) → handler
+- Must support unregistering routes when endpoints are removed during redeploy
+- This is the final piece needed to make api-endpoint nodes functional
+- Priority: Complete immediately after task-059
+<!-- SECTION:NOTES:END -->

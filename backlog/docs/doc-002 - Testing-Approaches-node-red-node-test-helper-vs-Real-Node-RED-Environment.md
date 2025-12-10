@@ -1,10 +1,11 @@
 ---
 id: doc-002
-title: 'Testing Approaches: node-red-node-test-helper vs Real Node-RED Environment'
+title: 'doc-002 - Testing Approaches: node-red-node-test-helper vs Real Node-RED Environment'
 type: other
 created_date: '2025-12-03 10:32'
 updated_date: '2025-12-03 10:46'
 ---
+
 # Testing Approaches: node-red-node-test-helper vs Real Node-RED Environment
 
 ## Overview
@@ -14,7 +15,7 @@ This document explains the difference between the current test setup using `node
 - **nodred4testing**: A standalone Node-RED launcher for testing
 - **node-red-contrib-kafka**: A production Node-RED node with comprehensive testing
 
----
+
 
 ## What We Have: node-red-node-test-helper
 
