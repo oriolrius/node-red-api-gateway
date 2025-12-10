@@ -4,8 +4,9 @@ title: Add Keycloak/OAuth2 Configuration
 status: To Do
 assignee: []
 created_date: '2025-12-10 09:32'
+updated_date: '2025-12-10 09:39'
 labels:
-  - api-server
+  - api-config
   - config-node
   - oauth2
 dependencies: []
