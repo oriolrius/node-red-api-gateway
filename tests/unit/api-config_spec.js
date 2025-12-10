@@ -574,4 +574,175 @@ describe("api-config Node", function () {
             });
         });
     });
+
+    describe("Health Check Support", function() {
+        it("should have health check manager", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Health Check Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("healthCheckManager");
+                    c1.healthCheckManager.should.be.ok();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should register database health check when dbType is set", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "DB Health Config",
+                dbType: "postgres",
+                dbHost: "localhost"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.healthCheckManager._healthChecks.has('database').should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should register keycloak health check when oauth2 is enabled", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Keycloak Health Config",
+                oauth2Enabled: true,
+                keycloakUrl: "https://keycloak.example.com"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.healthCheckManager._healthChecks.has('keycloak').should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should register opa health check when opa is enabled", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "OPA Health Config",
+                opaEnabled: true,
+                opaUrl: "http://localhost:8181"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.healthCheckManager._healthChecks.has('opa').should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should have health check helper methods", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Health Methods Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("getHealthCheckManager").which.is.a.Function();
+                    c1.should.have.property("checkHealth").which.is.a.Function();
+                    c1.should.have.property("getHealthStatus").which.is.a.Function();
+                    c1.should.have.property("getAggregatedHealth").which.is.a.Function();
+                    c1.should.have.property("isHealthy").which.is.a.Function();
+                    c1.should.have.property("startHealthChecks").which.is.a.Function();
+                    c1.should.have.property("stopHealthChecks").which.is.a.Function();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return health status report", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Health Report Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const status = c1.getHealthStatus();
+                    status.should.have.property('status');
+                    status.should.have.property('timestamp');
+                    status.should.have.property('services');
+                    status.should.have.property('config');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should run health checks on demand", async function () {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "On Demand Health Config",
+                dbType: "postgres",
+                dbHost: "localhost"
+            }];
+
+            return new Promise((resolve, reject) => {
+                helper.load(apiConfigNode, flow, async function () {
+                    const c1 = helper.getNode("c1");
+                    try {
+                        const report = await c1.checkHealth();
+                        report.should.have.property('status');
+                        report.should.have.property('services');
+                        report.services.should.have.property('database');
+                        resolve();
+                    } catch (err) {
+                        reject(err);
+                    }
+                });
+            });
+        });
+
+        it("should shutdown health check manager on close", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Health Shutdown Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.healthCheckManager.should.be.ok();
+
+                    c1.close(false).then(function() {
+                        (c1.healthCheckManager === null).should.be.true();
+                        done();
+                    }).catch(done);
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });

@@ -1,4 +1,11 @@
 const { ConnectionState, ConnectionStateManager } = require('../lib/connection-state');
+const {
+    HealthStatus,
+    HealthCheckManager,
+    createDatabaseHealthCheck,
+    createKeycloakHealthCheck,
+    createOpaHealthCheck
+} = require('../lib/health-check');
 
 module.exports = function(RED) {
     function ApiConfigNode(config) {
@@ -33,6 +40,39 @@ module.exports = function(RED) {
                 maxBackoff: 30000,
                 maxRetries: config.opaRetryAttempts || 3
             });
+        }
+
+        // Initialize health check manager
+        node.healthCheckManager = new HealthCheckManager({
+            checkInterval: 30000,  // 30 seconds
+            timeout: 5000,
+            unhealthyThreshold: 3,
+            healthyThreshold: 1
+        });
+
+        // Register health checks for configured services
+        if (config.dbType && config.dbType !== 'none') {
+            node.healthCheckManager.registerCheck('database', createDatabaseHealthCheck({
+                dbType: config.dbType,
+                dbHost: config.dbHost,
+                dbPort: config.dbPort,
+                dbName: config.dbName
+            }));
+        }
+
+        if (config.oauth2Enabled) {
+            node.healthCheckManager.registerCheck('keycloak', createKeycloakHealthCheck({
+                keycloakUrl: config.keycloakUrl,
+                keycloakRealm: config.keycloakRealm
+            }));
+        }
+
+        if (config.opaEnabled) {
+            node.healthCheckManager.registerCheck('opa', createOpaHealthCheck({
+                opaUrl: config.opaUrl,
+                opaPolicyPath: config.opaPolicyPath,
+                opaTimeout: config.opaTimeout
+            }));
         }
 
         // Store configuration properties
@@ -133,12 +173,73 @@ module.exports = function(RED) {
             return Object.values(node.connectionManagers).every(m => m.isConnected);
         };
 
+        /**
+         * Get the health check manager
+         * @returns {HealthCheckManager}
+         */
+        node.getHealthCheckManager = function() {
+            return node.healthCheckManager;
+        };
+
+        /**
+         * Run all health checks and return results
+         * @returns {Promise<Object>} Health check results
+         */
+        node.checkHealth = async function() {
+            await node.healthCheckManager.checkAll();
+            return node.healthCheckManager.getHealthReport();
+        };
+
+        /**
+         * Get the current health status without running new checks
+         * @returns {Object} Health report
+         */
+        node.getHealthStatus = function() {
+            return node.healthCheckManager.getHealthReport();
+        };
+
+        /**
+         * Get aggregated health status (healthy, degraded, unhealthy)
+         * @returns {string} HealthStatus value
+         */
+        node.getAggregatedHealth = function() {
+            return node.healthCheckManager.getAggregatedStatus();
+        };
+
+        /**
+         * Check if all services are healthy
+         * @returns {boolean}
+         */
+        node.isHealthy = function() {
+            return node.healthCheckManager.getAggregatedStatus() === HealthStatus.HEALTHY;
+        };
+
+        /**
+         * Start periodic health checks
+         */
+        node.startHealthChecks = function() {
+            node.healthCheckManager.start();
+        };
+
+        /**
+         * Stop periodic health checks
+         */
+        node.stopHealthChecks = function() {
+            node.healthCheckManager.stop();
+        };
+
         node.on("close", function(removed, done) {
             // Graceful shutdown: shutdown all connection managers
             for (const manager of Object.values(node.connectionManagers)) {
                 manager.shutdown();
             }
             node.connectionManagers = {};
+
+            // Shutdown health check manager
+            if (node.healthCheckManager) {
+                node.healthCheckManager.shutdown();
+                node.healthCheckManager = null;
+            }
 
             if (done) {
                 done();
