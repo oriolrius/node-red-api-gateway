@@ -18,7 +18,13 @@
             validateResponseEnabled: { value: false },
             // Authorization configuration
             requiredScopes: { value: "" },
-            scopeOperator: { value: "AND" }
+            scopeOperator: { value: "AND" },
+            // CRUD operation mapping
+            crudOperation: { value: "none" },
+            tableName: { value: "" },
+            primaryKey: { value: "id" },
+            autoGenerateSql: { value: false },
+            useFlowOutput: { value: true }
         },
         inputs: 1,
         outputs: 1,
@@ -243,10 +249,87 @@
             $('#node-input-requiredScopes').on('input change', updateScopeDisplay);
             $('#node-input-scopeOperator').on('change', updateScopeDisplay);
 
+            // Toggle CRUD configuration visibility
+            function updateCrudVisibility() {
+                var operation = $('#node-input-crudOperation').val();
+                if (operation && operation !== 'none') {
+                    $('#crud-config').show();
+                    updateSqlPreview();
+                } else {
+                    $('#crud-config').hide();
+                }
+            }
+
+            // Toggle SQL preview based on auto-generate option
+            function updateSqlPreview() {
+                var autoGenerate = $('#node-input-autoGenerateSql').is(':checked');
+                if (autoGenerate) {
+                    $('#sql-preview-section').show();
+                    generateSqlPreview();
+                } else {
+                    $('#sql-preview-section').hide();
+                }
+            }
+
+            // Generate and display SQL preview
+            function generateSqlPreview() {
+                var operation = $('#node-input-crudOperation').val();
+                var tableName = $('#node-input-tableName').val().trim() || '[table_name]';
+                var primaryKey = $('#node-input-primaryKey').val().trim() || 'id';
+                var sql = '';
+
+                switch (operation) {
+                    case 'list':
+                        sql = 'SELECT * FROM ' + tableName;
+                        break;
+                    case 'get':
+                        sql = 'SELECT * FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
+                        break;
+                    case 'create':
+                        sql = 'INSERT INTO ' + tableName + ' (@columns) VALUES (@values)';
+                        break;
+                    case 'update':
+                        sql = 'UPDATE ' + tableName + ' SET @assignments WHERE ' + primaryKey + ' = @' + primaryKey;
+                        break;
+                    case 'delete':
+                        sql = 'DELETE FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
+                        break;
+                    default:
+                        sql = '-- No operation selected';
+                }
+
+                $('#sql-preview').text(sql);
+            }
+
+            // Validate table name
+            function validateTableName() {
+                var tableName = $('#node-input-tableName').val().trim();
+                var $error = $('#table-name-error');
+                if (!tableName) {
+                    $error.hide();
+                    return;
+                }
+                if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(tableName)) {
+                    $error.text('Invalid table name format').show();
+                } else {
+                    $error.hide();
+                }
+            }
+
+            // Event listeners for CRUD
+            $('#node-input-crudOperation').on('change', updateCrudVisibility);
+            $('#node-input-autoGenerateSql').on('change', updateSqlPreview);
+            $('#node-input-tableName').on('input change', function() {
+                validateTableName();
+                generateSqlPreview();
+            });
+            $('#node-input-primaryKey').on('input change', generateSqlPreview);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
             updateScopeDisplay();
+            updateCrudVisibility();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -466,6 +549,65 @@
         <div id="scope-list" style="display: inline-block;"></div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-database"></i> CRUD Mapping</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-crudOperation"><i class="fa fa-cog"></i> Operation</label>
+        <select id="node-input-crudOperation" style="width: 200px;">
+            <option value="none">None (custom logic)</option>
+            <option value="list">List (GET all)</option>
+            <option value="get">Get (GET by ID)</option>
+            <option value="create">Create (POST)</option>
+            <option value="update">Update (PUT)</option>
+            <option value="delete">Delete (DELETE)</option>
+        </select>
+    </div>
+
+    <div id="crud-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-tableName"><i class="fa fa-table"></i> Table Name</label>
+            <input type="text" id="node-input-tableName" placeholder="users">
+            <div id="table-name-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-primaryKey"><i class="fa fa-key"></i> Primary Key</label>
+            <input type="text" id="node-input-primaryKey" placeholder="id">
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-autoGenerateSql">
+                <i class="fa fa-code"></i> Auto SQL
+            </label>
+            <input type="checkbox" id="node-input-autoGenerateSql" style="width: auto; margin-left: 5px;">
+            <span style="margin-left: 5px;">Generate basic SQL template</span>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-useFlowOutput">
+                <i class="fa fa-share-alt"></i> Flow Output
+            </label>
+            <input type="checkbox" id="node-input-useFlowOutput" style="width: auto; margin-left: 5px;" checked>
+            <span style="margin-left: 5px;">Delegate to flow for custom logic</span>
+        </div>
+
+        <div id="sql-preview-section" style="display: none; margin-top: 10px;">
+            <div class="form-row">
+                <label><i class="fa fa-file-code-o"></i> SQL Preview</label>
+            </div>
+            <div class="form-row" style="margin-left: 105px;">
+                <pre id="sql-preview" style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
+            </div>
+            <div class="form-tips" style="margin-left: 105px;">
+                <i class="fa fa-info-circle"></i> @columns, @values, and @assignments are placeholders filled from request body at runtime.
+            </div>
+        </div>
+    </div>
+
     <style>
         .param-badge {
             display: inline-block;
@@ -596,6 +738,31 @@
             <span class="property-type">string</span>
         </dt>
         <dd>Controls how multiple scopes are evaluated: <b>AND</b> requires all scopes to be present, <b>OR</b> requires at least one scope.</dd>
+
+        <dt>CRUD Operation
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Maps this endpoint to a database CRUD operation: <b>list</b> (GET all), <b>get</b> (GET by ID), <b>create</b> (POST), <b>update</b> (PUT), or <b>delete</b> (DELETE).</dd>
+
+        <dt>Table Name
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Database table name for the CRUD operation. Supports schema.table notation (e.g., <code>public.users</code>).</dd>
+
+        <dt>Primary Key
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Primary key column name for get, update, and delete operations. Defaults to <code>id</code>.</dd>
+
+        <dt>Auto SQL
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>When enabled, generates basic SQL templates that are added to <code>msg.crud.sql</code>.</dd>
+
+        <dt>Flow Output
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>When enabled, delegates database operations to the flow for custom business logic. The CRUD context is passed in <code>msg.crud</code>.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -688,6 +855,48 @@
         <li>Operator: <b>OR</b> - User needs at least one scope</li>
     </ul>
 
+    <h3>CRUD Operation Mapping</h3>
+    <p>The CRUD mapping feature allows you to map HTTP endpoints to database operations. When configured:</p>
+    <ul>
+        <li>A <code>msg.crud</code> object is added with operation details</li>
+        <li>When Auto SQL is enabled, SQL templates are generated</li>
+        <li>The flow can use this context to execute database operations</li>
+    </ul>
+
+    <h3>CRUD Operations</h3>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+        <tr style="background: #f5f5f5;">
+            <th style="padding: 8px; border: 1px solid #ddd;">Operation</th>
+            <th style="padding: 8px; border: 1px solid #ddd;">HTTP Method</th>
+            <th style="padding: 8px; border: 1px solid #ddd;">SQL Template</th>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><b>list</b></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">GET</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>SELECT * FROM table</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><b>get</b></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">GET</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>SELECT * FROM table WHERE pk = @pk</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><b>create</b></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">POST</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>INSERT INTO table (@columns) VALUES (@values)</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><b>update</b></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">PUT</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>UPDATE table SET @assignments WHERE pk = @pk</code></td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;"><b>delete</b></td>
+            <td style="padding: 8px; border: 1px solid #ddd;">DELETE</td>
+            <td style="padding: 8px; border: 1px solid #ddd;"><code>DELETE FROM table WHERE pk = @pk</code></td>
+        </tr>
+    </table>
+
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>req.body <span class="property-type">any</span></dt>
@@ -705,11 +914,13 @@
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>endpoint <span class="property-type">object</span></dt>
-        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, validateResponseEnabled, requiredScopes, and scopeOperator.</dd>
+        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, validateResponseEnabled, requiredScopes, scopeOperator, and CRUD configuration.</dd>
         <dt>validationError <span class="property-type">object</span></dt>
         <dd>Present only when validation fails. Contains statusCode, error, message, and details.</dd>
         <dt>authorizationError <span class="property-type">object</span></dt>
         <dd>Present only when authorization fails. Contains statusCode (401 or 403), error, message, and details including requiredScopes, scopeOperator, and missingScopes.</dd>
+        <dt>crud <span class="property-type">object</span></dt>
+        <dd>Present when a CRUD operation is configured. Contains <code>operation</code>, <code>tableName</code>, <code>primaryKey</code>, and optionally <code>sql</code> (when Auto SQL is enabled) with the generated SQL template.</dd>
     </dl>
 
     <h3>Methods Available</h3>
@@ -725,5 +936,9 @@
         <dd>Checks if the provided token scopes satisfy the endpoint's required scopes. Returns <code>{authorized: boolean, missingScopes: array}</code>.</dd>
         <dt>getOpenApiSecurity()</dt>
         <dd>Returns OpenAPI security requirements for this endpoint (OAuth2 scopes). Returns an empty array if no scopes are required.</dd>
+        <dt>getCrudSql()</dt>
+        <dd>Returns the generated SQL template object when Auto SQL is enabled. Returns <code>null</code> if no CRUD operation or Auto SQL is disabled.</dd>
+        <dt>getCrudInfo()</dt>
+        <dd>Returns the CRUD operation configuration: <code>{operation, tableName, primaryKey, autoGenerateSql, useFlowOutput, hasCrudOperation}</code>.</dd>
     </dl>
 </script>

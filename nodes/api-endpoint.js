@@ -70,6 +70,130 @@ function checkScopes(tokenScopes, requiredScopes, operator) {
 }
 
 /**
+ * Valid CRUD operation types
+ */
+const CRUD_OPERATIONS = ['none', 'list', 'get', 'create', 'update', 'delete'];
+
+/**
+ * Maps CRUD operations to their typical HTTP methods
+ */
+const CRUD_METHOD_MAPPING = {
+    'list': 'GET',
+    'get': 'GET',
+    'create': 'POST',
+    'update': 'PUT',
+    'delete': 'DELETE'
+};
+
+/**
+ * Validates CRUD operation type
+ * @param {string} operation - Operation type
+ * @returns {string} Valid operation type or 'none'
+ */
+function validateCrudOperation(operation) {
+    if (!operation || typeof operation !== 'string') {
+        return 'none';
+    }
+    const normalized = operation.toLowerCase().trim();
+    return CRUD_OPERATIONS.includes(normalized) ? normalized : 'none';
+}
+
+/**
+ * Validates table name for SQL safety (basic validation)
+ * @param {string} tableName - Table name to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateTableName(tableName) {
+    if (!tableName || typeof tableName !== 'string') {
+        return { valid: false, error: 'Table name is required' };
+    }
+    const trimmed = tableName.trim();
+    if (trimmed.length === 0) {
+        return { valid: false, error: 'Table name cannot be empty' };
+    }
+    // Allow alphanumeric, underscores, and dots (for schema.table notation)
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(trimmed)) {
+        return { valid: false, error: 'Invalid table name format' };
+    }
+    return { valid: true };
+}
+
+/**
+ * Validates column name for SQL safety
+ * @param {string} columnName - Column name to validate
+ * @returns {{valid: boolean, error?: string}}
+ */
+function validateColumnName(columnName) {
+    if (!columnName || typeof columnName !== 'string') {
+        return { valid: false, error: 'Column name is required' };
+    }
+    const trimmed = columnName.trim();
+    if (trimmed.length === 0) {
+        return { valid: false, error: 'Column name cannot be empty' };
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+        return { valid: false, error: 'Invalid column name format' };
+    }
+    return { valid: true };
+}
+
+/**
+ * Generates basic SQL for CRUD operations
+ * @param {string} operation - CRUD operation type
+ * @param {string} tableName - Database table name
+ * @param {string} primaryKey - Primary key column name
+ * @param {Object} options - Additional options (columns, etc.)
+ * @returns {{sql: string, params: Array, paramPlaceholders: Object}}
+ */
+function generateCrudSql(operation, tableName, primaryKey, options = {}) {
+    const result = {
+        sql: '',
+        operation: operation,
+        tableName: tableName,
+        primaryKey: primaryKey,
+        paramMapping: {}
+    };
+
+    switch (operation) {
+        case 'list':
+            result.sql = `SELECT * FROM ${tableName}`;
+            result.paramMapping = {};
+            break;
+
+        case 'get':
+            result.sql = `SELECT * FROM ${tableName} WHERE ${primaryKey} = @${primaryKey}`;
+            result.paramMapping = { [primaryKey]: `params.${primaryKey}` };
+            break;
+
+        case 'create':
+            // Placeholder - actual columns come from request body
+            result.sql = `INSERT INTO ${tableName} (@columns) VALUES (@values)`;
+            result.paramMapping = { columns: 'body.*' };
+            break;
+
+        case 'update':
+            // Placeholder - actual columns come from request body
+            result.sql = `UPDATE ${tableName} SET @assignments WHERE ${primaryKey} = @${primaryKey}`;
+            result.paramMapping = {
+                [primaryKey]: `params.${primaryKey}`,
+                assignments: 'body.*'
+            };
+            break;
+
+        case 'delete':
+            result.sql = `DELETE FROM ${tableName} WHERE ${primaryKey} = @${primaryKey}`;
+            result.paramMapping = { [primaryKey]: `params.${primaryKey}` };
+            break;
+
+        default:
+            result.sql = '';
+            result.paramMapping = {};
+    }
+
+    return result;
+}
+
+/**
  * Returns a default description for an HTTP status code
  * @param {string|number} statusCode - HTTP status code
  * @returns {string} Default description
@@ -116,6 +240,27 @@ module.exports = function(RED) {
         // Authorization scope configuration
         node.requiredScopes = parseScopes(config.requiredScopes);
         node.scopeOperator = config.scopeOperator === 'OR' ? 'OR' : 'AND';  // Default to AND (requires all scopes)
+
+        // CRUD operation mapping configuration
+        node.crudOperation = validateCrudOperation(config.crudOperation);
+        node.tableName = (config.tableName || '').trim();
+        node.primaryKey = (config.primaryKey || 'id').trim();
+        node.autoGenerateSql = config.autoGenerateSql === true;
+        node.useFlowOutput = config.useFlowOutput !== false;  // Default to true (delegate to flow)
+
+        // Validate CRUD configuration if operation is set
+        if (node.crudOperation !== 'none') {
+            if (node.autoGenerateSql) {
+                const tableValidation = validateTableName(node.tableName);
+                if (!tableValidation.valid) {
+                    node.warn(`Invalid table name: ${tableValidation.error}`);
+                }
+                const pkValidation = validateColumnName(node.primaryKey);
+                if (!pkValidation.valid) {
+                    node.warn(`Invalid primary key: ${pkValidation.error}`);
+                }
+            }
+        }
 
         // Parse and compile schemas if validation is enabled
         if (node.validationEnabled) {
@@ -254,6 +399,26 @@ module.exports = function(RED) {
             return checkScopes(tokenScopes, node.requiredScopes, node.scopeOperator);
         };
 
+        // Method to get CRUD SQL template (if auto-generate is enabled)
+        node.getCrudSql = function() {
+            if (node.crudOperation === 'none' || !node.autoGenerateSql) {
+                return null;
+            }
+            return generateCrudSql(node.crudOperation, node.tableName, node.primaryKey);
+        };
+
+        // Method to get CRUD operation info
+        node.getCrudInfo = function() {
+            return {
+                operation: node.crudOperation,
+                tableName: node.tableName,
+                primaryKey: node.primaryKey,
+                autoGenerateSql: node.autoGenerateSql,
+                useFlowOutput: node.useFlowOutput,
+                hasCrudOperation: node.crudOperation !== 'none'
+            };
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -274,7 +439,14 @@ module.exports = function(RED) {
                 // Authorization configuration
                 requiredScopes: node.requiredScopes,
                 scopeOperator: node.scopeOperator,
-                hasRequiredScopes: node.requiredScopes.length > 0
+                hasRequiredScopes: node.requiredScopes.length > 0,
+                // CRUD configuration
+                crudOperation: node.crudOperation,
+                tableName: node.tableName,
+                primaryKey: node.primaryKey,
+                autoGenerateSql: node.autoGenerateSql,
+                useFlowOutput: node.useFlowOutput,
+                hasCrudOperation: node.crudOperation !== 'none'
             };
         };
 
@@ -336,8 +508,28 @@ module.exports = function(RED) {
                     validateResponseEnabled: node.validateResponseEnabled,
                     // Authorization configuration
                     requiredScopes: node.requiredScopes,
-                    scopeOperator: node.scopeOperator
+                    scopeOperator: node.scopeOperator,
+                    // CRUD operation configuration
+                    crudOperation: node.crudOperation,
+                    tableName: node.tableName,
+                    primaryKey: node.primaryKey,
+                    autoGenerateSql: node.autoGenerateSql,
+                    useFlowOutput: node.useFlowOutput
                 };
+
+                // Add CRUD context if operation is configured
+                if (node.crudOperation !== 'none') {
+                    msg.crud = {
+                        operation: node.crudOperation,
+                        tableName: node.tableName,
+                        primaryKey: node.primaryKey
+                    };
+
+                    // Add auto-generated SQL if enabled
+                    if (node.autoGenerateSql && node.tableName) {
+                        msg.crud.sql = node.getCrudSql();
+                    }
+                }
 
                 // If request path is provided, extract parameters
                 if (msg.req && msg.req.path) {

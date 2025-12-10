@@ -1784,4 +1784,539 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("CRUD Operation Configuration", function () {
+        it("should have no CRUD operation by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "none");
+                    n1.should.have.property("tableName", "");
+                    n1.should.have.property("primaryKey", "id");
+                    n1.should.have.property("autoGenerateSql", false);
+                    n1.should.have.property("useFlowOutput", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store list operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "list");
+                    n1.should.have.property("tableName", "users");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store get operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "get",
+                tableName: "users",
+                primaryKey: "user_id"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "get");
+                    n1.should.have.property("primaryKey", "user_id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store create operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "create",
+                tableName: "users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "create");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store update operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "update",
+                tableName: "users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "update");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store delete operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "delete",
+                tableName: "users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "delete");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid operation to none", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "INVALID"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("crudOperation", "none");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store autoGenerateSql flag", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("autoGenerateSql", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store useFlowOutput flag", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                useFlowOutput: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("useFlowOutput", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should handle schema.table notation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "public.users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("tableName", "public.users");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getCrudInfo Method", function () {
+        it("should return CRUD info with hasCrudOperation true", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                primaryKey: "id",
+                autoGenerateSql: true,
+                useFlowOutput: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getCrudInfo();
+                    info.should.have.property("operation", "list");
+                    info.should.have.property("tableName", "users");
+                    info.should.have.property("primaryKey", "id");
+                    info.should.have.property("autoGenerateSql", true);
+                    info.should.have.property("useFlowOutput", true);
+                    info.should.have.property("hasCrudOperation", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return hasCrudOperation false when no operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getCrudInfo();
+                    info.should.have.property("hasCrudOperation", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getCrudSql Method", function () {
+        it("should return null when no CRUD operation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const sql = n1.getCrudSql();
+                    (sql === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return null when autoGenerateSql is false", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                autoGenerateSql: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const sql = n1.getCrudSql();
+                    (sql === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate list SQL", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.getCrudSql();
+                    result.should.have.property("sql", "SELECT * FROM users");
+                    result.should.have.property("operation", "list");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate get SQL with primary key", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "get",
+                tableName: "users",
+                primaryKey: "user_id",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.getCrudSql();
+                    result.should.have.property("sql", "SELECT * FROM users WHERE user_id = @user_id");
+                    result.should.have.property("primaryKey", "user_id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate create SQL", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "create",
+                tableName: "users",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.getCrudSql();
+                    result.should.have.property("sql", "INSERT INTO users (@columns) VALUES (@values)");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate update SQL", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "update",
+                tableName: "users",
+                primaryKey: "id",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.getCrudSql();
+                    result.should.have.property("sql", "UPDATE users SET @assignments WHERE id = @id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should generate delete SQL", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                crudOperation: "delete",
+                tableName: "users",
+                primaryKey: "id",
+                autoGenerateSql: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.getCrudSql();
+                    result.should.have.property("sql", "DELETE FROM users WHERE id = @id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getEndpointInfo with CRUD", function () {
+        it("should include CRUD info in endpoint info", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                crudOperation: "list",
+                tableName: "users",
+                primaryKey: "id",
+                autoGenerateSql: true,
+                useFlowOutput: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("crudOperation", "list");
+                    info.should.have.property("tableName", "users");
+                    info.should.have.property("primaryKey", "id");
+                    info.should.have.property("autoGenerateSql", true);
+                    info.should.have.property("useFlowOutput", true);
+                    info.should.have.property("hasCrudOperation", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("CRUD in Message Handling", function () {
+        it("should not add crud object when no operation", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("crud");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should add crud object when operation configured", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("crud");
+                        msg.crud.should.have.property("operation", "list");
+                        msg.crud.should.have.property("tableName", "users");
+                        msg.crud.should.have.property("primaryKey", "id");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should add sql to crud when autoGenerateSql enabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: true, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.crud.should.have.property("sql");
+                        msg.crud.sql.should.have.property("sql", "SELECT * FROM users");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should not add sql when autoGenerateSql disabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.crud.should.not.have.property("sql");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should include CRUD info in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "create", tableName: "users", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("crudOperation", "create");
+                        msg.endpoint.should.have.property("tableName", "users");
+                        msg.endpoint.should.have.property("primaryKey", "id");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+    });
 });

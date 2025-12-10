@@ -1,9 +1,10 @@
 ---
 id: task-043
 title: Implement CRUD Operation Mapping
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2025-12-10 09:34'
+updated_date: '2025-12-10 14:49'
 labels:
   - api-endpoint
   - crud
@@ -26,3 +27,9 @@ Map HTTP methods to database operations. Configure table name, primary key, and 
 - [ ] #4 Auto-generate basic SQL option
 - [ ] #5 Flow output for custom business logic
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Started work on 2025-12-10 - Beginning implementation of CRUD operation mapping functionality
+<!-- SECTION:NOTES:END -->
