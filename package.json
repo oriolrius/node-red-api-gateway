@@ -39,6 +39,7 @@
   "node-red": {
     "version": ">=2.0.0",
     "nodes": {
+      "api-config": "nodes/api-config.js",
       "api-server": "nodes/api-server.js",
       "api-endpoint": "nodes/api-endpoint.js"
     }

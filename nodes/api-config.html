@@ -1,0 +1,308 @@
+<script type="text/javascript">
+    RED.nodes.registerType('api-config', {
+        category: 'config',
+        defaults: {
+            name: { value: "", required: true },
+            // Database configuration
+            dbType: { value: "postgres" },
+            dbHost: { value: "localhost" },
+            dbPort: { value: 5432 },
+            dbName: { value: "" },
+            // SQL Server specific options
+            dbEncrypt: { value: true },
+            dbTrustServerCertificate: { value: false },
+            // Connection pool settings
+            dbPoolMin: { value: 0 },
+            dbPoolMax: { value: 10 },
+            dbPoolIdleTimeout: { value: 30000 },
+            // OAuth2/Keycloak configuration
+            oauth2Enabled: { value: false },
+            keycloakUrl: { value: "" },
+            keycloakRealm: { value: "" },
+            keycloakClientId: { value: "" },
+            // OPA configuration
+            opaEnabled: { value: false },
+            opaUrl: { value: "http://localhost:8181" },
+            opaPolicyPath: { value: "" },
+            // TLS configuration
+            tlsEnabled: { value: false },
+            tlsRejectUnauthorized: { value: true },
+            tlsCertPath: { value: "" },
+            tlsKeyPath: { value: "" },
+            tlsCaPath: { value: "" }
+        },
+        credentials: {
+            dbUser: { type: "text" },
+            dbPassword: { type: "password" },
+            keycloakClientSecret: { type: "password" }
+        },
+        label: function() {
+            return this.name || "API Config";
+        },
+        oneditprepare: function() {
+            // Toggle database credentials visibility
+            $("#node-config-input-dbType").on("change", function() {
+                var dbType = $(this).val();
+                if (dbType === "none") {
+                    $(".db-config-row").hide();
+                    $(".db-mssql-row").hide();
+                    $(".db-pool-row").hide();
+                } else {
+                    $(".db-config-row").show();
+                    $(".db-pool-row").show();
+                    // Show SQL Server specific options only for mssql
+                    if (dbType === "mssql") {
+                        $(".db-mssql-row").show();
+                    } else {
+                        $(".db-mssql-row").hide();
+                    }
+                }
+            }).trigger("change");
+
+            // Toggle OAuth2 section visibility
+            $("#node-config-input-oauth2Enabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".oauth2-config-row").show();
+                } else {
+                    $(".oauth2-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle OPA section visibility
+            $("#node-config-input-opaEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".opa-config-row").show();
+                } else {
+                    $(".opa-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle TLS section visibility
+            $("#node-config-input-tlsEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".tls-config-row").show();
+                } else {
+                    $(".tls-config-row").hide();
+                }
+            }).trigger("change");
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="api-config">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="Configuration name">
+    </div>
+
+    <!-- Database Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-database"></i> Database Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-dbType"><i class="fa fa-cog"></i> Type</label>
+        <select id="node-config-input-dbType" style="width: 70%;">
+            <option value="none">None</option>
+            <option value="postgres">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+            <option value="mongodb">MongoDB</option>
+            <option value="mssql">SQL Server</option>
+        </select>
+    </div>
+    <div class="form-row db-config-row">
+        <label for="node-config-input-dbHost"><i class="fa fa-server"></i> Host</label>
+        <input type="text" id="node-config-input-dbHost" placeholder="localhost">
+    </div>
+    <div class="form-row db-config-row">
+        <label for="node-config-input-dbPort"><i class="fa fa-plug"></i> Port</label>
+        <input type="number" id="node-config-input-dbPort" placeholder="5432">
+    </div>
+    <div class="form-row db-config-row">
+        <label for="node-config-input-dbName"><i class="fa fa-folder"></i> Database</label>
+        <input type="text" id="node-config-input-dbName" placeholder="database name">
+    </div>
+    <div class="form-row db-config-row">
+        <label for="node-config-input-dbUser"><i class="fa fa-user"></i> User</label>
+        <input type="text" id="node-config-input-dbUser" placeholder="username">
+    </div>
+    <div class="form-row db-config-row">
+        <label for="node-config-input-dbPassword"><i class="fa fa-lock"></i> Password</label>
+        <input type="password" id="node-config-input-dbPassword" placeholder="password">
+    </div>
+
+    <!-- SQL Server Specific Options -->
+    <div class="form-row db-mssql-row">
+        <label for="node-config-input-dbEncrypt">
+            <i class="fa fa-shield"></i> Encrypt Connection
+        </label>
+        <input type="checkbox" id="node-config-input-dbEncrypt" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row db-mssql-row">
+        <label for="node-config-input-dbTrustServerCertificate">
+            <i class="fa fa-certificate"></i> Trust Server Certificate
+        </label>
+        <input type="checkbox" id="node-config-input-dbTrustServerCertificate" style="width: auto; margin-left: 5px;">
+    </div>
+
+    <!-- Connection Pool Settings -->
+    <div class="form-row db-pool-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-cubes"></i> Connection Pool</label>
+    </div>
+    <div class="form-row db-pool-row">
+        <label for="node-config-input-dbPoolMin"><i class="fa fa-minus-circle"></i> Min Connections</label>
+        <input type="number" id="node-config-input-dbPoolMin" placeholder="0" min="0" style="width: 70px;">
+    </div>
+    <div class="form-row db-pool-row">
+        <label for="node-config-input-dbPoolMax"><i class="fa fa-plus-circle"></i> Max Connections</label>
+        <input type="number" id="node-config-input-dbPoolMax" placeholder="10" min="1" style="width: 70px;">
+    </div>
+    <div class="form-row db-pool-row">
+        <label for="node-config-input-dbPoolIdleTimeout"><i class="fa fa-clock-o"></i> Idle Timeout (ms)</label>
+        <input type="number" id="node-config-input-dbPoolIdleTimeout" placeholder="30000" min="0" style="width: 100px;">
+    </div>
+
+    <!-- OAuth2/Keycloak Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-key"></i> OAuth2/Keycloak Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-oauth2Enabled">
+            <i class="fa fa-toggle-on"></i> Enable OAuth2
+        </label>
+        <input type="checkbox" id="node-config-input-oauth2Enabled" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-keycloakUrl"><i class="fa fa-link"></i> Keycloak URL</label>
+        <input type="text" id="node-config-input-keycloakUrl" placeholder="https://keycloak.example.com">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-keycloakRealm"><i class="fa fa-globe"></i> Realm</label>
+        <input type="text" id="node-config-input-keycloakRealm" placeholder="master">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-keycloakClientId"><i class="fa fa-id-card"></i> Client ID</label>
+        <input type="text" id="node-config-input-keycloakClientId" placeholder="client-id">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-keycloakClientSecret"><i class="fa fa-lock"></i> Client Secret</label>
+        <input type="password" id="node-config-input-keycloakClientSecret" placeholder="client-secret">
+    </div>
+
+    <!-- OPA Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-shield"></i> OPA (Open Policy Agent) Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-opaEnabled">
+            <i class="fa fa-toggle-on"></i> Enable OPA
+        </label>
+        <input type="checkbox" id="node-config-input-opaEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaUrl"><i class="fa fa-link"></i> OPA URL</label>
+        <input type="text" id="node-config-input-opaUrl" placeholder="http://localhost:8181">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaPolicyPath"><i class="fa fa-file-code-o"></i> Policy Path</label>
+        <input type="text" id="node-config-input-opaPolicyPath" placeholder="v1/data/policy/allow">
+    </div>
+
+    <!-- TLS/SSL Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-certificate"></i> TLS/SSL Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-tlsEnabled">
+            <i class="fa fa-toggle-on"></i> Enable TLS
+        </label>
+        <input type="checkbox" id="node-config-input-tlsEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row tls-config-row">
+        <label for="node-config-input-tlsRejectUnauthorized">
+            <i class="fa fa-check-circle"></i> Verify Certificates
+        </label>
+        <input type="checkbox" id="node-config-input-tlsRejectUnauthorized" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row tls-config-row">
+        <label for="node-config-input-tlsCertPath"><i class="fa fa-file"></i> Certificate</label>
+        <input type="text" id="node-config-input-tlsCertPath" placeholder="/path/to/cert.pem">
+    </div>
+    <div class="form-row tls-config-row">
+        <label for="node-config-input-tlsKeyPath"><i class="fa fa-key"></i> Private Key</label>
+        <input type="text" id="node-config-input-tlsKeyPath" placeholder="/path/to/key.pem">
+    </div>
+    <div class="form-row tls-config-row">
+        <label for="node-config-input-tlsCaPath"><i class="fa fa-shield"></i> CA Certificate</label>
+        <input type="text" id="node-config-input-tlsCaPath" placeholder="/path/to/ca.pem">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="api-config">
+    <p>Configuration node for API Gateway shared settings.</p>
+
+    <h3>Overview</h3>
+    <p>This configuration node stores shared settings used by API Server and API Endpoint nodes.
+    It centralizes database connections, authentication, authorization, and TLS settings.</p>
+
+    <h3>Database Configuration</h3>
+    <p>Configure the database connection for API operations:</p>
+    <ul>
+        <li><b>Type</b> - Database type (PostgreSQL, MySQL, MongoDB, SQL Server)</li>
+        <li><b>Host</b> - Database server hostname or IP</li>
+        <li><b>Port</b> - Database server port</li>
+        <li><b>Database</b> - Name of the database</li>
+        <li><b>User/Password</b> - Database credentials (stored securely)</li>
+    </ul>
+
+    <h4>SQL Server Options</h4>
+    <p>Additional options for SQL Server connections:</p>
+    <ul>
+        <li><b>Encrypt Connection</b> - Enable TLS encryption for database connections</li>
+        <li><b>Trust Server Certificate</b> - Trust self-signed certificates (for development)</li>
+    </ul>
+
+    <h4>Connection Pool Settings</h4>
+    <p>Configure connection pooling for better performance:</p>
+    <ul>
+        <li><b>Min Connections</b> - Minimum connections to maintain in pool (default: 0)</li>
+        <li><b>Max Connections</b> - Maximum connections allowed in pool (default: 10)</li>
+        <li><b>Idle Timeout</b> - Time in ms before idle connections are closed (default: 30000)</li>
+    </ul>
+
+    <h3>OAuth2/Keycloak Configuration</h3>
+    <p>Configure OAuth2 authentication via Keycloak:</p>
+    <ul>
+        <li><b>Keycloak URL</b> - Base URL of the Keycloak server</li>
+        <li><b>Realm</b> - Keycloak realm name</li>
+        <li><b>Client ID</b> - OAuth2 client identifier</li>
+        <li><b>Client Secret</b> - OAuth2 client secret (stored securely)</li>
+    </ul>
+
+    <h3>OPA Configuration</h3>
+    <p>Configure Open Policy Agent for authorization:</p>
+    <ul>
+        <li><b>OPA URL</b> - URL of the OPA server</li>
+        <li><b>Policy Path</b> - Path to the authorization policy</li>
+    </ul>
+
+    <h3>TLS/SSL Configuration</h3>
+    <p>Configure TLS/SSL for secure connections:</p>
+    <ul>
+        <li><b>Verify Certificates</b> - Whether to verify server certificates</li>
+        <li><b>Certificate</b> - Path to client certificate file</li>
+        <li><b>Private Key</b> - Path to client private key file</li>
+        <li><b>CA Certificate</b> - Path to CA certificate file</li>
+    </ul>
+
+    <h3>Usage</h3>
+    <p>This configuration node appears in the config nodes sidebar. Select it from the
+    dropdown in API Server or API Endpoint nodes to share these settings.</p>
+</script>
