@@ -20,6 +20,16 @@ const {
     ValidationResult
 } = require('../lib/schema-validator');
 
+const {
+    TransformationResult,
+    validateExpression,
+    compileExpression,
+    transformRequest,
+    transformResponse,
+    parseFieldMapping,
+    applyFieldMapping
+} = require('../lib/request-response-transform');
+
 /**
  * Parses a scopes configuration string into an array of scope strings
  * @param {string|Array} scopes - Comma-separated string or array of scopes
@@ -701,6 +711,46 @@ module.exports = function(RED) {
             ? config.defaultSortDirection
             : 'asc';
 
+        // Transformation configuration
+        node.transformationEnabled = config.transformationEnabled === true;
+        node.requestTransformExpression = null;
+        node.responseTransformExpression = null;
+        node.fieldMappings = null;
+
+        // Parse and validate transformation expressions if enabled
+        if (node.transformationEnabled) {
+            // Request transformation expression
+            if (config.requestTransformExpression) {
+                const validation = validateExpression(config.requestTransformExpression);
+                if (validation.valid) {
+                    node.requestTransformExpression = config.requestTransformExpression.trim();
+                } else {
+                    node.warn(`Invalid request transformation expression: ${validation.error}`);
+                }
+            }
+
+            // Response transformation expression
+            if (config.responseTransformExpression) {
+                const validation = validateExpression(config.responseTransformExpression);
+                if (validation.valid) {
+                    node.responseTransformExpression = config.responseTransformExpression.trim();
+                } else {
+                    node.warn(`Invalid response transformation expression: ${validation.error}`);
+                }
+            }
+
+            // Field mappings
+            if (config.fieldMappings) {
+                const parsed = parseFieldMapping(config.fieldMappings);
+                if (parsed.errors.length > 0) {
+                    parsed.errors.forEach(err => node.warn(`Field mapping: ${err}`));
+                }
+                if (Object.keys(parsed.mappings).length > 0) {
+                    node.fieldMappings = parsed.mappings;
+                }
+            }
+        }
+
         // Validate CRUD configuration if operation is set
         if (node.crudOperation !== 'none') {
             if (node.autoGenerateSql) {
@@ -951,6 +1001,54 @@ module.exports = function(RED) {
             return generateOrderByClause(sorts);
         };
 
+        // Method to get transformation configuration
+        node.getTransformationConfig = function() {
+            return {
+                enabled: node.transformationEnabled,
+                hasRequestTransform: !!node.requestTransformExpression,
+                hasResponseTransform: !!node.responseTransformExpression,
+                hasFieldMappings: !!node.fieldMappings
+            };
+        };
+
+        // Method to transform request body
+        node.transformRequestBody = async function(body, context = {}) {
+            if (!node.transformationEnabled) {
+                return { success: true, data: body };
+            }
+
+            let result = body;
+
+            // Apply field mappings first if defined
+            if (node.fieldMappings) {
+                const mappingResult = applyFieldMapping(result, node.fieldMappings);
+                if (!mappingResult.success) {
+                    return mappingResult;
+                }
+                result = mappingResult.data;
+            }
+
+            // Then apply JSONata expression if defined
+            if (node.requestTransformExpression) {
+                const transformResult = await transformRequest(result, node.requestTransformExpression, context);
+                if (!transformResult.success) {
+                    return transformResult;
+                }
+                result = transformResult.data;
+            }
+
+            return { success: true, data: result };
+        };
+
+        // Method to transform response data
+        node.transformResponseData = async function(data, context = {}) {
+            if (!node.transformationEnabled || !node.responseTransformExpression) {
+                return { success: true, data: data };
+            }
+
+            return transformResponse(data, node.responseTransformExpression, context);
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -991,7 +1089,12 @@ module.exports = function(RED) {
                 sortingEnabled: node.sortingEnabled,
                 sortableFields: node.sortableFields,
                 defaultSortField: node.defaultSortField,
-                defaultSortDirection: node.defaultSortDirection
+                defaultSortDirection: node.defaultSortDirection,
+                // Transformation configuration
+                transformationEnabled: node.transformationEnabled,
+                hasRequestTransform: !!node.requestTransformExpression,
+                hasResponseTransform: !!node.responseTransformExpression,
+                hasFieldMappings: !!node.fieldMappings
             };
         };
 
@@ -1036,7 +1139,7 @@ module.exports = function(RED) {
             }];
         };
 
-        node.on("input", function(msg, send, done) {
+        node.on("input", async function(msg, send, done) {
             // Node-RED 1.0+ compatibility
             send = send || function() { node.send.apply(node, arguments); };
 
@@ -1072,7 +1175,12 @@ module.exports = function(RED) {
                     sortingEnabled: node.sortingEnabled,
                     sortableFields: node.sortableFields,
                     defaultSortField: node.defaultSortField,
-                    defaultSortDirection: node.defaultSortDirection
+                    defaultSortDirection: node.defaultSortDirection,
+                    // Transformation configuration
+                    transformationEnabled: node.transformationEnabled,
+                    hasRequestTransform: !!node.requestTransformExpression,
+                    hasResponseTransform: !!node.responseTransformExpression,
+                    responseTransformExpression: node.responseTransformExpression
                 };
 
                 // Add CRUD context if operation is configured
@@ -1189,6 +1297,53 @@ module.exports = function(RED) {
                         }
                         return;
                     }
+                }
+
+                // Perform request transformation if enabled and request body is present
+                if (node.transformationEnabled && msg.req && msg.req.body !== undefined) {
+                    const transformContext = {
+                        msg: msg,
+                        params: msg.req.params || {},
+                        query: msg.req.query || {},
+                        headers: msg.req.headers || {}
+                    };
+
+                    const transformResult = await node.transformRequestBody(msg.req.body, transformContext);
+
+                    if (!transformResult.success) {
+                        // Add transformation error to message
+                        const transformError = {
+                            statusCode: 400,
+                            error: 'Bad Request',
+                            message: 'Request transformation failed',
+                            details: {
+                                error: transformResult.error
+                            }
+                        };
+                        msg.transformationError = transformError;
+
+                        // Send error response if res object is available
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            msg.res.status(400).json(transformError);
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+
+                        // Otherwise, still send the message with error info
+                        msg.payload = transformError;
+                        send(msg);
+                        if (done) {
+                            done();
+                        }
+                        return;
+                    }
+
+                    // Update request body with transformed data
+                    msg.req.body = transformResult.data;
+                    // Store original body for reference
+                    msg.req.originalBody = msg.req.body;
                 }
 
                 // Perform validation if enabled and request data is present

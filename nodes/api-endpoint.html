@@ -37,7 +37,12 @@
             sortingEnabled: { value: false },
             sortableFields: { value: "" },
             defaultSortField: { value: "" },
-            defaultSortDirection: { value: "asc" }
+            defaultSortDirection: { value: "asc" },
+            // Transformation
+            transformationEnabled: { value: false },
+            requestTransformExpression: { value: "" },
+            responseTransformExpression: { value: "" },
+            fieldMappings: { value: "" }
         },
         inputs: 1,
         outputs: 1,
@@ -433,6 +438,155 @@
             $('#node-input-filterableFields').on('input change', updateFilterableFieldsDisplay);
             $('#node-input-sortableFields').on('input change', updateSortableFieldsDisplay);
 
+            // Toggle transformation configuration visibility
+            function updateTransformationVisibility() {
+                var enabled = $('#node-input-transformationEnabled').is(':checked');
+                if (enabled) {
+                    $('#transformation-config').show();
+                } else {
+                    $('#transformation-config').hide();
+                }
+            }
+
+            // Validate JSONata expression
+            function validateJsonataExpression(exprStr) {
+                if (!exprStr || exprStr.trim() === '') {
+                    return { valid: true };
+                }
+                // Basic syntax check - just verify it's not obviously broken
+                // Full validation happens on the server side
+                var trimmed = exprStr.trim();
+                // Check for balanced brackets and parentheses
+                var brackets = 0;
+                var parens = 0;
+                var braces = 0;
+                var inString = false;
+                var stringChar = null;
+                for (var i = 0; i < trimmed.length; i++) {
+                    var c = trimmed[i];
+                    if (inString) {
+                        if (c === stringChar && trimmed[i-1] !== '\\') {
+                            inString = false;
+                        }
+                    } else {
+                        if (c === '"' || c === "'") {
+                            inString = true;
+                            stringChar = c;
+                        } else if (c === '[') brackets++;
+                        else if (c === ']') brackets--;
+                        else if (c === '(') parens++;
+                        else if (c === ')') parens--;
+                        else if (c === '{') braces++;
+                        else if (c === '}') braces--;
+                    }
+                }
+                if (brackets !== 0) {
+                    return { valid: false, error: 'Unbalanced brackets []' };
+                }
+                if (parens !== 0) {
+                    return { valid: false, error: 'Unbalanced parentheses ()' };
+                }
+                if (braces !== 0) {
+                    return { valid: false, error: 'Unbalanced braces {}' };
+                }
+                if (inString) {
+                    return { valid: false, error: 'Unterminated string' };
+                }
+                return { valid: true };
+            }
+
+            // Setup JSONata expression validation
+            function setupExpressionValidation(textareaId, errorId) {
+                $(textareaId).on('input change', function() {
+                    var validation = validateJsonataExpression($(this).val());
+                    var $error = $(errorId);
+                    if (!validation.valid) {
+                        $(this).addClass('input-error');
+                        $error.text(validation.error).show();
+                    } else {
+                        $(this).removeClass('input-error');
+                        $error.hide();
+                    }
+                });
+            }
+
+            // Validate field mappings
+            function validateFieldMappings(mappingStr) {
+                if (!mappingStr || mappingStr.trim() === '') {
+                    return { valid: true };
+                }
+                var pairs = mappingStr.split(',');
+                for (var i = 0; i < pairs.length; i++) {
+                    var pair = pairs[i].trim();
+                    if (!pair) continue;
+                    // Support both -> and : as separators
+                    var parts = pair.split('->');
+                    if (parts.length !== 2) {
+                        parts = pair.split(':');
+                    }
+                    if (parts.length !== 2) {
+                        return { valid: false, error: 'Invalid format: "' + pair + '". Use oldName->newName' };
+                    }
+                    var oldName = parts[0].trim();
+                    var newName = parts[1].trim();
+                    if (!oldName || !newName) {
+                        return { valid: false, error: 'Both old and new names required in: "' + pair + '"' };
+                    }
+                    var fieldNameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+                    if (!fieldNameRegex.test(oldName)) {
+                        return { valid: false, error: 'Invalid source field name: "' + oldName + '"' };
+                    }
+                    if (!fieldNameRegex.test(newName)) {
+                        return { valid: false, error: 'Invalid target field name: "' + newName + '"' };
+                    }
+                }
+                return { valid: true };
+            }
+
+            // Setup field mappings validation
+            $('#node-input-fieldMappings').on('input change', function() {
+                var validation = validateFieldMappings($(this).val());
+                var $error = $('#field-mappings-error');
+                if (!validation.valid) {
+                    $(this).addClass('input-error');
+                    $error.text(validation.error).show();
+                } else {
+                    $(this).removeClass('input-error');
+                    $error.hide();
+                }
+                updateFieldMappingsDisplay();
+            });
+
+            // Display field mappings as badges
+            function updateFieldMappingsDisplay() {
+                var mappingStr = $('#node-input-fieldMappings').val();
+                var $display = $('#field-mappings-display');
+                $display.empty();
+                if (mappingStr) {
+                    var pairs = mappingStr.split(',');
+                    pairs.forEach(function(pair) {
+                        pair = pair.trim();
+                        if (!pair) return;
+                        var parts = pair.split('->');
+                        if (parts.length !== 2) {
+                            parts = pair.split(':');
+                        }
+                        if (parts.length === 2) {
+                            var oldName = parts[0].trim();
+                            var newName = parts[1].trim();
+                            if (oldName && newName) {
+                                $display.append('<span class="mapping-badge">' + oldName + ' → ' + newName + '</span>');
+                            }
+                        }
+                    });
+                }
+            }
+
+            // Event listeners for transformation
+            $('#node-input-transformationEnabled').on('change', updateTransformationVisibility);
+            setupExpressionValidation('#node-input-requestTransformExpression', '#request-transform-error');
+            setupExpressionValidation('#node-input-responseTransformExpression', '#response-transform-error');
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
@@ -443,6 +597,8 @@
             updateSortingVisibility();
             updateFilterableFieldsDisplay();
             updateSortableFieldsDisplay();
+            updateTransformationVisibility();
+            updateFieldMappingsDisplay();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -835,6 +991,86 @@
         </div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-random"></i> Transformation</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-transformationEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-transformationEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable request/response transformation</span>
+    </div>
+
+    <div id="transformation-config" style="display: none;">
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-sign-in"></i> Request Transformation
+            </div>
+            <div class="schema-section-content">
+                <div class="form-tips" style="margin-bottom: 10px;">
+                    JSONata expression to transform the request body before validation. Use <code>$</code> to reference the body.
+                </div>
+                <div class="form-row">
+                    <textarea id="node-input-requestTransformExpression" rows="6" placeholder='$merge([$$, {
+  "fullName": $.firstName & " " & $.lastName,
+  "emailLower": $lowercase($.email)
+}])'></textarea>
+                    <div id="request-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-sign-out"></i> Response Transformation
+            </div>
+            <div class="schema-section-content">
+                <div class="form-tips" style="margin-bottom: 10px;">
+                    JSONata expression to transform the response data. Stored in <code>msg.endpoint.responseTransformExpression</code> for downstream use.
+                </div>
+                <div class="form-row">
+                    <textarea id="node-input-responseTransformExpression" rows="6" placeholder='{
+  "id": $.id,
+  "displayName": $.full_name,
+  "contact": { "email": $.email }
+}'></textarea>
+                    <div id="response-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-exchange"></i> Field Mappings
+            </div>
+            <div class="schema-section-content">
+                <div class="form-tips" style="margin-bottom: 10px;">
+                    Simple field renaming. Applied before JSONata expression. Format: <code>oldName->newName</code>
+                </div>
+                <div class="form-row">
+                    <input type="text" id="node-input-fieldMappings" placeholder="firstName->first_name, lastName->last_name">
+                    <div id="field-mappings-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                </div>
+                <div class="form-row" style="margin-top: 5px;">
+                    <div id="field-mappings-display"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> <b>JSONata</b> is a lightweight query and transformation language for JSON.<br>
+            <i class="fa fa-info-circle"></i> <b>Context variables:</b> <code>$msg</code> (message), <code>$params</code> (path params), <code>$query</code> (query params), <code>$headers</code> (headers)<br>
+            <i class="fa fa-info-circle"></i> <b>Common functions:</b> <code>$merge()</code>, <code>$lowercase()</code>, <code>$uppercase()</code>, <code>$trim()</code>, <code>$now()</code>
+        </div>
+    </div>
+
     <style>
         .field-badge {
             display: inline-block;
@@ -861,6 +1097,16 @@
             padding: 2px 8px;
             margin: 2px;
             background-color: #f0ad4e;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .mapping-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            margin: 2px;
+            background-color: #9b59b6;
             color: white;
             border-radius: 3px;
             font-size: 12px;
@@ -1214,6 +1460,8 @@
         <dd>Present when filtering is enabled and query params exist. Contains <code>filters</code> array, <code>errors</code> array, and <code>whereClause</code> object with generated SQL.</dd>
         <dt>sorting <span class="property-type">object</span></dt>
         <dd>Present when sorting is enabled and query params exist. Contains <code>sorts</code> array, <code>errors</code> array, and <code>orderByClause</code> string with generated SQL.</dd>
+        <dt>transformationError <span class="property-type">object</span></dt>
+        <dd>Present only when request transformation fails. Contains statusCode (400), error, message, and details.</dd>
     </dl>
 
     <h3>Pagination Support</h3>
@@ -1298,6 +1546,12 @@ const meta = node.context().flow.get('endpointNode').generatePaginationMeta(
         <dd>Generates SQL WHERE clause from parsed filters. Returns <code>{clause: string, params: object}</code>.</dd>
         <dt>generateOrderByClause(sorts)</dt>
         <dd>Generates SQL ORDER BY clause from parsed sorts. Returns a string like <code>ORDER BY field ASC</code>.</dd>
+        <dt>getTransformationConfig()</dt>
+        <dd>Returns the transformation configuration: <code>{enabled, hasRequestTransform, hasResponseTransform, hasFieldMappings}</code>.</dd>
+        <dt>transformRequestBody(body, context)</dt>
+        <dd>Transforms request body using configured field mappings and JSONata expression. Returns <code>{success: boolean, data: any, error?: string}</code>.</dd>
+        <dt>transformResponseData(data, context)</dt>
+        <dd>Transforms response data using configured JSONata expression. Returns <code>{success: boolean, data: any, error?: string}</code>.</dd>
     </dl>
 
     <h3>Filtering Support</h3>
@@ -1383,4 +1637,64 @@ const meta = node.context().flow.get('endpointNode').generatePaginationMeta(
   "errors": [],
   "orderByClause": "ORDER BY status ASC, created_at DESC"
 }</pre>
+
+    <h3>Transformation Support</h3>
+    <p>When transformation is enabled, the endpoint can transform request bodies before validation and provide response transformation expressions for downstream use.</p>
+
+    <h4>Request Transformation</h4>
+    <p>Request transformations are applied <b>before</b> validation. This allows you to:</p>
+    <ul>
+        <li>Normalize incoming data formats</li>
+        <li>Rename fields to match internal conventions</li>
+        <li>Compute derived fields</li>
+        <li>Restructure nested data</li>
+    </ul>
+
+    <h4>JSONata Expressions</h4>
+    <p>Transformations use <a href="https://jsonata.org" target="_blank">JSONata</a>, a lightweight query and transformation language for JSON.</p>
+
+    <h5>Context Variables</h5>
+    <p>The following variables are available in transformation expressions:</p>
+    <ul>
+        <li><code>$</code> - The data being transformed (request body or response data)</li>
+        <li><code>$msg</code> - The full message object</li>
+        <li><code>$params</code> - Path parameters</li>
+        <li><code>$query</code> - Query parameters</li>
+        <li><code>$headers</code> - Request headers</li>
+    </ul>
+
+    <h5>Example: Request Transformation</h5>
+    <pre>$merge([$$, {
+  "fullName": $.firstName & " " & $.lastName,
+  "emailLower": $lowercase($.email),
+  "createdAt": $now()
+}])</pre>
+    <p>This merges the original body with computed fields.</p>
+
+    <h5>Example: Response Transformation</h5>
+    <pre>{
+  "id": $.id,
+  "displayName": $.full_name,
+  "contact": {
+    "email": $.email,
+    "phone": $.phone_number
+  },
+  "active": $.status = "active"
+}</pre>
+    <p>This reshapes the response data for the API consumer.</p>
+
+    <h4>Field Mappings</h4>
+    <p>For simple field renaming, use the field mappings feature instead of JSONata:</p>
+    <pre>firstName->first_name, lastName->last_name, emailAddr->email</pre>
+    <p>Field mappings are applied <b>before</b> JSONata expressions.</p>
+
+    <h4>Response Transformation Usage</h4>
+    <p>Response transformations are stored in <code>msg.endpoint.responseTransformExpression</code> for downstream nodes to apply. Example usage in a function node:</p>
+    <pre>// Apply response transformation
+if (msg.endpoint.responseTransformExpression) {
+    const jsonata = require('jsonata');
+    const expr = jsonata(msg.endpoint.responseTransformExpression);
+    msg.payload = await expr.evaluate(msg.payload);
+}
+return msg;</pre>
 </script>
