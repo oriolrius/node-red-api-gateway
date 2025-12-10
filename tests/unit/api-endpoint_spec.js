@@ -4229,4 +4229,314 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Caching Configuration", function () {
+        it("should be disabled by default", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cachingEnabled", false);
+                    n1.should.have.property("responseCache", null);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should be enabled when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheTTL: 60000,
+                cacheMaxSize: 50,
+                cacheKeyStrategy: "full"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cachingEnabled", true);
+                    n1.should.have.property("cacheTTL", 60000);
+                    n1.should.have.property("cacheMaxSize", 50);
+                    n1.should.have.property("cacheKeyStrategy", "full");
+                    n1.should.have.property("responseCache").which.is.not.null();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use default values when not provided", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cacheTTL", 300000);
+                    n1.should.have.property("cacheMaxSize", 100);
+                    n1.should.have.property("cacheKeyStrategy", "full");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support path key strategy", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheKeyStrategy: "path"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cacheKeyStrategy", "path");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support custom key strategy with expression", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheKeyStrategy: "custom",
+                cacheKeyExpression: "headers.x-tenant-id"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cacheKeyStrategy", "custom");
+                    n1.should.have.property("cacheKeyExpression", "headers.x-tenant-id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse vary headers", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheVaryHeaders: "Accept, Accept-Language"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cacheVaryHeaders").which.is.an.Array();
+                    n1.cacheVaryHeaders.should.deepEqual(["Accept", "Accept-Language"]);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid keyStrategy to full", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheKeyStrategy: "invalid"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("cacheKeyStrategy", "full");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getCachingConfig Method", function () {
+        it("should return caching configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheTTL: 120000,
+                cacheMaxSize: 200,
+                cacheKeyStrategy: "path"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getCachingConfig();
+                    config.should.have.property("enabled", true);
+                    config.should.have.property("ttl", 120000);
+                    config.should.have.property("maxSize", 200);
+                    config.should.have.property("keyStrategy", "path");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("checkCache and storeInCache Methods", function () {
+        it("should return hit:false when disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkCache({ method: 'GET', path: '/users' });
+                    result.should.have.property("hit", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store and retrieve cached responses", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheTTL: 60000,
+                cacheKeyStrategy: "full"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const req = { method: 'GET', path: '/users' };
+                    const { key, etag } = n1.storeInCache(req, { users: [] }, 200);
+                    key.should.be.a.String();
+                    etag.should.startWith('W/"');
+
+                    const result = n1.checkCache(req);
+                    result.should.have.property("hit", true);
+                    result.data.should.deepEqual({ users: [] });
+                    result.statusCode.should.equal(200);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Caching in Message Handling", function () {
+        it("should add cache context to message for GET requests", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("cache");
+                        msg.cache.should.have.property("hit", false);
+                        msg.cache.should.have.property("key").which.is.a.String();
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { method: 'GET', path: '/users', headers: {} } });
+            });
+        });
+
+        it("should not cache POST requests", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", method: "POST", cachingEnabled: true, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("cache");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { method: 'POST', path: '/users', headers: {} } });
+            });
+        });
+
+        it("should include caching config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, cacheKeyStrategy: "path", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("endpoint");
+                        msg.endpoint.should.have.property("cachingEnabled", true);
+                        msg.endpoint.should.have.property("cacheTTL", 60000);
+                        msg.endpoint.should.have.property("cacheKeyStrategy", "path");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { method: 'GET', path: '/users', headers: {} } });
+            });
+        });
+    });
+
+    describe("getEndpointInfo with Caching", function () {
+        it("should include caching in endpoint info", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                cachingEnabled: true,
+                cacheTTL: 120000,
+                cacheMaxSize: 50,
+                cacheKeyStrategy: "path"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("cachingEnabled", true);
+                    info.should.have.property("cacheTTL", 120000);
+                    info.should.have.property("cacheMaxSize", 50);
+                    info.should.have.property("cacheKeyStrategy", "path");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });

@@ -48,7 +48,15 @@
             rateLimitRequests: { value: "100" },
             rateLimitWindowMs: { value: "60000" },
             rateLimitKeyType: { value: "ip" },
-            rateLimitCustomKeyPath: { value: "" }
+            rateLimitCustomKeyPath: { value: "" },
+            // Caching
+            cachingEnabled: { value: false },
+            cacheTTL: { value: "300000" },
+            cacheMaxSize: { value: "100" },
+            cacheKeyStrategy: { value: "full" },
+            cacheKeyExpression: { value: "" },
+            cacheVaryHeaders: { value: "" },
+            cachePrivate: { value: false }
         },
         inputs: 1,
         outputs: 1,
@@ -642,6 +650,67 @@
             $('#node-input-rateLimitRequests').on('input change', validateRateLimitConfig);
             $('#node-input-rateLimitWindowMs').on('input change', validateRateLimitConfig);
 
+            // Toggle caching configuration visibility
+            function updateCachingVisibility() {
+                var enabled = $('#node-input-cachingEnabled').is(':checked');
+                if (enabled) {
+                    $('#caching-config').show();
+                } else {
+                    $('#caching-config').hide();
+                }
+                updateCacheKeyExpressionVisibility();
+            }
+
+            // Toggle custom key expression visibility based on strategy
+            function updateCacheKeyExpressionVisibility() {
+                var keyStrategy = $('#node-input-cacheKeyStrategy').val();
+                if (keyStrategy === 'custom') {
+                    $('#cache-key-expression-row').show();
+                } else {
+                    $('#cache-key-expression-row').hide();
+                }
+            }
+
+            // Validate caching configuration
+            function validateCachingConfig() {
+                var ttl = parseInt($('#node-input-cacheTTL').val(), 10);
+                var maxSize = parseInt($('#node-input-cacheMaxSize').val(), 10);
+                var $ttlError = $('#cache-ttl-error');
+                var $sizeError = $('#cache-size-error');
+
+                // Validate TTL
+                if (isNaN(ttl) || ttl < 0) {
+                    $ttlError.text('Must be a non-negative integer (0 = no expiry)').show();
+                } else {
+                    $ttlError.hide();
+                }
+
+                // Validate max size
+                if (isNaN(maxSize) || maxSize < 1) {
+                    $sizeError.text('Must be a positive integer').show();
+                } else {
+                    $sizeError.hide();
+                }
+            }
+
+            // Display vary headers as badges
+            function updateVaryHeadersDisplay() {
+                var varyHeaders = $('#node-input-cacheVaryHeaders').val() || '';
+                var headers = varyHeaders.split(',').map(function(h) { return h.trim(); }).filter(function(h) { return h.length > 0; });
+                var $display = $('#vary-headers-display');
+                $display.empty();
+                headers.forEach(function(header) {
+                    $display.append('<span class="field-badge">' + header + '</span>');
+                });
+            }
+
+            // Event listeners for caching
+            $('#node-input-cachingEnabled').on('change', updateCachingVisibility);
+            $('#node-input-cacheKeyStrategy').on('change', updateCacheKeyExpressionVisibility);
+            $('#node-input-cacheTTL').on('input change', validateCachingConfig);
+            $('#node-input-cacheMaxSize').on('input change', validateCachingConfig);
+            $('#node-input-cacheVaryHeaders').on('input change', updateVaryHeadersDisplay);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
@@ -655,6 +724,8 @@
             updateTransformationVisibility();
             updateFieldMappingsDisplay();
             updateRateLimitingVisibility();
+            updateCachingVisibility();
+            updateVaryHeadersDisplay();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -1180,6 +1251,83 @@
             &nbsp;&nbsp;- <b>API Key:</b> Limits requests per API key (from <code>X-API-Key</code> header)<br>
             &nbsp;&nbsp;- <b>Custom:</b> Limits by custom request property (specify dot-notation path)<br>
             <i class="fa fa-info-circle"></i> <b>Response headers:</b> <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>, <code>Retry-After</code>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-database"></i> Response Caching</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-cachingEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-cachingEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable response caching (GET/HEAD only)</span>
+    </div>
+
+    <div id="caching-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-cacheTTL"><i class="fa fa-clock-o"></i> TTL (ms)</label>
+            <input type="number" id="node-input-cacheTTL" min="0" style="width: 100px;" placeholder="300000">
+            <span style="margin-left: 5px; color: #666;">milliseconds (300000 = 5 minutes, 0 = no expiry)</span>
+            <div id="cache-ttl-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-cacheMaxSize"><i class="fa fa-expand"></i> Max Size</label>
+            <input type="number" id="node-input-cacheMaxSize" min="1" style="width: 100px;" placeholder="100">
+            <span style="margin-left: 5px; color: #666;">maximum cached responses</span>
+            <div id="cache-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-cacheKeyStrategy"><i class="fa fa-key"></i> Key Strategy</label>
+            <select id="node-input-cacheKeyStrategy" style="width: 200px;">
+                <option value="full">Full (method + path + query)</option>
+                <option value="path">Path Only (ignore query params)</option>
+                <option value="query">Query (method + path + sorted query)</option>
+                <option value="custom">Custom (expression)</option>
+            </select>
+        </div>
+
+        <div class="form-row" id="cache-key-expression-row" style="display: none;">
+            <label for="node-input-cacheKeyExpression"><i class="fa fa-code"></i> Key Expression</label>
+            <input type="text" id="node-input-cacheKeyExpression" placeholder="req.path">
+            <div class="form-tips" style="margin-left: 105px;">Dot-notation path to extract cache key from request (e.g., <code>req.url</code>)</div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-cacheVaryHeaders"><i class="fa fa-random"></i> Vary Headers</label>
+            <input type="text" id="node-input-cacheVaryHeaders" placeholder="Accept, Accept-Language">
+            <div class="form-tips" style="margin-left: 105px;">Comma-separated headers to include in cache key variation</div>
+        </div>
+        <div class="form-row" style="margin-top: 5px;">
+            <div id="vary-headers-display" style="margin-left: 105px;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-cachePrivate">
+                <i class="fa fa-lock"></i> Private
+            </label>
+            <input type="checkbox" id="node-input-cachePrivate" style="width: auto; margin-left: 5px;">
+            <span style="margin-left: 5px;">Use private cache (Cache-Control: private)</span>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> Response caching stores responses to reduce processing for repeated requests.<br>
+            <i class="fa fa-info-circle"></i> <b>Key strategies:</b><br>
+            &nbsp;&nbsp;- <b>Full:</b> Cache key includes method, path, and sorted query parameters<br>
+            &nbsp;&nbsp;- <b>Path:</b> Cache key includes only method and path (ignores query params)<br>
+            &nbsp;&nbsp;- <b>Query:</b> Same as Full (method + path + sorted query params)<br>
+            &nbsp;&nbsp;- <b>Custom:</b> Use custom expression to extract cache key<br>
+            <i class="fa fa-info-circle"></i> <b>Features:</b><br>
+            &nbsp;&nbsp;- ETag generation and 304 Not Modified support<br>
+            &nbsp;&nbsp;- Cache-Control and Vary headers<br>
+            &nbsp;&nbsp;- X-Cache: HIT/MISS headers<br>
+            <i class="fa fa-info-circle"></i> <b>Note:</b> Only GET and HEAD requests are cached.
         </div>
     </div>
 
@@ -1895,4 +2043,108 @@ return msg;</pre>
         <dt>resetRateLimit(key)</dt>
         <dd>Resets rate limit for a specific key.</dd>
     </dl>
+
+    <h3>Response Caching Support</h3>
+    <p>When caching is enabled, the endpoint caches responses for GET and HEAD requests using an LRU cache with TTL expiration.</p>
+
+    <h4>Configuration</h4>
+    <dl class="message-properties">
+        <dt>Enable Caching
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>Enable or disable response caching for this endpoint.</dd>
+
+        <dt>TTL (ms)
+            <span class="property-type">number</span>
+        </dt>
+        <dd>Time to live in milliseconds. Default is 300000 (5 minutes). Set to 0 for no expiry.</dd>
+
+        <dt>Max Size
+            <span class="property-type">number</span>
+        </dt>
+        <dd>Maximum number of cached responses. Default is 100. Uses LRU eviction.</dd>
+
+        <dt>Key Strategy
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The method used to generate cache keys:
+            <ul>
+                <li><b>Full:</b> method + path + sorted query parameters</li>
+                <li><b>Path:</b> method + path only (ignores query params)</li>
+                <li><b>Query:</b> Same as Full</li>
+                <li><b>Custom:</b> Uses custom expression to extract key</li>
+            </ul>
+        </dd>
+
+        <dt>Key Expression (Custom only)
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Dot-notation path to extract the cache key from the request object.</dd>
+
+        <dt>Vary Headers
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Comma-separated header names to include in cache key variation (e.g., "Accept, Accept-Language").</dd>
+
+        <dt>Private
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>Use private cache (Cache-Control: private instead of public).</dd>
+    </dl>
+
+    <h4>Response Headers</h4>
+    <p>When caching is enabled, the following headers are added to responses:</p>
+    <ul>
+        <li><code>Cache-Control</code> - Cache directives (public/private, max-age)</li>
+        <li><code>ETag</code> - Entity tag for conditional requests</li>
+        <li><code>Vary</code> - Headers that affect cache variation</li>
+        <li><code>X-Cache</code> - HIT or MISS indicator</li>
+        <li><code>Age</code> - Time since response was cached (seconds)</li>
+    </ul>
+
+    <h4>Conditional Requests</h4>
+    <p>The endpoint supports conditional requests with the <code>If-None-Match</code> header:</p>
+    <ul>
+        <li>Client sends <code>If-None-Match: "etag-value"</code></li>
+        <li>If ETag matches cached response, returns 304 Not Modified</li>
+        <li>Otherwise, returns full response with new ETag</li>
+    </ul>
+
+    <h4>Message Context</h4>
+    <p>When caching is enabled, the <code>msg.cache</code> object is added to the message:</p>
+    <pre>{
+  "hit": true,
+  "key": "GET|/users|page=1",
+  "age": 30000
+}</pre>
+
+    <h4>Cache Methods</h4>
+    <dl class="message-properties">
+        <dt>getCachingConfig()</dt>
+        <dd>Returns the caching configuration: <code>{enabled, ttl, maxSize, keyStrategy, keyExpression, varyHeaders, private}</code>.</dd>
+        <dt>checkCache(req)</dt>
+        <dd>Checks cache for a request. Returns <code>{hit, data, statusCode, etag, age, key}</code>.</dd>
+        <dt>storeInCache(req, data, statusCode, headers)</dt>
+        <dd>Stores a response in the cache. Returns <code>{key, etag}</code>.</dd>
+        <dt>invalidateCache(req)</dt>
+        <dd>Removes a cache entry by request.</dd>
+        <dt>clearCache()</dt>
+        <dd>Clears all cached entries.</dd>
+        <dt>getCacheStatistics()</dt>
+        <dd>Returns cache statistics including hits, misses, evictions, and hit rate.</dd>
+        <dt>generateETag(data)</dt>
+        <dd>Generates an ETag for the given data.</dd>
+        <dt>checkConditionalRequest(req, etag)</dt>
+        <dd>Checks if request has matching If-None-Match header.</dd>
+    </dl>
+
+    <h4>Cache Invalidation</h4>
+    <p>To invalidate cached responses (e.g., after mutations), use the cache methods:</p>
+    <pre>// In a function node after a successful POST/PUT/DELETE
+const endpointNode = RED.nodes.getNode("endpoint-node-id");
+if (endpointNode) {
+    endpointNode.clearCache();  // Clear all cached responses
+    // Or invalidate specific entry
+    endpointNode.invalidateCache(msg.req);
+}</pre>
 </script>

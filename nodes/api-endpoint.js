@@ -40,6 +40,18 @@ const {
     createRateLimitError
 } = require('../lib/rate-limiter');
 
+const {
+    CACHE_KEY_STRATEGIES,
+    CACHE_DEFAULTS,
+    ResponseCache,
+    validateCacheConfig,
+    generateCacheKey,
+    generateETag,
+    checkConditionalRequest,
+    generateCacheHeaders,
+    parseVaryHeaders
+} = require('../lib/response-cache');
+
 /**
  * Parses a scopes configuration string into an array of scope strings
  * @param {string|Array} scopes - Comma-separated string or array of scopes
@@ -756,6 +768,41 @@ module.exports = function(RED) {
             });
         }
 
+        // Caching configuration
+        node.cachingEnabled = config.cachingEnabled === true;
+        node.cacheTTL = parseInt(config.cacheTTL, 10);
+        if (isNaN(node.cacheTTL) || node.cacheTTL < 0) {
+            node.cacheTTL = CACHE_DEFAULTS.ttl;
+        }
+        node.cacheMaxSize = parseInt(config.cacheMaxSize, 10) || CACHE_DEFAULTS.maxSize;
+        node.cacheKeyStrategy = CACHE_KEY_STRATEGIES.includes(config.cacheKeyStrategy)
+            ? config.cacheKeyStrategy
+            : CACHE_DEFAULTS.keyStrategy;
+        node.cacheKeyExpression = (config.cacheKeyExpression || '').trim() || null;
+        node.cacheVaryHeaders = parseVaryHeaders(config.cacheVaryHeaders);
+        node.cachePrivate = config.cachePrivate === true;
+        node.responseCache = null;
+
+        // Initialize response cache if enabled
+        if (node.cachingEnabled) {
+            const cacheValidation = validateCacheConfig({
+                ttl: node.cacheTTL,
+                maxSize: node.cacheMaxSize,
+                keyStrategy: node.cacheKeyStrategy
+            });
+            if (!cacheValidation.valid) {
+                cacheValidation.errors.forEach(error => node.warn(`Cache config: ${error}`));
+            }
+
+            node.responseCache = new ResponseCache({
+                ttl: node.cacheTTL,
+                maxSize: node.cacheMaxSize,
+                keyStrategy: node.cacheKeyStrategy,
+                customKeyExpression: node.cacheKeyExpression,
+                varyHeaders: node.cacheVaryHeaders
+            });
+        }
+
         // Parse and validate transformation expressions if enabled
         if (node.transformationEnabled) {
             // Request transformation expression
@@ -1129,6 +1176,79 @@ module.exports = function(RED) {
             }
         };
 
+        // Method to get caching configuration
+        node.getCachingConfig = function() {
+            return {
+                enabled: node.cachingEnabled,
+                ttl: node.cacheTTL,
+                maxSize: node.cacheMaxSize,
+                keyStrategy: node.cacheKeyStrategy,
+                keyExpression: node.cacheKeyExpression,
+                varyHeaders: node.cacheVaryHeaders,
+                private: node.cachePrivate
+            };
+        };
+
+        // Method to check cache for a request
+        node.checkCache = function(req) {
+            if (!node.cachingEnabled || !node.responseCache) {
+                return { hit: false, key: null };
+            }
+            return node.responseCache.getByRequest(req);
+        };
+
+        // Method to store response in cache
+        node.storeInCache = function(req, data, statusCode = 200, headers = {}) {
+            if (!node.cachingEnabled || !node.responseCache) {
+                return { key: null, etag: null };
+            }
+            return node.responseCache.setByRequest(req, data, statusCode, headers);
+        };
+
+        // Method to invalidate cache entry
+        node.invalidateCache = function(req) {
+            if (node.responseCache) {
+                return node.responseCache.deleteByRequest(req);
+            }
+            return false;
+        };
+
+        // Method to clear entire cache
+        node.clearCache = function() {
+            if (node.responseCache) {
+                node.responseCache.clear();
+            }
+        };
+
+        // Method to get cache statistics
+        node.getCacheStatistics = function() {
+            if (!node.responseCache) {
+                return null;
+            }
+            return node.responseCache.getStatistics();
+        };
+
+        // Method to check conditional request (ETag/If-None-Match)
+        node.checkConditionalRequest = function(req, etag) {
+            return checkConditionalRequest(req, etag);
+        };
+
+        // Method to generate ETag for data
+        node.generateETag = function(data) {
+            return generateETag(data);
+        };
+
+        // Method to get cache headers
+        node.getCacheHeaders = function() {
+            if (!node.cachingEnabled) {
+                return { 'Cache-Control': 'no-store' };
+            }
+            return generateCacheHeaders({
+                ttl: node.cacheTTL,
+                varyHeaders: node.cacheVaryHeaders
+            }, node.cachePrivate);
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -1179,7 +1299,14 @@ module.exports = function(RED) {
                 rateLimitingEnabled: node.rateLimitingEnabled,
                 rateLimitRequests: node.rateLimitRequests,
                 rateLimitWindowMs: node.rateLimitWindowMs,
-                rateLimitKeyType: node.rateLimitKeyType
+                rateLimitKeyType: node.rateLimitKeyType,
+                // Caching configuration
+                cachingEnabled: node.cachingEnabled,
+                cacheTTL: node.cacheTTL,
+                cacheMaxSize: node.cacheMaxSize,
+                cacheKeyStrategy: node.cacheKeyStrategy,
+                cacheVaryHeaders: node.cacheVaryHeaders,
+                cachePrivate: node.cachePrivate
             };
         };
 
@@ -1270,7 +1397,13 @@ module.exports = function(RED) {
                     rateLimitingEnabled: node.rateLimitingEnabled,
                     rateLimitRequests: node.rateLimitRequests,
                     rateLimitWindowMs: node.rateLimitWindowMs,
-                    rateLimitKeyType: node.rateLimitKeyType
+                    rateLimitKeyType: node.rateLimitKeyType,
+                    // Caching configuration
+                    cachingEnabled: node.cachingEnabled,
+                    cacheTTL: node.cacheTTL,
+                    cacheKeyStrategy: node.cacheKeyStrategy,
+                    cacheVaryHeaders: node.cacheVaryHeaders,
+                    cachePrivate: node.cachePrivate
                 };
 
                 // Add CRUD context if operation is configured
@@ -1360,6 +1493,67 @@ module.exports = function(RED) {
                             done();
                         }
                         return;
+                    }
+                }
+
+                // Perform cache check if enabled (only for cacheable methods)
+                if (node.cachingEnabled && msg.req && (msg.req.method === 'GET' || msg.req.method === 'HEAD')) {
+                    const cacheResult = node.checkCache(msg.req);
+
+                    // Add cache headers to response
+                    if (msg.res && typeof msg.res.set === 'function') {
+                        const cacheHeaders = node.getCacheHeaders();
+                        for (const [name, value] of Object.entries(cacheHeaders)) {
+                            msg.res.set(name, value);
+                        }
+                    }
+
+                    // Add cache context to message
+                    msg.cache = {
+                        hit: cacheResult.hit,
+                        key: cacheResult.key,
+                        age: cacheResult.age || null
+                    };
+
+                    if (cacheResult.hit) {
+                        // Check for conditional request (If-None-Match)
+                        if (cacheResult.etag && node.checkConditionalRequest(msg.req, cacheResult.etag)) {
+                            // Return 304 Not Modified
+                            if (msg.res && typeof msg.res.status === 'function') {
+                                msg.res.set('ETag', cacheResult.etag);
+                                msg.res.status(304).end();
+                                if (done) {
+                                    done();
+                                }
+                                return;
+                            }
+                        }
+
+                        // Return cached response
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            if (cacheResult.etag) {
+                                msg.res.set('ETag', cacheResult.etag);
+                            }
+                            msg.res.set('X-Cache', 'HIT');
+                            msg.res.set('Age', String(Math.floor((cacheResult.age || 0) / 1000)));
+                            msg.res.status(cacheResult.statusCode || 200).json(cacheResult.data);
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+
+                        // If no res object, add cached data to message for downstream handling
+                        msg.cachedResponse = {
+                            data: cacheResult.data,
+                            statusCode: cacheResult.statusCode,
+                            etag: cacheResult.etag
+                        };
+                    } else {
+                        // Cache miss - add header for downstream
+                        if (msg.res && typeof msg.res.set === 'function') {
+                            msg.res.set('X-Cache', 'MISS');
+                        }
                     }
                 }
 
@@ -1526,6 +1720,12 @@ module.exports = function(RED) {
             if (node.rateLimiter) {
                 node.rateLimiter.shutdown();
                 node.rateLimiter = null;
+            }
+
+            // Shutdown response cache if enabled
+            if (node.responseCache) {
+                node.responseCache.shutdown();
+                node.responseCache = null;
             }
 
             if (done) {
