@@ -217,6 +217,101 @@ describe("api-config Node", function () {
         });
     });
 
+    it("should store JWT validation settings", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "JWT Config",
+            oauth2Enabled: true,
+            keycloakUrl: "https://keycloak.example.com",
+            keycloakRealm: "myrealm",
+            keycloakClientId: "my-client",
+            jwtValidateIssuer: true,
+            jwtIssuer: "https://keycloak.example.com/realms/myrealm",
+            jwtValidateAudience: true,
+            jwtAudience: "my-client",
+            jwtClockTolerance: 30,
+            jwtAlgorithms: "RS256"
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("jwtValidateIssuer", true);
+                c1.should.have.property("jwtIssuer", "https://keycloak.example.com/realms/myrealm");
+                c1.should.have.property("jwtValidateAudience", true);
+                c1.should.have.property("jwtAudience", "my-client");
+                c1.should.have.property("jwtClockTolerance", 30);
+                c1.should.have.property("jwtAlgorithms", "RS256");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should allow disabling JWT issuer validation", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "JWT No Issuer Validation",
+            oauth2Enabled: true,
+            jwtValidateIssuer: false,
+            jwtValidateAudience: true,
+            jwtAudience: "my-client"
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("jwtValidateIssuer", false);
+                c1.should.have.property("jwtValidateAudience", true);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should allow disabling JWT audience validation", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "JWT No Audience Validation",
+            oauth2Enabled: true,
+            jwtValidateIssuer: true,
+            jwtIssuer: "https://keycloak.example.com/realms/myrealm",
+            jwtValidateAudience: false
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("jwtValidateIssuer", true);
+                c1.should.have.property("jwtValidateAudience", false);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should support different JWT algorithms", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "JWT ES256 Config",
+            oauth2Enabled: true,
+            jwtAlgorithms: "ES256"
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("jwtAlgorithms", "ES256");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
     it("should handle close event properly", function (done) {
         const flow = [{
             id: "c1",

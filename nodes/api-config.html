@@ -20,6 +20,13 @@
             keycloakUrl: { value: "" },
             keycloakRealm: { value: "" },
             keycloakClientId: { value: "" },
+            // JWT validation settings
+            jwtValidateIssuer: { value: true },
+            jwtIssuer: { value: "" },
+            jwtValidateAudience: { value: true },
+            jwtAudience: { value: "" },
+            jwtClockTolerance: { value: 0 },
+            jwtAlgorithms: { value: "RS256" },
             // OPA configuration
             opaEnabled: { value: false },
             opaUrl: { value: "http://localhost:8181" },
@@ -63,8 +70,29 @@
             $("#node-config-input-oauth2Enabled").on("change", function() {
                 if ($(this).is(":checked")) {
                     $(".oauth2-config-row").show();
+                    // Trigger JWT validation toggles to update visibility
+                    $("#node-config-input-jwtValidateIssuer").trigger("change");
+                    $("#node-config-input-jwtValidateAudience").trigger("change");
                 } else {
                     $(".oauth2-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle JWT Issuer field visibility
+            $("#node-config-input-jwtValidateIssuer").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".jwt-issuer-row").show();
+                } else {
+                    $(".jwt-issuer-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle JWT Audience field visibility
+            $("#node-config-input-jwtValidateAudience").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".jwt-audience-row").show();
+                } else {
+                    $(".jwt-audience-row").hide();
                 }
             }).trigger("change");
 
@@ -192,6 +220,49 @@
         <input type="password" id="node-config-input-keycloakClientSecret" placeholder="client-secret">
     </div>
 
+    <!-- JWT Validation Settings -->
+    <div class="form-row oauth2-config-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-id-badge"></i> JWT Validation</label>
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-jwtValidateIssuer">
+            <i class="fa fa-check-square"></i> Validate Issuer
+        </label>
+        <input type="checkbox" id="node-config-input-jwtValidateIssuer" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row oauth2-config-row jwt-issuer-row">
+        <label for="node-config-input-jwtIssuer"><i class="fa fa-building"></i> Issuer</label>
+        <input type="text" id="node-config-input-jwtIssuer" placeholder="https://keycloak.example.com/realms/myrealm">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-jwtValidateAudience">
+            <i class="fa fa-check-square"></i> Validate Audience
+        </label>
+        <input type="checkbox" id="node-config-input-jwtValidateAudience" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row oauth2-config-row jwt-audience-row">
+        <label for="node-config-input-jwtAudience"><i class="fa fa-users"></i> Audience</label>
+        <input type="text" id="node-config-input-jwtAudience" placeholder="my-client">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-jwtClockTolerance"><i class="fa fa-clock-o"></i> Clock Tolerance (s)</label>
+        <input type="number" id="node-config-input-jwtClockTolerance" placeholder="0" min="0" style="width: 70px;">
+    </div>
+    <div class="form-row oauth2-config-row">
+        <label for="node-config-input-jwtAlgorithms"><i class="fa fa-cog"></i> Algorithms</label>
+        <select id="node-config-input-jwtAlgorithms" style="width: 70%;">
+            <option value="RS256">RS256 (RSA + SHA-256)</option>
+            <option value="RS384">RS384 (RSA + SHA-384)</option>
+            <option value="RS512">RS512 (RSA + SHA-512)</option>
+            <option value="ES256">ES256 (ECDSA + SHA-256)</option>
+            <option value="ES384">ES384 (ECDSA + SHA-384)</option>
+            <option value="ES512">ES512 (ECDSA + SHA-512)</option>
+            <option value="PS256">PS256 (RSA-PSS + SHA-256)</option>
+            <option value="PS384">PS384 (RSA-PSS + SHA-384)</option>
+            <option value="PS512">PS512 (RSA-PSS + SHA-512)</option>
+        </select>
+    </div>
+
     <!-- OPA Configuration Section -->
     <div class="form-row" style="margin-top: 15px;">
         <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
@@ -284,6 +355,17 @@
         <li><b>Realm</b> - Keycloak realm name</li>
         <li><b>Client ID</b> - OAuth2 client identifier</li>
         <li><b>Client Secret</b> - OAuth2 client secret (stored securely)</li>
+    </ul>
+
+    <h4>JWT Validation Settings</h4>
+    <p>Configure how JWT tokens are validated:</p>
+    <ul>
+        <li><b>Validate Issuer</b> - Check that the token's issuer (iss) claim matches expected value</li>
+        <li><b>Issuer</b> - Expected issuer URL (e.g., https://keycloak.example.com/realms/myrealm)</li>
+        <li><b>Validate Audience</b> - Check that the token's audience (aud) claim matches expected value</li>
+        <li><b>Audience</b> - Expected audience value (typically the client ID)</li>
+        <li><b>Clock Tolerance</b> - Seconds of tolerance for token expiration checks (default: 0)</li>
+        <li><b>Algorithms</b> - Allowed signing algorithms (RS256, ES256, etc.)</li>
     </ul>
 
     <h3>OPA Configuration</h3>

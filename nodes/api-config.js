@@ -29,6 +29,14 @@ module.exports = function(RED) {
         node.keycloakClientId = config.keycloakClientId;
         // Credentials: keycloakClientSecret stored in credentials
 
+        // JWT validation settings
+        node.jwtValidateIssuer = config.jwtValidateIssuer;
+        node.jwtIssuer = config.jwtIssuer;
+        node.jwtValidateAudience = config.jwtValidateAudience;
+        node.jwtAudience = config.jwtAudience;
+        node.jwtClockTolerance = config.jwtClockTolerance;
+        node.jwtAlgorithms = config.jwtAlgorithms;
+
         // OPA (Open Policy Agent) configuration
         node.opaEnabled = config.opaEnabled;
         node.opaUrl = config.opaUrl;
