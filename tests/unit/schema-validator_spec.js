@@ -7,10 +7,12 @@ const {
     validateBody,
     validateQuery,
     validateParams,
+    validateResponse,
     createParamSchema,
     mapParamType,
     validateSchema,
-    parseSchema
+    parseSchema,
+    parseResponseSchemas
 } = require("../../lib/schema-validator");
 
 describe("schema-validator", function () {
@@ -541,6 +543,146 @@ describe("schema-validator", function () {
             };
             validator.validate("AB1234", schema).valid.should.be.true();
             validator.validate("ab1234", schema).valid.should.be.false();
+        });
+    });
+
+    describe("validateResponse", function () {
+        it("should pass when no schema provided", function () {
+            const result = validateResponse({ data: "any" }, null);
+            result.valid.should.be.true();
+        });
+
+        it("should validate response against schema", function () {
+            const schema = {
+                type: "object",
+                properties: {
+                    id: { type: "integer" },
+                    name: { type: "string" }
+                },
+                required: ["id", "name"]
+            };
+            const result = validateResponse({ id: 1, name: "John" }, schema);
+            result.valid.should.be.true();
+        });
+
+        it("should fail for invalid response", function () {
+            const schema = {
+                type: "object",
+                properties: {
+                    id: { type: "integer" }
+                },
+                required: ["id"]
+            };
+            const result = validateResponse({ name: "John" }, schema);
+            result.valid.should.be.false();
+            result.errors.length.should.be.above(0);
+        });
+
+        it("should validate response arrays", function () {
+            const schema = {
+                type: "array",
+                items: {
+                    type: "object",
+                    properties: { id: { type: "integer" } }
+                }
+            };
+            const result = validateResponse([{ id: 1 }, { id: 2 }], schema);
+            result.valid.should.be.true();
+        });
+    });
+
+    describe("parseResponseSchemas", function () {
+        it("should return empty object for null input", function () {
+            const result = parseResponseSchemas(null);
+            result.schemas.should.deepEqual({});
+            should(result.error).be.null();
+        });
+
+        it("should return empty object for empty string", function () {
+            const result = parseResponseSchemas("");
+            result.schemas.should.deepEqual({});
+            should(result.error).be.null();
+        });
+
+        it("should parse valid response schemas", function () {
+            const schemasStr = JSON.stringify({
+                "200": { type: "object", properties: { id: { type: "integer" } } },
+                "404": { type: "object", properties: { error: { type: "string" } } }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            result.schemas.should.have.property("200");
+            result.schemas.should.have.property("404");
+            result.schemas["200"].properties.should.have.property("id");
+        });
+
+        it("should accept default schema", function () {
+            const schemasStr = JSON.stringify({
+                "200": { type: "object" },
+                "default": { type: "object", properties: { error: { type: "string" } } }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            result.schemas.should.have.property("200");
+            result.schemas.should.have.property("default");
+        });
+
+        it("should reject invalid status codes", function () {
+            const schemasStr = JSON.stringify({
+                "999": { type: "object" }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            should(result.schemas).be.null();
+            result.error.should.containEql("Invalid status code");
+        });
+
+        it("should reject non-numeric status codes", function () {
+            const schemasStr = JSON.stringify({
+                "abc": { type: "object" }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            should(result.schemas).be.null();
+            result.error.should.containEql("Invalid status code");
+        });
+
+        it("should reject non-object schemas", function () {
+            const schemasStr = JSON.stringify({
+                "200": "not an object"
+            });
+            const result = parseResponseSchemas(schemasStr);
+            should(result.schemas).be.null();
+            result.error.should.containEql("must be an object");
+        });
+
+        it("should reject invalid JSON", function () {
+            const result = parseResponseSchemas("not valid json");
+            should(result.schemas).be.null();
+            result.error.should.containEql("Invalid JSON");
+        });
+
+        it("should reject array input", function () {
+            const result = parseResponseSchemas("[]");
+            should(result.schemas).be.null();
+            result.error.should.containEql("must be an object");
+        });
+
+        it("should validate each schema syntax", function () {
+            const schemasStr = JSON.stringify({
+                "200": { type: "invalid-type" }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            should(result.schemas).be.null();
+            result.error.should.containEql("Invalid schema for status 200");
+        });
+
+        it("should parse all valid 1xx-5xx status codes", function () {
+            const schemasStr = JSON.stringify({
+                "100": { type: "object" },
+                "201": { type: "object" },
+                "301": { type: "object" },
+                "400": { type: "object" },
+                "500": { type: "object" }
+            });
+            const result = parseResponseSchemas(schemasStr);
+            Object.keys(result.schemas).should.have.length(5);
         });
     });
 });

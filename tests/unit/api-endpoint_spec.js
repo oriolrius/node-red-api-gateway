@@ -747,6 +747,353 @@ describe("api-endpoint Node", function () {
         });
     });
 
+    describe("Response Schema Configuration", function () {
+        it("should have default response configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("successStatusCode", 200);
+                    n1.should.have.property("responseContentType", "application/json");
+                    n1.should.have.property("validateResponseEnabled", false);
+                    n1.should.have.property("responseSchemas").which.is.an.Object();
+                    Object.keys(n1.responseSchemas).should.have.length(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse response schemas from JSON string", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": {
+                    type: "object",
+                    properties: { id: { type: "integer" }, name: { type: "string" } }
+                },
+                "404": {
+                    type: "object",
+                    properties: { error: { type: "string" } }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("responseSchemas");
+                    n1.responseSchemas.should.have.property("200");
+                    n1.responseSchemas.should.have.property("404");
+                    n1.responseSchemas["200"].properties.should.have.property("id");
+                    n1.responseSchemas["404"].properties.should.have.property("error");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store custom success status code", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                method: "POST",
+                successStatusCode: "201"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("successStatusCode", 201);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store custom content type", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                responseContentType: "application/xml"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("responseContentType", "application/xml");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should enable response validation in dev mode", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                validateResponseEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("validateResponseEnabled", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should validate response data against schema", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": {
+                    type: "object",
+                    properties: {
+                        id: { type: "integer" },
+                        name: { type: "string" }
+                    },
+                    required: ["id", "name"]
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateResponseData(200, { id: 1, name: "John" });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return validation errors for invalid response", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": {
+                    type: "object",
+                    properties: { id: { type: "integer" } },
+                    required: ["id"]
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateResponseData(200, { name: "John" });
+                    result.valid.should.be.false();
+                    result.errors.length.should.be.above(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use default schema when status code not found", function (done) {
+            const responseSchemas = JSON.stringify({
+                "default": {
+                    type: "object",
+                    properties: { message: { type: "string" } }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateResponseData(500, { message: "Error" });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should pass validation when no schema defined", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateResponseData(200, { anything: "goes" });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should get response schema for status code", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": { type: "object" },
+                "404": { type: "object", properties: { error: { type: "string" } } }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const schema200 = n1.getResponseSchema(200);
+                    const schema404 = n1.getResponseSchema(404);
+                    const schema500 = n1.getResponseSchema(500);
+                    schema200.should.have.property("type", "object");
+                    schema404.properties.should.have.property("error");
+                    (schema500 === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include response info in getEndpointInfo", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": { type: "object" },
+                "404": { type: "object" }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                successStatusCode: "201",
+                responseContentType: "application/xml",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("successStatusCode", 201);
+                    info.should.have.property("responseContentType", "application/xml");
+                    info.should.have.property("hasResponseSchemas", true);
+                    info.should.have.property("responseStatusCodes").which.is.an.Array();
+                    info.responseStatusCodes.should.containEql("200");
+                    info.responseStatusCodes.should.containEql("404");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("OpenAPI Response Generation", function () {
+        it("should generate OpenAPI responses from schemas", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": {
+                    type: "object",
+                    properties: { id: { type: "integer" } },
+                    description: "User found"
+                },
+                "404": {
+                    type: "object",
+                    properties: { error: { type: "string" } }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const responses = n1.getOpenApiResponses();
+                    responses.should.have.property("200");
+                    responses.should.have.property("404");
+                    responses["200"].should.have.property("description", "User found");
+                    responses["200"].should.have.property("content");
+                    responses["200"].content.should.have.property("application/json");
+                    responses["404"].should.have.property("description", "Not found");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include default success response when not defined", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                successStatusCode: "201"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const responses = n1.getOpenApiResponses();
+                    responses.should.have.property("201");
+                    responses["201"].should.have.property("description", "Resource created successfully");
+                    responses["201"].content.should.have.property("application/json");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use correct content type in OpenAPI responses", function (done) {
+            const responseSchemas = JSON.stringify({
+                "200": { type: "object" }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                responseContentType: "application/xml",
+                responseSchemas: responseSchemas
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const responses = n1.getOpenApiResponses();
+                    responses["200"].content.should.have.property("application/xml");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
     describe("Message Handling with Validation", function () {
         it("should add validationEnabled to endpoint metadata", function (done) {
             const flow = [

@@ -10,7 +10,12 @@
             validationEnabled: { value: true },
             bodySchema: { value: "" },
             querySchema: { value: "" },
-            paramsSchema: { value: "" }
+            paramsSchema: { value: "" },
+            // Response configuration
+            successStatusCode: { value: "200" },
+            responseContentType: { value: "application/json" },
+            responseSchemas: { value: "" },
+            validateResponseEnabled: { value: false }
         },
         inputs: 1,
         outputs: 1,
@@ -158,6 +163,43 @@
             setupSchemaValidation('#node-input-querySchema', '#query-schema-error');
             setupSchemaValidation('#node-input-paramsSchema', '#params-schema-error');
 
+            // Setup response schemas validation (different format - object with status codes as keys)
+            $('#node-input-responseSchemas').on('input change', function() {
+                var value = $(this).val().trim();
+                var $error = $('#response-schemas-error');
+                if (!value) {
+                    $(this).removeClass('input-error');
+                    $error.hide();
+                    return;
+                }
+                try {
+                    var schemas = JSON.parse(value);
+                    if (typeof schemas !== 'object' || schemas === null || Array.isArray(schemas)) {
+                        $(this).addClass('input-error');
+                        $error.text('Must be an object mapping status codes to schemas').show();
+                        return;
+                    }
+                    // Validate each status code
+                    for (var statusCode in schemas) {
+                        if (statusCode !== 'default' && !/^[1-5][0-9]{2}$/.test(statusCode)) {
+                            $(this).addClass('input-error');
+                            $error.text('Invalid status code: ' + statusCode).show();
+                            return;
+                        }
+                        if (typeof schemas[statusCode] !== 'object' || schemas[statusCode] === null) {
+                            $(this).addClass('input-error');
+                            $error.text('Schema for ' + statusCode + ' must be an object').show();
+                            return;
+                        }
+                    }
+                    $(this).removeClass('input-error');
+                    $error.hide();
+                } catch (e) {
+                    $(this).addClass('input-error');
+                    $error.text('Invalid JSON: ' + e.message).show();
+                }
+            });
+
             // Format buttons
             $('#format-body-schema').on('click', function() {
                 formatJson('#node-input-bodySchema');
@@ -168,6 +210,9 @@
             $('#format-params-schema').on('click', function() {
                 formatJson('#node-input-paramsSchema');
             });
+            $('#format-response-schemas').on('click', function() {
+                formatJson('#node-input-responseSchemas');
+            });
 
             // Initial updates
             updateParamDisplay();
@@ -177,6 +222,7 @@
             formatJson('#node-input-bodySchema');
             formatJson('#node-input-querySchema');
             formatJson('#node-input-paramsSchema');
+            formatJson('#node-input-responseSchemas');
         },
         oneditsave: function() {
             // Normalize path on save
@@ -190,7 +236,7 @@
             this.path = path || '/';
 
             // Minify schemas on save to reduce storage
-            var schemas = ['bodySchema', 'querySchema', 'paramsSchema'];
+            var schemas = ['bodySchema', 'querySchema', 'paramsSchema', 'responseSchemas'];
             schemas.forEach(function(schema) {
                 var value = $('#node-input-' + schema).val().trim();
                 if (value) {
@@ -295,6 +341,74 @@
         </div>
     </div>
 
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-reply"></i> Response Configuration</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-successStatusCode"><i class="fa fa-check-circle"></i> Success Code</label>
+        <select id="node-input-successStatusCode" style="width: 120px;">
+            <option value="200">200 OK</option>
+            <option value="201">201 Created</option>
+            <option value="202">202 Accepted</option>
+            <option value="204">204 No Content</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-responseContentType"><i class="fa fa-file-text-o"></i> Content-Type</label>
+        <select id="node-input-responseContentType" style="width: 200px;">
+            <option value="application/json">application/json</option>
+            <option value="application/xml">application/xml</option>
+            <option value="text/plain">text/plain</option>
+            <option value="text/html">text/html</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-validateResponseEnabled">
+            <i class="fa fa-bug"></i> Dev Mode
+        </label>
+        <input type="checkbox" id="node-input-validateResponseEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Validate responses (for debugging)</span>
+    </div>
+
+    <div class="schema-section">
+        <div class="schema-section-header">
+            <i class="fa fa-chevron-down section-toggle-icon"></i>
+            <i class="fa fa-reply"></i> Response Schemas
+        </div>
+        <div class="schema-section-content">
+            <div class="form-tips" style="margin-bottom: 10px;">
+                Define response schemas per status code. Use status codes as keys (e.g., "200", "404") or "default" for fallback.
+            </div>
+            <div class="form-row">
+                <textarea id="node-input-responseSchemas" rows="10" placeholder='{
+  "200": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "integer" },
+      "name": { "type": "string" }
+    }
+  },
+  "404": {
+    "type": "object",
+    "properties": {
+      "error": { "type": "string" },
+      "message": { "type": "string" }
+    }
+  }
+}'></textarea>
+                <div id="response-schemas-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                <button type="button" id="format-response-schemas" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
+                    <i class="fa fa-indent"></i> Format
+                </button>
+            </div>
+        </div>
+    </div>
+
     <style>
         .param-badge {
             display: inline-block;
@@ -385,6 +499,26 @@
             <span class="property-type">JSON Schema</span>
         </dt>
         <dd>JSON Schema to validate path parameters. Type coercion is automatically applied.</dd>
+
+        <dt>Success Code
+            <span class="property-type">number</span>
+        </dt>
+        <dd>The HTTP status code for successful responses (200, 201, 202, or 204).</dd>
+
+        <dt>Content-Type
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The Content-Type header for responses (e.g., application/json, application/xml).</dd>
+
+        <dt>Dev Mode
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>Enable response validation for debugging. When enabled, outgoing responses are validated against the response schemas.</dd>
+
+        <dt>Response Schemas
+            <span class="property-type">object</span>
+        </dt>
+        <dd>JSON object mapping HTTP status codes to JSON Schemas. Used for OpenAPI generation and optional response validation.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -414,6 +548,41 @@
   "required": ["name", "email"]
 }</pre>
 
+    <h3>Response Schema Configuration</h3>
+    <p>Response schemas define the expected format of API responses for different status codes.
+    They are used for:</p>
+    <ul>
+        <li>OpenAPI specification generation</li>
+        <li>Optional response validation in development mode</li>
+        <li>API documentation</li>
+    </ul>
+
+    <h3>Example Response Schemas</h3>
+    <pre>{
+  "200": {
+    "type": "object",
+    "properties": {
+      "id": { "type": "integer" },
+      "name": { "type": "string" },
+      "email": { "type": "string", "format": "email" }
+    },
+    "required": ["id", "name"]
+  },
+  "404": {
+    "type": "object",
+    "properties": {
+      "error": { "type": "string" },
+      "message": { "type": "string" }
+    }
+  },
+  "default": {
+    "type": "object",
+    "properties": {
+      "error": { "type": "string" }
+    }
+  }
+}</pre>
+
     <h3>Validation Errors</h3>
     <p>When validation fails:</p>
     <ul>
@@ -435,8 +604,19 @@
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>endpoint <span class="property-type">object</span></dt>
-        <dd>Endpoint metadata including path, method, paramNames, and validationEnabled.</dd>
+        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, and validateResponseEnabled.</dd>
         <dt>validationError <span class="property-type">object</span></dt>
         <dd>Present only when validation fails. Contains statusCode, error, message, and details.</dd>
+    </dl>
+
+    <h3>Methods Available</h3>
+    <p>The node provides several methods for use by other nodes:</p>
+    <dl class="message-properties">
+        <dt>validateResponseData(statusCode, data)</dt>
+        <dd>Validates response data against the schema for the given status code. Returns a ValidationResult.</dd>
+        <dt>getResponseSchema(statusCode)</dt>
+        <dd>Returns the JSON Schema for the given status code, or the default schema if not found.</dd>
+        <dt>getOpenApiResponses()</dt>
+        <dd>Returns response definitions in OpenAPI format for documentation generation.</dd>
     </dl>
 </script>
