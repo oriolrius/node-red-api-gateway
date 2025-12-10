@@ -7,6 +7,7 @@ const {
     requestSerializer,
     responseSerializer
 } = require('../lib/logger');
+const { getMetricsCollector } = require('../lib/metrics-collector');
 
 module.exports = function(RED) {
     function ApiServerNode(config) {
@@ -23,6 +24,11 @@ module.exports = function(RED) {
         node.openapiPath = config.openapiPath || '/openapi.json';
         node.swaggerUiEnabled = config.swaggerUiEnabled === true;
         node.swaggerUiPath = config.swaggerUiPath || '/docs';
+
+        // Metrics configuration
+        node.metricsEnabled = config.metricsEnabled !== false;  // Enabled by default
+        node.metricsPath = config.metricsPath || '/metrics';
+        node.metricsCollector = null;
 
         // Get reference to api-config node
         node.configNodeId = config.config;
@@ -111,15 +117,23 @@ module.exports = function(RED) {
                 // Create Fastify instance
                 node.fastify = fastify(fastifyOptions);
 
-                // Add request/response timing hooks if logging is enabled
-                if (logger) {
-                    node.fastify.addHook('onRequest', async (request) => {
-                        request.startTime = Date.now();
-                        request.timer = createTimer();
-                    });
+                // Add request/response timing hooks for logging and metrics
+                // Always add hooks - metrics may be enabled even without logging
+                node.fastify.addHook('onRequest', async (request) => {
+                    request.startTime = Date.now();
+                    request.timer = createTimer();
 
-                    node.fastify.addHook('onResponse', async (request, reply) => {
-                        const duration = request.timer ? request.timer.elapsed() : (Date.now() - request.startTime);
+                    // Track active requests for metrics
+                    if (node.metricsCollector) {
+                        node.metricsCollector.incrementActiveRequests();
+                    }
+                });
+
+                node.fastify.addHook('onResponse', async (request, reply) => {
+                    const duration = request.timer ? request.timer.elapsed() : (Date.now() - request.startTime);
+
+                    // Log request if logger is enabled
+                    if (logger) {
                         logger.info({
                             event: 'http_request',
                             requestId: request.id,
@@ -131,9 +145,24 @@ module.exports = function(RED) {
                             userAgent: request.headers['user-agent'],
                             remoteAddress: request.ip
                         }, `${request.method} ${request.url} ${reply.statusCode} - ${duration}ms`);
-                    });
+                    }
 
-                    node.fastify.addHook('onError', async (request, reply, error) => {
+                    // Record metrics
+                    if (node.metricsCollector) {
+                        // Extract path without query string for metrics
+                        const path = request.url.split('?')[0];
+                        node.metricsCollector.recordHttpRequest({
+                            method: request.method,
+                            path: path,
+                            statusCode: reply.statusCode,
+                            duration: duration
+                        });
+                        node.metricsCollector.decrementActiveRequests();
+                    }
+                });
+
+                node.fastify.addHook('onError', async (request, reply, error) => {
+                    if (logger) {
                         logger.error({
                             event: 'http_error',
                             requestId: request.id,
@@ -143,8 +172,8 @@ module.exports = function(RED) {
                             stack: error.stack,
                             code: error.code
                         }, `Request error: ${error.message}`);
-                    });
-                }
+                    }
+                });
 
                 // Register OpenAPI spec endpoint
                 if (node.openapiEnabled) {
@@ -196,6 +225,27 @@ module.exports = function(RED) {
                     }
                 }
 
+                // Register Prometheus metrics endpoint if enabled
+                if (node.metricsEnabled) {
+                    // Initialize metrics collector with server context
+                    node.metricsCollector = getMetricsCollector({
+                        prefix: 'api_gateway_',
+                        defaultLabels: {
+                            server: `${node.host}:${node.port}`
+                        }
+                    });
+
+                    node.fastify.get(node.metricsPath, async (request, reply) => {
+                        try {
+                            const metrics = await node.metricsCollector.getMetrics();
+                            reply.type(node.metricsCollector.getContentType());
+                            return metrics;
+                        } catch (err) {
+                            reply.code(500).send({ error: 'Failed to collect metrics' });
+                        }
+                    });
+                }
+
                 // Start the server
                 await node.fastify.listen({ port: node.port, host: node.host });
                 node.serverStarted = true;
@@ -211,6 +261,9 @@ module.exports = function(RED) {
                 }
                 if (node.swaggerUiEnabled) {
                     node.log(`Swagger UI available at ${node.swaggerUiPath}`);
+                }
+                if (node.metricsEnabled) {
+                    node.log(`Prometheus metrics available at ${node.metricsPath}`);
                 }
 
             } catch (err) {
@@ -339,6 +392,14 @@ module.exports = function(RED) {
         };
 
         /**
+         * Get the metrics collector instance
+         * @returns {MetricsCollector|null} Metrics collector or null if disabled
+         */
+        node.getMetricsCollector = function() {
+            return node.metricsCollector;
+        };
+
+        /**
          * Update node status based on current state
          */
         function updateStatus() {
@@ -383,7 +444,9 @@ module.exports = function(RED) {
                     openapiEnabled: node.openapiEnabled,
                     openapiPath: node.openapiPath,
                     swaggerUiEnabled: node.swaggerUiEnabled,
-                    swaggerUiPath: node.swaggerUiPath
+                    swaggerUiPath: node.swaggerUiPath,
+                    metricsEnabled: node.metricsEnabled,
+                    metricsPath: node.metricsPath
                 };
 
                 send(msg);

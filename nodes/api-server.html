@@ -11,7 +11,10 @@
             openapiEnabled: { value: true },
             openapiPath: { value: "/openapi.json" },
             swaggerUiEnabled: { value: false },
-            swaggerUiPath: { value: "/docs" }
+            swaggerUiPath: { value: "/docs" },
+            // Metrics configuration
+            metricsEnabled: { value: true },
+            metricsPath: { value: "/metrics" }
         },
         inputs: 1,
         outputs: 1,
@@ -39,6 +42,15 @@
                     $(".swagger-ui-path-row").show();
                 } else {
                     $(".swagger-ui-path-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle metrics path visibility
+            $("#node-input-metricsEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".metrics-path-row").show();
+                } else {
+                    $(".metrics-path-row").hide();
                 }
             }).trigger("change");
         }
@@ -103,6 +115,25 @@
         <label for="node-input-swaggerUiPath"><i class="fa fa-file-text-o"></i> Docs Path</label>
         <input type="text" id="node-input-swaggerUiPath" placeholder="/docs">
     </div>
+
+    <!-- Metrics Configuration -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-line-chart"></i> Metrics Configuration
+        </h4>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-metricsEnabled">
+            <i class="fa fa-toggle-on"></i> Enable Metrics
+        </label>
+        <input type="checkbox" id="node-input-metricsEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+
+    <div class="form-row metrics-path-row">
+        <label for="node-input-metricsPath"><i class="fa fa-link"></i> Metrics Path</label>
+        <input type="text" id="node-input-metricsPath" placeholder="/metrics">
+    </div>
 </script>
 
 <script type="text/html" data-help-name="api-server">
@@ -114,6 +145,7 @@
         <li>Automatic OpenAPI 3.0 specification generation from registered endpoints</li>
         <li>JSON and YAML spec endpoints for API documentation</li>
         <li>Optional Swagger UI for interactive API exploration</li>
+        <li>Prometheus metrics endpoint for monitoring</li>
         <li>Endpoint registration and lifecycle management</li>
     </ul>
 
@@ -144,6 +176,15 @@
 
         <dt>Docs Path</dt>
         <dd>URL path for Swagger UI (default: /docs)</dd>
+    </dl>
+
+    <h4>Metrics Configuration</h4>
+    <dl class="message-properties">
+        <dt>Enable Metrics</dt>
+        <dd>When enabled, exposes Prometheus metrics at the configured path</dd>
+
+        <dt>Metrics Path</dt>
+        <dd>URL path for Prometheus metrics endpoint (default: /metrics)</dd>
     </dl>
 
     <h3>Inputs</h3>
@@ -190,7 +231,20 @@
     <p>With default configuration (port 3000):</p>
     <pre>http://localhost:3000/openapi.json  - OpenAPI spec (JSON)
 http://localhost:3000/openapi.yaml  - OpenAPI spec (YAML)
-http://localhost:3000/docs          - Swagger UI (if enabled)</pre>
+http://localhost:3000/docs          - Swagger UI (if enabled)
+http://localhost:3000/metrics       - Prometheus metrics</pre>
+
+    <h3>Prometheus Metrics</h3>
+    <p>When metrics are enabled, the following metrics are collected:</p>
+    <ul>
+        <li><b>api_gateway_http_requests_total</b> - Total HTTP requests by method, path, and status code</li>
+        <li><b>api_gateway_http_request_duration_ms</b> - Request latency histogram</li>
+        <li><b>api_gateway_http_errors_total</b> - HTTP errors (4xx and 5xx responses)</li>
+        <li><b>api_gateway_http_status_codes_total</b> - Status code distribution</li>
+        <li><b>api_gateway_keycloak_validation_duration_ms</b> - Keycloak token validation latency</li>
+        <li><b>api_gateway_opa_policy_duration_ms</b> - OPA policy evaluation latency</li>
+        <li><b>api_gateway_active_requests</b> - Currently active requests</li>
+    </ul>
 
     <h3>Endpoint Registration</h3>
     <p>API Endpoint nodes automatically register with the server when deployed.
