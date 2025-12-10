@@ -361,4 +361,217 @@ describe("api-config Node", function () {
             }
         });
     });
+
+    describe("Connection State Management", function() {
+        it("should create database connection manager when dbType is set", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "DB Config",
+                dbType: "postgres",
+                dbHost: "localhost"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("connectionManagers");
+                    c1.connectionManagers.should.have.property("database");
+                    c1.connectionManagers.database.serviceName.should.equal("database");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not create database connection manager when dbType is none", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No DB Config",
+                dbType: "none"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("connectionManagers");
+                    c1.connectionManagers.should.not.have.property("database");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should create keycloak connection manager when oauth2 is enabled", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "OAuth Config",
+                oauth2Enabled: true,
+                keycloakUrl: "https://keycloak.example.com"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.connectionManagers.should.have.property("keycloak");
+                    c1.connectionManagers.keycloak.serviceName.should.equal("keycloak");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should create opa connection manager when opa is enabled", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "OPA Config",
+                opaEnabled: true,
+                opaUrl: "http://localhost:8181",
+                opaRetryAttempts: 5
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.connectionManagers.should.have.property("opa");
+                    c1.connectionManagers.opa.serviceName.should.equal("opa");
+                    c1.connectionManagers.opa.config.maxRetries.should.equal(5);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should have helper methods for connection management", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Full Config",
+                dbType: "postgres",
+                oauth2Enabled: true,
+                opaEnabled: true
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("registerNode").which.is.a.Function();
+                    c1.should.have.property("unregisterNode").which.is.a.Function();
+                    c1.should.have.property("getConnectionManager").which.is.a.Function();
+                    c1.should.have.property("getConnectionStatus").which.is.a.Function();
+                    c1.should.have.property("isAllConnected").which.is.a.Function();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return connection manager by service name", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Full Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const dbManager = c1.getConnectionManager("database");
+                    dbManager.should.be.ok();
+                    dbManager.serviceName.should.equal("database");
+
+                    const noManager = c1.getConnectionManager("nonexistent");
+                    (noManager === undefined).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return aggregated connection status", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Multi Config",
+                dbType: "postgres",
+                oauth2Enabled: true
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const status = c1.getConnectionStatus();
+                    status.should.have.property("database");
+                    status.should.have.property("keycloak");
+                    status.database.should.have.property("state", "disconnected");
+                    status.keycloak.should.have.property("state", "disconnected");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should check if all services are connected", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Check Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    // Initially not connected
+                    c1.isAllConnected().should.be.false();
+
+                    // Mark as connected
+                    c1.connectionManagers.database.connected();
+                    c1.isAllConnected().should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should shutdown connection managers on close", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Shutdown Config",
+                dbType: "postgres",
+                oauth2Enabled: true
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    // Verify managers exist
+                    Object.keys(c1.connectionManagers).length.should.equal(2);
+
+                    // Subscribe to shutdown events to verify they fire
+                    let shutdownCount = 0;
+                    for (const manager of Object.values(c1.connectionManagers)) {
+                        manager.on('shutdown', function() {
+                            shutdownCount++;
+                        });
+                    }
+
+                    // Trigger close - note: the afterEach unload will also trigger close
+                    // but managers will already be empty
+                    c1.close(false).then(function() {
+                        // After close, managers should be cleared
+                        Object.keys(c1.connectionManagers).length.should.equal(0);
+                        shutdownCount.should.equal(2);
+                        done();
+                    }).catch(done);
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });
