@@ -6,6 +6,7 @@ const {
     createKeycloakHealthCheck,
     createOpaHealthCheck
 } = require('../lib/health-check');
+const { PoolState, ConnectionPoolManager } = require('../lib/connection-pool');
 
 module.exports = function(RED) {
     function ApiConfigNode(config) {
@@ -93,6 +94,18 @@ module.exports = function(RED) {
         node.dbPoolMin = config.dbPoolMin;
         node.dbPoolMax = config.dbPoolMax;
         node.dbPoolIdleTimeout = config.dbPoolIdleTimeout;
+        node.dbPoolAcquireTimeout = config.dbPoolAcquireTimeout;
+
+        // Initialize connection pool manager if database is configured
+        node.connectionPool = null;
+        if (config.dbType && config.dbType !== 'none') {
+            node.connectionPool = new ConnectionPoolManager('database', {
+                minConnections: config.dbPoolMin || 0,
+                maxConnections: config.dbPoolMax || 10,
+                idleTimeout: config.dbPoolIdleTimeout || 30000,
+                acquireTimeout: config.dbPoolAcquireTimeout || 15000
+            });
+        }
 
         // OAuth2/Keycloak configuration
         node.oauth2Enabled = config.oauth2Enabled;
@@ -228,7 +241,82 @@ module.exports = function(RED) {
             node.healthCheckManager.stop();
         };
 
-        node.on("close", function(removed, done) {
+        /**
+         * Get the connection pool manager
+         * @returns {ConnectionPoolManager|null}
+         */
+        node.getConnectionPool = function() {
+            return node.connectionPool;
+        };
+
+        /**
+         * Get connection pool statistics
+         * @returns {Object|null} Pool statistics or null if no pool
+         */
+        node.getPoolStatistics = function() {
+            if (!node.connectionPool) {
+                return null;
+            }
+            return node.connectionPool.getStatistics();
+        };
+
+        /**
+         * Get connection pool status (simplified)
+         * @returns {Object|null} Pool status or null if no pool
+         */
+        node.getPoolStatus = function() {
+            if (!node.connectionPool) {
+                return null;
+            }
+            return node.connectionPool.getStatus();
+        };
+
+        /**
+         * Set the connection factory for the pool
+         * @param {Object} factory - Factory with create, destroy, validate functions
+         */
+        node.setPoolFactory = function(factory) {
+            if (!node.connectionPool) {
+                throw new Error('Connection pool not initialized');
+            }
+            node.connectionPool.setFactory(factory);
+        };
+
+        /**
+         * Initialize the connection pool
+         * @returns {Promise<void>}
+         */
+        node.initializePool = async function() {
+            if (!node.connectionPool) {
+                throw new Error('Connection pool not initialized');
+            }
+            await node.connectionPool.initialize();
+        };
+
+        /**
+         * Acquire a connection from the pool
+         * @param {number} [timeout] - Optional custom timeout
+         * @returns {Promise<Object>} The acquired connection
+         */
+        node.acquireConnection = async function(timeout) {
+            if (!node.connectionPool) {
+                throw new Error('Connection pool not initialized');
+            }
+            return node.connectionPool.acquire(timeout);
+        };
+
+        /**
+         * Release a connection back to the pool
+         * @param {Object} connection - The connection to release
+         */
+        node.releaseConnection = async function(connection) {
+            if (!node.connectionPool) {
+                throw new Error('Connection pool not initialized');
+            }
+            await node.connectionPool.release(connection);
+        };
+
+        node.on("close", async function(removed, done) {
             // Graceful shutdown: shutdown all connection managers
             for (const manager of Object.values(node.connectionManagers)) {
                 manager.shutdown();
@@ -239,6 +327,17 @@ module.exports = function(RED) {
             if (node.healthCheckManager) {
                 node.healthCheckManager.shutdown();
                 node.healthCheckManager = null;
+            }
+
+            // Shutdown connection pool (graceful with drain timeout)
+            if (node.connectionPool) {
+                try {
+                    await node.connectionPool.shutdown(30000);
+                } catch (err) {
+                    // Log error but continue shutdown
+                    node.error('Error shutting down connection pool: ' + err.message);
+                }
+                node.connectionPool = null;
             }
 
             if (done) {

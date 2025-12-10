@@ -745,4 +745,296 @@ describe("api-config Node", function () {
             });
         });
     });
+
+    describe("Connection Pool Management", function() {
+        it("should create connection pool when dbType is set", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Pool Config",
+                dbType: "postgres",
+                dbPoolMin: 0,
+                dbPoolMax: 10
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("connectionPool");
+                    c1.connectionPool.should.be.ok();
+                    c1.connectionPool.poolName.should.equal("database");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not create connection pool when dbType is none", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Config",
+                dbType: "none"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    (c1.connectionPool === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should configure pool with custom settings", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Custom Pool Config",
+                dbType: "postgres",
+                dbPoolMin: 5,
+                dbPoolMax: 25,
+                dbPoolIdleTimeout: 60000,
+                dbPoolAcquireTimeout: 20000
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.connectionPool.config.minConnections.should.equal(5);
+                    c1.connectionPool.config.maxConnections.should.equal(25);
+                    c1.connectionPool.config.idleTimeout.should.equal(60000);
+                    c1.connectionPool.config.acquireTimeout.should.equal(20000);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should have pool helper methods", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Pool Methods Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("getConnectionPool").which.is.a.Function();
+                    c1.should.have.property("getPoolStatistics").which.is.a.Function();
+                    c1.should.have.property("getPoolStatus").which.is.a.Function();
+                    c1.should.have.property("setPoolFactory").which.is.a.Function();
+                    c1.should.have.property("initializePool").which.is.a.Function();
+                    c1.should.have.property("acquireConnection").which.is.a.Function();
+                    c1.should.have.property("releaseConnection").which.is.a.Function();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return null for pool stats when no pool", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Stats Config",
+                dbType: "none"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    (c1.getPoolStatistics() === null).should.be.true();
+                    (c1.getPoolStatus() === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return pool statistics", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Stats Config",
+                dbType: "postgres",
+                dbPoolMin: 2,
+                dbPoolMax: 10
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const stats = c1.getPoolStatistics();
+                    stats.should.have.property('pool', 'database');
+                    stats.should.have.property('state');
+                    stats.should.have.property('config');
+                    stats.should.have.property('current');
+                    stats.should.have.property('cumulative');
+                    stats.should.have.property('peaks');
+
+                    stats.config.should.have.property('minConnections', 2);
+                    stats.config.should.have.property('maxConnections', 10);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return pool status", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Status Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const status = c1.getPoolStatus();
+                    status.should.have.property('state');
+                    status.should.have.property('available');
+                    status.should.have.property('borrowed');
+                    status.should.have.property('pending');
+                    status.should.have.property('total');
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should throw error when setting factory on null pool", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Factory Config",
+                dbType: "none"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    (function() {
+                        c1.setPoolFactory({
+                            create: async () => ({}),
+                            destroy: async () => {}
+                        });
+                    }).should.throw(/not initialized/);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should throw error when initializing null pool", async function () {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Init Config",
+                dbType: "none"
+            }];
+
+            return new Promise((resolve, reject) => {
+                helper.load(apiConfigNode, flow, async function () {
+                    const c1 = helper.getNode("c1");
+                    try {
+                        await c1.initializePool();
+                        reject(new Error('Expected error'));
+                    } catch (err) {
+                        err.message.should.containEql('not initialized');
+                        resolve();
+                    }
+                });
+            });
+        });
+
+        it("should throw error when acquiring from null pool", async function () {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Acquire Config",
+                dbType: "none"
+            }];
+
+            return new Promise((resolve, reject) => {
+                helper.load(apiConfigNode, flow, async function () {
+                    const c1 = helper.getNode("c1");
+                    try {
+                        await c1.acquireConnection();
+                        reject(new Error('Expected error'));
+                    } catch (err) {
+                        err.message.should.containEql('not initialized');
+                        resolve();
+                    }
+                });
+            });
+        });
+
+        it("should throw error when releasing to null pool", async function () {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "No Pool Release Config",
+                dbType: "none"
+            }];
+
+            return new Promise((resolve, reject) => {
+                helper.load(apiConfigNode, flow, async function () {
+                    const c1 = helper.getNode("c1");
+                    try {
+                        await c1.releaseConnection({});
+                        reject(new Error('Expected error'));
+                    } catch (err) {
+                        err.message.should.containEql('not initialized');
+                        resolve();
+                    }
+                });
+            });
+        });
+
+        it("should shutdown connection pool on close", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Pool Shutdown Config",
+                dbType: "postgres"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.connectionPool.should.be.ok();
+
+                    c1.close(false).then(function() {
+                        (c1.connectionPool === null).should.be.true();
+                        done();
+                    }).catch(done);
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should store dbPoolAcquireTimeout setting", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "api-config",
+                name: "Acquire Timeout Config",
+                dbType: "postgres",
+                dbPoolAcquireTimeout: 25000
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("dbPoolAcquireTimeout", 25000);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });

@@ -15,6 +15,7 @@
             dbPoolMin: { value: 0 },
             dbPoolMax: { value: 10 },
             dbPoolIdleTimeout: { value: 30000 },
+            dbPoolAcquireTimeout: { value: 15000 },
             // OAuth2/Keycloak configuration
             oauth2Enabled: { value: false },
             keycloakUrl: { value: "" },
@@ -193,6 +194,10 @@
         <label for="node-config-input-dbPoolIdleTimeout"><i class="fa fa-clock-o"></i> Idle Timeout (ms)</label>
         <input type="number" id="node-config-input-dbPoolIdleTimeout" placeholder="30000" min="0" style="width: 100px;">
     </div>
+    <div class="form-row db-pool-row">
+        <label for="node-config-input-dbPoolAcquireTimeout"><i class="fa fa-hourglass-half"></i> Acquire Timeout (ms)</label>
+        <input type="number" id="node-config-input-dbPoolAcquireTimeout" placeholder="15000" min="0" style="width: 100px;">
+    </div>
 
     <!-- OAuth2/Keycloak Configuration Section -->
     <div class="form-row" style="margin-top: 15px;">
@@ -361,6 +366,7 @@
         <li><b>Min Connections</b> - Minimum connections to maintain in pool (default: 0)</li>
         <li><b>Max Connections</b> - Maximum connections allowed in pool (default: 10)</li>
         <li><b>Idle Timeout</b> - Time in ms before idle connections are closed (default: 30000)</li>
+        <li><b>Acquire Timeout</b> - Maximum time in ms to wait for a connection from the pool (default: 15000)</li>
     </ul>
 
     <h3>OAuth2/Keycloak Configuration</h3>
