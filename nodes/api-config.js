@@ -138,6 +138,43 @@ module.exports = function(RED) {
         node.tlsKeyPath = config.tlsKeyPath;
         node.tlsCaPath = config.tlsCaPath;
 
+        // API Version configuration
+        node.apiVersion = config.apiVersion;
+        node.apiBasePath = config.apiBasePath;
+        node.apiVersionInPath = config.apiVersionInPath;
+
+        /**
+         * Get the full API base path including version if configured
+         * @returns {string} Full base path (e.g., "/api/v1" or "/api")
+         */
+        node.getFullBasePath = function() {
+            let basePath = node.apiBasePath || '';
+            // Ensure basePath starts with /
+            if (basePath && !basePath.startsWith('/')) {
+                basePath = '/' + basePath;
+            }
+            // Remove trailing slash
+            if (basePath.endsWith('/')) {
+                basePath = basePath.slice(0, -1);
+            }
+            // Add version if configured
+            if (node.apiVersionInPath && node.apiVersion) {
+                basePath = basePath + '/' + node.apiVersion;
+            }
+            return basePath;
+        };
+
+        /**
+         * Get OpenAPI info object for the API
+         * @returns {Object} OpenAPI info object
+         */
+        node.getOpenApiInfo = function() {
+            return {
+                version: node.apiVersion || '1.0.0',
+                basePath: node.getFullBasePath()
+            };
+        };
+
         /**
          * Register a node to receive connection state updates
          * @param {Object} usingNode - Node-RED node that uses this config

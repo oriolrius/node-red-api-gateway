@@ -223,6 +223,111 @@ describe("api-config Node", function () {
         });
     });
 
+    it("should store API version configuration", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "API Version Config",
+            apiVersion: "v2",
+            apiBasePath: "/api",
+            apiVersionInPath: true
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("apiVersion", "v2");
+                c1.should.have.property("apiBasePath", "/api");
+                c1.should.have.property("apiVersionInPath", true);
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should compute full base path with version", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "Full Path Config",
+            apiVersion: "v1",
+            apiBasePath: "/api",
+            apiVersionInPath: true
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.getFullBasePath().should.equal("/api/v1");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should compute full base path without version", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "No Version Path Config",
+            apiVersion: "v1",
+            apiBasePath: "/api",
+            apiVersionInPath: false
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.getFullBasePath().should.equal("/api");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should normalize base path", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "Normalize Path Config",
+            apiVersion: "v1",
+            apiBasePath: "api/",
+            apiVersionInPath: true
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                // Should add leading slash and remove trailing slash
+                c1.getFullBasePath().should.equal("/api/v1");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should return OpenAPI info", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "OpenAPI Info Config",
+            apiVersion: "v2",
+            apiBasePath: "/api",
+            apiVersionInPath: true
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                const info = c1.getOpenApiInfo();
+                info.should.have.property("version", "v2");
+                info.should.have.property("basePath", "/api/v2");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
     it("should store credentials securely", function (done) {
         const flow = [{
             id: "c1",

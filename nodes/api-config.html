@@ -41,7 +41,11 @@
             tlsMinVersion: { value: "TLSv1.2" },
             tlsCertPath: { value: "" },
             tlsKeyPath: { value: "" },
-            tlsCaPath: { value: "" }
+            tlsCaPath: { value: "" },
+            // API Version configuration
+            apiVersion: { value: "v1" },
+            apiBasePath: { value: "/api" },
+            apiVersionInPath: { value: true }
         },
         credentials: {
             dbUser: { type: "text" },
@@ -344,6 +348,27 @@
         <label for="node-config-input-tlsCaPath"><i class="fa fa-shield"></i> CA Certificate</label>
         <input type="text" id="node-config-input-tlsCaPath" placeholder="/path/to/ca.pem">
     </div>
+
+    <!-- API Version Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-code-fork"></i> API Version Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-apiVersion"><i class="fa fa-tag"></i> API Version</label>
+        <input type="text" id="node-config-input-apiVersion" placeholder="v1">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-apiBasePath"><i class="fa fa-sitemap"></i> Base Path</label>
+        <input type="text" id="node-config-input-apiBasePath" placeholder="/api">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-apiVersionInPath">
+            <i class="fa fa-link"></i> Include Version in Path
+        </label>
+        <input type="checkbox" id="node-config-input-apiVersionInPath" style="width: auto; margin-left: 5px;">
+    </div>
 </script>
 
 <script type="text/html" data-help-name="api-config">
@@ -418,6 +443,20 @@
         <li><b>Private Key</b> - Path to client private key file</li>
         <li><b>CA Certificate</b> - Path to CA certificate file</li>
     </ul>
+
+    <h3>API Version Configuration</h3>
+    <p>Configure API versioning and base path for all endpoints:</p>
+    <ul>
+        <li><b>API Version</b> - Version string (e.g., "v1", "v2"). Used in paths and OpenAPI spec.</li>
+        <li><b>Base Path</b> - Base path prefix for all endpoints (e.g., "/api")</li>
+        <li><b>Include Version in Path</b> - When enabled, version is included in the path (e.g., "/api/v1/users")</li>
+    </ul>
+    <p>Example paths with version in path enabled:</p>
+    <pre>/api/v1/users
+/api/v1/products</pre>
+    <p>Example paths with version in path disabled:</p>
+    <pre>/api/users
+/api/products</pre>
 
     <h3>Usage</h3>
     <p>This configuration node appears in the config nodes sidebar. Select it from the
