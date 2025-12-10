@@ -63,6 +63,12 @@ const {
     fromError
 } = require('../lib/error-handler');
 
+const {
+    generateRequestId,
+    createTimer,
+    createRequestLogger
+} = require('../lib/logger');
+
 /**
  * Parses a scopes configuration string into an array of scope strings
  * @param {string|Array} scopes - Comma-separated string or array of scopes
@@ -1477,6 +1483,49 @@ module.exports = function(RED) {
             send = send || function() { node.send.apply(node, arguments); };
 
             try {
+                // Create request-scoped logger if logging is enabled
+                const configNode = node.serverNode?.configNode;
+                const baseLogger = configNode?.getLogger();
+                let requestLogger = null;
+                let requestId = null;
+                let requestTimer = null;
+
+                if (baseLogger) {
+                    // Generate or use existing request ID
+                    requestId = msg.req?.headers?.['x-request-id'] ||
+                                msg.req?.id ||
+                                generateRequestId();
+
+                    // Create timer for request duration tracking
+                    requestTimer = createTimer();
+
+                    // Create request-scoped child logger
+                    requestLogger = createRequestLogger(baseLogger, {
+                        requestId: requestId,
+                        method: msg.req?.method || node.method,
+                        path: msg.req?.path || node.path,
+                        nodeId: node.id,
+                        endpoint: node.path
+                    });
+
+                    // Add request ID to response headers
+                    if (msg.res && typeof msg.res.set === 'function') {
+                        msg.res.set('x-request-id', requestId);
+                    }
+
+                    // Store logger and request info on message for downstream use
+                    msg._logger = requestLogger;
+                    msg._requestId = requestId;
+                    msg._requestTimer = requestTimer;
+
+                    requestLogger.debug({
+                        event: 'endpoint_request_start',
+                        body: msg.req?.body ? '[present]' : '[absent]',
+                        query: msg.req?.query,
+                        params: msg.req?.params
+                    }, 'Processing endpoint request');
+                }
+
                 // Add endpoint metadata to message
                 msg.endpoint = {
                     path: node.path,
@@ -1582,6 +1631,16 @@ module.exports = function(RED) {
                 if (node.rateLimitingEnabled && msg.req) {
                     const rateLimitResult = node.checkRateLimit(msg.req);
 
+                    if (requestLogger) {
+                        requestLogger.debug({
+                            event: 'rate_limit_check',
+                            allowed: rateLimitResult.allowed,
+                            limit: rateLimitResult.limit,
+                            remaining: rateLimitResult.remaining,
+                            key: rateLimitResult.key
+                        }, rateLimitResult.allowed ? 'Rate limit check passed' : 'Rate limit exceeded');
+                    }
+
                     // Add rate limit headers to response
                     if (msg.res && typeof msg.res.set === 'function') {
                         const headers = generateRateLimitHeaders(rateLimitResult);
@@ -1624,6 +1683,15 @@ module.exports = function(RED) {
                 // Perform cache check if enabled (only for cacheable methods)
                 if (node.cachingEnabled && msg.req && (msg.req.method === 'GET' || msg.req.method === 'HEAD')) {
                     const cacheResult = node.checkCache(msg.req);
+
+                    if (requestLogger) {
+                        requestLogger.debug({
+                            event: 'cache_check',
+                            hit: cacheResult.hit,
+                            key: cacheResult.key,
+                            age: cacheResult.age
+                        }, cacheResult.hit ? 'Cache hit' : 'Cache miss');
+                    }
 
                     // Add cache headers to response
                     if (msg.res && typeof msg.res.set === 'function') {
@@ -1688,6 +1756,16 @@ module.exports = function(RED) {
                     const tokenScopes = (msg.req.auth && msg.req.auth.scopes) || [];
                     const isAuthenticated = msg.req.auth && msg.req.auth.authenticated;
 
+                    // Enrich logger with user context if available and config allows
+                    if (requestLogger && msg.req.auth && configNode?.logIncludeUserContext !== false) {
+                        requestLogger = requestLogger.child({
+                            userId: msg.req.auth.sub || msg.req.auth.userId,
+                            username: msg.req.auth.preferredUsername || msg.req.auth.preferred_username,
+                            roles: msg.req.auth.roles?.slice(0, 5)  // Limit to first 5 roles
+                        });
+                        msg._logger = requestLogger;
+                    }
+
                     // Check if user is authenticated (401) vs lacks scopes (403)
                     if (!isAuthenticated) {
                         const authError = {
@@ -1718,6 +1796,18 @@ module.exports = function(RED) {
                     }
 
                     const authResult = node.checkAuthorization(tokenScopes);
+
+                    if (requestLogger) {
+                        requestLogger.info({
+                            event: 'authorization_check',
+                            authorized: authResult.authorized,
+                            requiredScopes: node.requiredScopes,
+                            providedScopes: tokenScopes,
+                            scopeOperator: node.scopeOperator,
+                            missingScopes: authResult.missingScopes
+                        }, authResult.authorized ? 'Authorization successful' : 'Authorization failed');
+                    }
+
                     if (!authResult.authorized) {
                         const authError = {
                             statusCode: 403,
@@ -1802,6 +1892,15 @@ module.exports = function(RED) {
                 if (node.validationEnabled && msg.req) {
                     const validationResult = node.validateRequest(msg.req);
 
+                    if (requestLogger) {
+                        requestLogger.debug({
+                            event: 'request_validation',
+                            valid: validationResult.valid,
+                            errorCount: validationResult.errors?.length || 0,
+                            errors: validationResult.valid ? undefined : validationResult.errors
+                        }, validationResult.valid ? 'Request validation passed' : 'Request validation failed');
+                    }
+
                     if (!validationResult.valid) {
                         // Add validation error to message
                         msg.validationError = validationResult.toHttpError();
@@ -1822,11 +1921,33 @@ module.exports = function(RED) {
                     }
                 }
 
+                // Log request completion
+                if (requestLogger && requestTimer) {
+                    const duration = requestTimer.elapsed();
+                    requestLogger.info({
+                        event: 'endpoint_request_complete',
+                        duration: duration,
+                        durationMs: `${duration}ms`,
+                        statusCode: msg.validationError ? 400 : (msg.endpoint?.successStatusCode || 200)
+                    }, `Endpoint request completed in ${duration}ms`);
+                }
+
                 send(msg);
                 if (done) {
                     done();
                 }
             } catch (err) {
+                // Log error
+                if (msg._logger) {
+                    msg._logger.error({
+                        event: 'endpoint_request_error',
+                        error: err.message,
+                        stack: err.stack,
+                        code: err.code,
+                        duration: msg._requestTimer ? msg._requestTimer.elapsed() : undefined
+                    }, `Endpoint request failed: ${err.message}`);
+                }
+
                 if (done) {
                     done(err);
                 } else {

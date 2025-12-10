@@ -54,7 +54,15 @@
             openapiContactUrl: { value: "" },
             openapiLicenseName: { value: "" },
             openapiLicenseUrl: { value: "" },
-            openapiTermsOfService: { value: "" }
+            openapiTermsOfService: { value: "" },
+            // Logging configuration
+            loggingEnabled: { value: true },
+            logLevel: { value: "info" },
+            logOutput: { value: "console" },
+            logPrettyPrint: { value: false },
+            logFilePath: { value: "" },
+            logRedactHeaders: { value: true },
+            logIncludeUserContext: { value: true }
         },
         credentials: {
             dbUser: { type: "text" },
@@ -129,6 +137,27 @@
                     $(".tls-config-row").show();
                 } else {
                     $(".tls-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle Logging section visibility
+            $("#node-config-input-loggingEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".logging-config-row").show();
+                    // Trigger log output change to show/hide file path
+                    $("#node-config-input-logOutput").trigger("change");
+                } else {
+                    $(".logging-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle log file path visibility based on output selection
+            $("#node-config-input-logOutput").on("change", function() {
+                var output = $(this).val();
+                if (output === "file" || output === "both") {
+                    $(".logging-file-row").show();
+                } else {
+                    $(".logging-file-row").hide();
                 }
             }).trigger("change");
         }
@@ -423,6 +452,73 @@
         <label for="node-config-input-openapiTermsOfService"><i class="fa fa-file-text-o"></i> Terms of Service</label>
         <input type="text" id="node-config-input-openapiTermsOfService" placeholder="https://example.com/terms">
     </div>
+
+    <!-- Logging Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-file-text-o"></i> Logging Configuration
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-loggingEnabled">
+            <i class="fa fa-toggle-on"></i> Enable Logging
+        </label>
+        <input type="checkbox" id="node-config-input-loggingEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row logging-config-row">
+        <label for="node-config-input-logLevel"><i class="fa fa-signal"></i> Log Level</label>
+        <select id="node-config-input-logLevel" style="width: 70%;">
+            <option value="trace">Trace (most verbose)</option>
+            <option value="debug">Debug</option>
+            <option value="info">Info (default)</option>
+            <option value="warn">Warning</option>
+            <option value="error">Error</option>
+            <option value="fatal">Fatal</option>
+            <option value="silent">Silent (no logging)</option>
+        </select>
+    </div>
+    <div class="form-row logging-config-row">
+        <label for="node-config-input-logOutput"><i class="fa fa-desktop"></i> Output</label>
+        <select id="node-config-input-logOutput" style="width: 70%;">
+            <option value="console">Console Only</option>
+            <option value="file">File Only</option>
+            <option value="both">Console and File</option>
+        </select>
+    </div>
+    <div class="form-row logging-config-row logging-file-row">
+        <label for="node-config-input-logFilePath"><i class="fa fa-file"></i> Log File Path</label>
+        <input type="text" id="node-config-input-logFilePath" placeholder="./logs/api-gateway.log">
+    </div>
+    <div class="form-row logging-config-row">
+        <label for="node-config-input-logPrettyPrint">
+            <i class="fa fa-paint-brush"></i> Pretty Print (Dev)
+        </label>
+        <input type="checkbox" id="node-config-input-logPrettyPrint" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 10px; color: #666; font-size: 0.9em;">Human-readable format for development</span>
+    </div>
+    <div class="form-row logging-config-row">
+        <label for="node-config-input-logRedactHeaders">
+            <i class="fa fa-eye-slash"></i> Redact Sensitive Data
+        </label>
+        <input type="checkbox" id="node-config-input-logRedactHeaders" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 10px; color: #666; font-size: 0.9em;">Hide authorization headers, passwords</span>
+    </div>
+    <div class="form-row logging-config-row">
+        <label for="node-config-input-logIncludeUserContext">
+            <i class="fa fa-user"></i> Include User Context
+        </label>
+        <input type="checkbox" id="node-config-input-logIncludeUserContext" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 10px; color: #666; font-size: 0.9em;">Add user ID/username to log entries</span>
+    </div>
+    <div class="form-row logging-config-row" style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+        <p style="margin: 0; font-size: 0.9em; color: #666;">
+            <i class="fa fa-info-circle"></i> <strong>Environment Overrides:</strong><br>
+            <code>API_GATEWAY_LOG_LEVEL</code> - Override log level<br>
+            <code>API_GATEWAY_LOG_OUTPUT</code> - Override output destination<br>
+            <code>API_GATEWAY_LOG_PRETTY</code> - Enable pretty printing (true/false)<br>
+            <code>API_GATEWAY_LOG_FILE</code> - Override log file path
+        </p>
+    </div>
 </script>
 
 <script type="text/html" data-help-name="api-config">
@@ -534,6 +630,48 @@
         <li><b>License URL</b> - URL to the full license text</li>
         <li><b>Terms of Service</b> - URL to terms of service</li>
     </ul>
+
+    <h3>Logging Configuration</h3>
+    <p>Configure structured logging using Pino:</p>
+    <ul>
+        <li><b>Enable Logging</b> - Turn logging on/off globally</li>
+        <li><b>Log Level</b> - Minimum level to log (trace, debug, info, warn, error, fatal, silent)</li>
+        <li><b>Output</b> - Where to send logs (console, file, or both)</li>
+        <li><b>Log File Path</b> - Path to log file when file output is enabled</li>
+        <li><b>Pretty Print</b> - Human-readable format for development (slower, not for production)</li>
+        <li><b>Redact Sensitive Data</b> - Automatically mask authorization headers and passwords in logs</li>
+        <li><b>Include User Context</b> - Add user ID and username to log entries after authentication</li>
+    </ul>
+
+    <h4>Environment Variable Overrides</h4>
+    <p>Log settings can be overridden via environment variables:</p>
+    <ul>
+        <li><code>API_GATEWAY_LOG_LEVEL</code> - Override log level (trace, debug, info, warn, error)</li>
+        <li><code>API_GATEWAY_LOG_OUTPUT</code> - Override output (console, file, both)</li>
+        <li><code>API_GATEWAY_LOG_PRETTY</code> - Enable pretty printing (true/false)</li>
+        <li><code>API_GATEWAY_LOG_FILE</code> - Override log file path</li>
+    </ul>
+
+    <h4>Log Output Format</h4>
+    <p>Logs are output in structured JSON format by default:</p>
+    <pre>{
+  "level": 30,
+  "time": "2024-01-15T14:32:47.890Z",
+  "requestId": "req-1702234567890-a1b2c3",
+  "method": "POST",
+  "url": "/api/v1/users",
+  "userId": "user-123",
+  "statusCode": 201,
+  "duration": 45,
+  "msg": "Request completed"
+}</pre>
+    <p>With pretty printing enabled (development only):</p>
+    <pre>[14:32:47] INFO: Request completed
+    requestId: "req-1702234567890-a1b2c3"
+    method: "POST"
+    url: "/api/v1/users"
+    statusCode: 201
+    duration: 45ms</pre>
 
     <h3>Usage</h3>
     <p>This configuration node appears in the config nodes sidebar. Select it from the

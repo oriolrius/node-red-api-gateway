@@ -1,6 +1,12 @@
 'use strict';
 
 const { OpenApiGenerator } = require('../lib/openapi-generator');
+const {
+    generateRequestId,
+    createTimer,
+    requestSerializer,
+    responseSerializer
+} = require('../lib/logger');
 
 module.exports = function(RED) {
     function ApiServerNode(config) {
@@ -79,11 +85,66 @@ module.exports = function(RED) {
                     return;
                 }
 
+                // Get logger from config node if available
+                const logger = node.configNode?.getLogger() || null;
+
+                // Build Fastify options
+                const fastifyOptions = {
+                    ignoreTrailingSlash: true,
+                    requestIdHeader: 'x-request-id',
+                    genReqId: (req) => {
+                        // Use existing request ID or generate new one
+                        return req.headers['x-request-id'] || generateRequestId();
+                    }
+                };
+
+                // Configure logger for Fastify
+                // Fastify accepts either a boolean, a Pino instance, or Pino options
+                // We pass our Pino logger directly for native integration
+                if (logger && !logger._isFallback && !logger._isNoop) {
+                    // Pass the Pino logger instance directly
+                    fastifyOptions.logger = logger;
+                } else {
+                    fastifyOptions.logger = false;
+                }
+
                 // Create Fastify instance
-                node.fastify = fastify({
-                    logger: false,
-                    ignoreTrailingSlash: true
-                });
+                node.fastify = fastify(fastifyOptions);
+
+                // Add request/response timing hooks if logging is enabled
+                if (logger) {
+                    node.fastify.addHook('onRequest', async (request) => {
+                        request.startTime = Date.now();
+                        request.timer = createTimer();
+                    });
+
+                    node.fastify.addHook('onResponse', async (request, reply) => {
+                        const duration = request.timer ? request.timer.elapsed() : (Date.now() - request.startTime);
+                        logger.info({
+                            event: 'http_request',
+                            requestId: request.id,
+                            method: request.method,
+                            url: request.url,
+                            statusCode: reply.statusCode,
+                            duration: duration,
+                            durationMs: `${duration}ms`,
+                            userAgent: request.headers['user-agent'],
+                            remoteAddress: request.ip
+                        }, `${request.method} ${request.url} ${reply.statusCode} - ${duration}ms`);
+                    });
+
+                    node.fastify.addHook('onError', async (request, reply, error) => {
+                        logger.error({
+                            event: 'http_error',
+                            requestId: request.id,
+                            method: request.method,
+                            url: request.url,
+                            error: error.message,
+                            stack: error.stack,
+                            code: error.code
+                        }, `Request error: ${error.message}`);
+                    });
+                }
 
                 // Register OpenAPI spec endpoint
                 if (node.openapiEnabled) {

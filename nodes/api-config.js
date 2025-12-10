@@ -7,6 +7,16 @@ const {
     createOpaHealthCheck
 } = require('../lib/health-check');
 const { PoolState, ConnectionPoolManager } = require('../lib/connection-pool');
+const {
+    LOG_LEVELS,
+    LOG_OUTPUTS,
+    LOG_DEFAULTS,
+    createLogger,
+    createRequestLogger,
+    createNodeRedLoggerBridge,
+    validateLoggerConfig,
+    generateRequestId
+} = require('../lib/logger');
 
 module.exports = function(RED) {
     function ApiConfigNode(config) {
@@ -152,6 +162,35 @@ module.exports = function(RED) {
         node.openapiLicenseName = config.openapiLicenseName || '';
         node.openapiLicenseUrl = config.openapiLicenseUrl || '';
         node.openapiTermsOfService = config.openapiTermsOfService || '';
+
+        // Logging configuration
+        node.loggingEnabled = config.loggingEnabled !== false;  // Enabled by default
+        node.logLevel = config.logLevel || 'info';
+        node.logOutput = config.logOutput || 'console';
+        node.logPrettyPrint = config.logPrettyPrint === true;
+        node.logFilePath = config.logFilePath || '';
+        node.logRedactHeaders = config.logRedactHeaders !== false;  // Enabled by default
+        node.logIncludeUserContext = config.logIncludeUserContext !== false;  // Enabled by default
+
+        // Initialize logger if enabled
+        node.logger = null;
+        if (node.loggingEnabled) {
+            const logConfig = {
+                level: node.logLevel,
+                output: node.logOutput,
+                prettyPrint: node.logPrettyPrint,
+                filePath: node.logFilePath || LOG_DEFAULTS.filePath,
+                redactPaths: node.logRedactHeaders ? LOG_DEFAULTS.redactPaths : []
+            };
+
+            const validation = validateLoggerConfig(logConfig);
+            if (!validation.valid) {
+                validation.errors.forEach(error => node.warn(`Logger config: ${error}`));
+            }
+
+            node.logger = createLogger(logConfig);
+            node.log(`Logger initialized at level '${node.logger.level}'`);
+        }
 
         /**
          * Get the full API base path including version if configured
@@ -391,6 +430,67 @@ module.exports = function(RED) {
                 throw new Error('Connection pool not initialized');
             }
             await node.connectionPool.release(connection);
+        };
+
+        /**
+         * Get the shared logger instance
+         * @returns {Object|null} Pino logger instance or null if logging disabled
+         */
+        node.getLogger = function() {
+            return node.logger;
+        };
+
+        /**
+         * Create a child logger with additional context
+         * @param {Object} bindings - Additional context to bind to the logger
+         * @returns {Object|null} Child logger or null if logging disabled
+         */
+        node.createChildLogger = function(bindings) {
+            if (!node.logger) {
+                return null;
+            }
+            return node.logger.child(bindings);
+        };
+
+        /**
+         * Create a request-scoped logger
+         * @param {Object} context - Request context
+         * @param {string} [context.requestId] - Request ID
+         * @param {string} [context.method] - HTTP method
+         * @param {string} [context.path] - Request path
+         * @param {string} [context.userId] - User ID
+         * @param {string} [context.username] - Username
+         * @returns {Object|null} Request logger or null if logging disabled
+         */
+        node.createRequestLogger = function(context) {
+            if (!node.logger) {
+                return null;
+            }
+            return createRequestLogger(node.logger, context);
+        };
+
+        /**
+         * Generate a new unique request ID
+         * @returns {string} Request ID
+         */
+        node.generateRequestId = function() {
+            return generateRequestId();
+        };
+
+        /**
+         * Get logger configuration
+         * @returns {Object} Logger configuration
+         */
+        node.getLoggerConfig = function() {
+            return {
+                enabled: node.loggingEnabled,
+                level: node.logLevel,
+                output: node.logOutput,
+                prettyPrint: node.logPrettyPrint,
+                filePath: node.logFilePath,
+                redactHeaders: node.logRedactHeaders,
+                includeUserContext: node.logIncludeUserContext
+            };
         };
 
         node.on("close", async function(removed, done) {
