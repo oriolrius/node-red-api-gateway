@@ -30,6 +30,16 @@ const {
     applyFieldMapping
 } = require('../lib/request-response-transform');
 
+const {
+    RATE_LIMIT_KEY_TYPES,
+    RATE_LIMIT_DEFAULTS,
+    RateLimiter,
+    validateRateLimitConfig,
+    extractRateLimitKey,
+    generateRateLimitHeaders,
+    createRateLimitError
+} = require('../lib/rate-limiter');
+
 /**
  * Parses a scopes configuration string into an array of scope strings
  * @param {string|Array} scopes - Comma-separated string or array of scopes
@@ -717,6 +727,35 @@ module.exports = function(RED) {
         node.responseTransformExpression = null;
         node.fieldMappings = null;
 
+        // Rate limiting configuration
+        node.rateLimitingEnabled = config.rateLimitingEnabled === true;
+        node.rateLimitRequests = parseInt(config.rateLimitRequests, 10) || RATE_LIMIT_DEFAULTS.requests;
+        node.rateLimitWindowMs = parseInt(config.rateLimitWindowMs, 10) || RATE_LIMIT_DEFAULTS.windowMs;
+        node.rateLimitKeyType = RATE_LIMIT_KEY_TYPES.includes(config.rateLimitKeyType)
+            ? config.rateLimitKeyType
+            : RATE_LIMIT_DEFAULTS.keyType;
+        node.rateLimitCustomKeyPath = (config.rateLimitCustomKeyPath || '').trim() || null;
+        node.rateLimiter = null;
+
+        // Initialize rate limiter if enabled
+        if (node.rateLimitingEnabled) {
+            const rateLimitValidation = validateRateLimitConfig({
+                requests: node.rateLimitRequests,
+                windowMs: node.rateLimitWindowMs,
+                keyType: node.rateLimitKeyType
+            });
+            if (!rateLimitValidation.valid) {
+                rateLimitValidation.errors.forEach(error => node.warn(`Rate limit config: ${error}`));
+            }
+
+            node.rateLimiter = new RateLimiter({
+                requests: node.rateLimitRequests,
+                windowMs: node.rateLimitWindowMs,
+                keyType: node.rateLimitKeyType,
+                customKeyPath: node.rateLimitCustomKeyPath
+            });
+        }
+
         // Parse and validate transformation expressions if enabled
         if (node.transformationEnabled) {
             // Request transformation expression
@@ -1049,6 +1088,47 @@ module.exports = function(RED) {
             return transformResponse(data, node.responseTransformExpression, context);
         };
 
+        // Method to get rate limiting configuration
+        node.getRateLimitingConfig = function() {
+            return {
+                enabled: node.rateLimitingEnabled,
+                requests: node.rateLimitRequests,
+                windowMs: node.rateLimitWindowMs,
+                keyType: node.rateLimitKeyType,
+                customKeyPath: node.rateLimitCustomKeyPath
+            };
+        };
+
+        // Method to check rate limit for a request
+        node.checkRateLimit = function(req) {
+            if (!node.rateLimitingEnabled || !node.rateLimiter) {
+                return {
+                    allowed: true,
+                    remaining: null,
+                    limit: null,
+                    resetTime: null,
+                    retryAfter: null,
+                    key: null
+                };
+            }
+            return node.rateLimiter.checkRequest(req);
+        };
+
+        // Method to get rate limiter statistics
+        node.getRateLimitStatistics = function() {
+            if (!node.rateLimiter) {
+                return null;
+            }
+            return node.rateLimiter.getStatistics();
+        };
+
+        // Method to reset rate limit for a specific key
+        node.resetRateLimit = function(key) {
+            if (node.rateLimiter) {
+                node.rateLimiter.reset(key);
+            }
+        };
+
         // Method to get endpoint info (used by api-server for route registration)
         node.getEndpointInfo = function() {
             return {
@@ -1094,7 +1174,12 @@ module.exports = function(RED) {
                 transformationEnabled: node.transformationEnabled,
                 hasRequestTransform: !!node.requestTransformExpression,
                 hasResponseTransform: !!node.responseTransformExpression,
-                hasFieldMappings: !!node.fieldMappings
+                hasFieldMappings: !!node.fieldMappings,
+                // Rate limiting configuration
+                rateLimitingEnabled: node.rateLimitingEnabled,
+                rateLimitRequests: node.rateLimitRequests,
+                rateLimitWindowMs: node.rateLimitWindowMs,
+                rateLimitKeyType: node.rateLimitKeyType
             };
         };
 
@@ -1180,7 +1265,12 @@ module.exports = function(RED) {
                     transformationEnabled: node.transformationEnabled,
                     hasRequestTransform: !!node.requestTransformExpression,
                     hasResponseTransform: !!node.responseTransformExpression,
-                    responseTransformExpression: node.responseTransformExpression
+                    responseTransformExpression: node.responseTransformExpression,
+                    // Rate limiting configuration
+                    rateLimitingEnabled: node.rateLimitingEnabled,
+                    rateLimitRequests: node.rateLimitRequests,
+                    rateLimitWindowMs: node.rateLimitWindowMs,
+                    rateLimitKeyType: node.rateLimitKeyType
                 };
 
                 // Add CRUD context if operation is configured
@@ -1227,6 +1317,49 @@ module.exports = function(RED) {
                     const extraction = node.extractRequestParams(msg.req.path);
                     if (extraction.match) {
                         msg.req.params = extraction.params;
+                    }
+                }
+
+                // Perform rate limit check if enabled
+                if (node.rateLimitingEnabled && msg.req) {
+                    const rateLimitResult = node.checkRateLimit(msg.req);
+
+                    // Add rate limit headers to response
+                    if (msg.res && typeof msg.res.set === 'function') {
+                        const headers = generateRateLimitHeaders(rateLimitResult);
+                        for (const [name, value] of Object.entries(headers)) {
+                            msg.res.set(name, value);
+                        }
+                    }
+
+                    // Add rate limit context to message
+                    msg.rateLimit = {
+                        allowed: rateLimitResult.allowed,
+                        limit: rateLimitResult.limit,
+                        remaining: rateLimitResult.remaining,
+                        resetTime: rateLimitResult.resetTime,
+                        key: rateLimitResult.key
+                    };
+
+                    // If rate limited, return 429 error
+                    if (!rateLimitResult.allowed) {
+                        const rateLimitError = createRateLimitError(rateLimitResult, rateLimitResult.key);
+                        msg.rateLimitError = rateLimitError;
+
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            msg.res.status(429).json(rateLimitError);
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+
+                        msg.payload = rateLimitError;
+                        send(msg);
+                        if (done) {
+                            done();
+                        }
+                        return;
                     }
                 }
 
@@ -1387,6 +1520,12 @@ module.exports = function(RED) {
             // Unregister from server if connected
             if (node.serverNode && typeof node.serverNode.unregisterEndpoint === 'function') {
                 node.serverNode.unregisterEndpoint(node);
+            }
+
+            // Shutdown rate limiter if enabled
+            if (node.rateLimiter) {
+                node.rateLimiter.shutdown();
+                node.rateLimiter = null;
             }
 
             if (done) {

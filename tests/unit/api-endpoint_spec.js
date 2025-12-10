@@ -3822,4 +3822,411 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Rate Limiting Configuration", function () {
+        it("should be disabled by default", function (done) {
+            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitingEnabled", false);
+                    n1.should.have.property("rateLimiter", null);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should be enabled when configured", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitRequests: 100,
+                rateLimitWindowMs: 60000,
+                rateLimitKeyType: "ip"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitingEnabled", true);
+                    n1.should.have.property("rateLimitRequests", 100);
+                    n1.should.have.property("rateLimitWindowMs", 60000);
+                    n1.should.have.property("rateLimitKeyType", "ip");
+                    n1.should.have.property("rateLimiter").which.is.not.null();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should use default values when not provided", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitRequests", 100);
+                    n1.should.have.property("rateLimitWindowMs", 60000);
+                    n1.should.have.property("rateLimitKeyType", "ip");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support user key type", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitKeyType: "user"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitKeyType", "user");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support apiKey key type", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitKeyType: "apiKey"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitKeyType", "apiKey");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should support custom key type with path", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitKeyType: "custom",
+                rateLimitCustomKeyPath: "headers.x-tenant-id"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitKeyType", "custom");
+                    n1.should.have.property("rateLimitCustomKeyPath", "headers.x-tenant-id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should default invalid keyType to ip", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitKeyType: "invalid"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("rateLimitKeyType", "ip");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("getRateLimitingConfig Method", function () {
+        it("should return rate limiting configuration", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitRequests: 50,
+                rateLimitWindowMs: 30000,
+                rateLimitKeyType: "user"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const config = n1.getRateLimitingConfig();
+                    config.should.have.property("enabled", true);
+                    config.should.have.property("requests", 50);
+                    config.should.have.property("windowMs", 30000);
+                    config.should.have.property("keyType", "user");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("checkRateLimit Method", function () {
+        it("should return allowed=true when disabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.checkRateLimit({ headers: { 'x-forwarded-for': '192.168.1.1' } });
+                    result.should.have.property("allowed", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should check rate limit when enabled", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitRequests: 5,
+                rateLimitWindowMs: 60000,
+                rateLimitKeyType: "ip"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const req = { headers: { 'x-forwarded-for': '192.168.1.1' } };
+                    const result = n1.checkRateLimit(req);
+                    result.should.have.property("allowed", true);
+                    result.should.have.property("remaining", 4);
+                    result.should.have.property("limit", 5);
+                    result.should.have.property("key", "192.168.1.1");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should block when rate limit exceeded", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitRequests: 3,
+                rateLimitWindowMs: 60000,
+                rateLimitKeyType: "ip"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const req = { headers: { 'x-forwarded-for': '192.168.1.1' } };
+                    // Exhaust limit
+                    for (let i = 0; i < 3; i++) {
+                        n1.checkRateLimit(req);
+                    }
+                    // Should be blocked
+                    const result = n1.checkRateLimit(req);
+                    result.should.have.property("allowed", false);
+                    result.should.have.property("remaining", 0);
+                    result.should.have.property("retryAfter").which.is.greaterThan(0);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Rate Limiting in Message Handling", function () {
+        it("should add rateLimit context to message when enabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 10, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("rateLimit");
+                        msg.rateLimit.should.have.property("allowed", true);
+                        msg.rateLimit.should.have.property("limit", 10);
+                        msg.rateLimit.should.have.property("remaining", 9);
+                        msg.rateLimit.should.have.property("key", "192.168.1.1");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+            });
+        });
+
+        it("should not add rateLimit context when disabled", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("rateLimit");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { headers: {} } });
+            });
+        });
+
+        it("should block message flow when rate limited", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                let messageCount = 0;
+
+                n2.on("input", function (msg) {
+                    messageCount++;
+                    if (msg.rateLimitError) {
+                        try {
+                            msg.rateLimitError.should.have.property("statusCode", 429);
+                            msg.rateLimitError.should.have.property("error", "Too Many Requests");
+                            done();
+                        } catch (err) {
+                            done(err);
+                        }
+                    }
+                });
+
+                // First two should pass
+                n1.receive({ payload: "test1", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test2", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                // Third should be rate limited
+                n1.receive({ payload: "test3", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+            });
+        });
+
+        it("should include rate limit config in endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 100, rateLimitWindowMs: 60000, rateLimitKeyType: "user", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("endpoint");
+                        msg.endpoint.should.have.property("rateLimitingEnabled", true);
+                        msg.endpoint.should.have.property("rateLimitRequests", 100);
+                        msg.endpoint.should.have.property("rateLimitWindowMs", 60000);
+                        msg.endpoint.should.have.property("rateLimitKeyType", "user");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+            });
+        });
+
+        it("should track different keys independently", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                let messages = [];
+
+                n2.on("input", function (msg) {
+                    messages.push(msg);
+                    if (messages.length === 4) {
+                        try {
+                            // First two from IP1 should pass
+                            messages[0].rateLimit.should.have.property("allowed", true);
+                            messages[1].rateLimit.should.have.property("allowed", true);
+                            // First two from IP2 should also pass (different key)
+                            messages[2].rateLimit.should.have.property("allowed", true);
+                            messages[3].rateLimit.should.have.property("allowed", true);
+                            done();
+                        } catch (err) {
+                            done(err);
+                        }
+                    }
+                });
+
+                // Send two from IP1
+                n1.receive({ payload: "test1", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test2", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                // Send two from IP2 (should have fresh limit)
+                n1.receive({ payload: "test3", req: { headers: { 'x-forwarded-for': '192.168.1.2' } } });
+                n1.receive({ payload: "test4", req: { headers: { 'x-forwarded-for': '192.168.1.2' } } });
+            });
+        });
+    });
+
+    describe("getEndpointInfo with Rate Limiting", function () {
+        it("should include rate limiting in endpoint info", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                rateLimitingEnabled: true,
+                rateLimitRequests: 50,
+                rateLimitWindowMs: 30000,
+                rateLimitKeyType: "apiKey"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("rateLimitingEnabled", true);
+                    info.should.have.property("rateLimitRequests", 50);
+                    info.should.have.property("rateLimitWindowMs", 30000);
+                    info.should.have.property("rateLimitKeyType", "apiKey");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });

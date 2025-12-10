@@ -42,7 +42,13 @@
             transformationEnabled: { value: false },
             requestTransformExpression: { value: "" },
             responseTransformExpression: { value: "" },
-            fieldMappings: { value: "" }
+            fieldMappings: { value: "" },
+            // Rate Limiting
+            rateLimitingEnabled: { value: false },
+            rateLimitRequests: { value: "100" },
+            rateLimitWindowMs: { value: "60000" },
+            rateLimitKeyType: { value: "ip" },
+            rateLimitCustomKeyPath: { value: "" }
         },
         inputs: 1,
         outputs: 1,
@@ -587,6 +593,55 @@
             setupExpressionValidation('#node-input-requestTransformExpression', '#request-transform-error');
             setupExpressionValidation('#node-input-responseTransformExpression', '#response-transform-error');
 
+            // Toggle rate limiting configuration visibility
+            function updateRateLimitingVisibility() {
+                var enabled = $('#node-input-rateLimitingEnabled').is(':checked');
+                if (enabled) {
+                    $('#rate-limiting-config').show();
+                } else {
+                    $('#rate-limiting-config').hide();
+                }
+                updateCustomKeyPathVisibility();
+            }
+
+            // Toggle custom key path visibility based on key type
+            function updateCustomKeyPathVisibility() {
+                var keyType = $('#node-input-rateLimitKeyType').val();
+                if (keyType === 'custom') {
+                    $('#custom-key-path-row').show();
+                } else {
+                    $('#custom-key-path-row').hide();
+                }
+            }
+
+            // Validate rate limit configuration
+            function validateRateLimitConfig() {
+                var requests = parseInt($('#node-input-rateLimitRequests').val(), 10);
+                var windowMs = parseInt($('#node-input-rateLimitWindowMs').val(), 10);
+                var $requestsError = $('#rate-limit-requests-error');
+                var $windowError = $('#rate-limit-window-error');
+
+                // Validate requests
+                if (isNaN(requests) || requests < 1) {
+                    $requestsError.text('Must be a positive integer').show();
+                } else {
+                    $requestsError.hide();
+                }
+
+                // Validate window
+                if (isNaN(windowMs) || windowMs < 1000) {
+                    $windowError.text('Must be at least 1000ms (1 second)').show();
+                } else {
+                    $windowError.hide();
+                }
+            }
+
+            // Event listeners for rate limiting
+            $('#node-input-rateLimitingEnabled').on('change', updateRateLimitingVisibility);
+            $('#node-input-rateLimitKeyType').on('change', updateCustomKeyPathVisibility);
+            $('#node-input-rateLimitRequests').on('input change', validateRateLimitConfig);
+            $('#node-input-rateLimitWindowMs').on('input change', validateRateLimitConfig);
+
             // Initial updates
             updateParamDisplay();
             updateValidationVisibility();
@@ -599,6 +654,7 @@
             updateSortableFieldsDisplay();
             updateTransformationVisibility();
             updateFieldMappingsDisplay();
+            updateRateLimitingVisibility();
 
             // Format existing schemas on open
             formatJson('#node-input-bodySchema');
@@ -1068,6 +1124,62 @@
             <i class="fa fa-info-circle"></i> <b>JSONata</b> is a lightweight query and transformation language for JSON.<br>
             <i class="fa fa-info-circle"></i> <b>Context variables:</b> <code>$msg</code> (message), <code>$params</code> (path params), <code>$query</code> (query params), <code>$headers</code> (headers)<br>
             <i class="fa fa-info-circle"></i> <b>Common functions:</b> <code>$merge()</code>, <code>$lowercase()</code>, <code>$uppercase()</code>, <code>$trim()</code>, <code>$now()</code>
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-tachometer"></i> Rate Limiting</label>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-rateLimitingEnabled">
+            <i class="fa fa-toggle-on"></i> Enable
+        </label>
+        <input type="checkbox" id="node-input-rateLimitingEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable rate limiting for this endpoint</span>
+    </div>
+
+    <div id="rate-limiting-config" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-rateLimitRequests"><i class="fa fa-hashtag"></i> Requests</label>
+            <input type="number" id="node-input-rateLimitRequests" min="1" style="width: 100px;" placeholder="100">
+            <span style="margin-left: 5px; color: #666;">requests per window</span>
+            <div id="rate-limit-requests-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-rateLimitWindowMs"><i class="fa fa-clock-o"></i> Window</label>
+            <input type="number" id="node-input-rateLimitWindowMs" min="1000" step="1000" style="width: 100px;" placeholder="60000">
+            <span style="margin-left: 5px; color: #666;">milliseconds (60000 = 1 minute)</span>
+            <div id="rate-limit-window-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-rateLimitKeyType"><i class="fa fa-key"></i> Key Type</label>
+            <select id="node-input-rateLimitKeyType" style="width: 200px;">
+                <option value="ip">IP Address</option>
+                <option value="user">User ID (from auth)</option>
+                <option value="apiKey">API Key (from header)</option>
+                <option value="custom">Custom (path expression)</option>
+            </select>
+        </div>
+
+        <div class="form-row" id="custom-key-path-row" style="display: none;">
+            <label for="node-input-rateLimitCustomKeyPath"><i class="fa fa-code"></i> Key Path</label>
+            <input type="text" id="node-input-rateLimitCustomKeyPath" placeholder="headers.x-tenant-id">
+            <div class="form-tips" style="margin-left: 105px;">Dot-notation path to extract key from request (e.g., <code>headers.x-tenant-id</code>)</div>
+        </div>
+
+        <div class="form-tips" style="margin-top: 10px;">
+            <i class="fa fa-info-circle"></i> Rate limiting restricts the number of requests per time window.<br>
+            <i class="fa fa-info-circle"></i> <b>Key types:</b><br>
+            &nbsp;&nbsp;- <b>IP Address:</b> Limits requests per client IP (supports X-Forwarded-For for proxies)<br>
+            &nbsp;&nbsp;- <b>User ID:</b> Limits requests per authenticated user (from <code>req.auth.userId</code>)<br>
+            &nbsp;&nbsp;- <b>API Key:</b> Limits requests per API key (from <code>X-API-Key</code> header)<br>
+            &nbsp;&nbsp;- <b>Custom:</b> Limits by custom request property (specify dot-notation path)<br>
+            <i class="fa fa-info-circle"></i> <b>Response headers:</b> <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>, <code>Retry-After</code>
         </div>
     </div>
 
@@ -1697,4 +1809,90 @@ if (msg.endpoint.responseTransformExpression) {
     msg.payload = await expr.evaluate(msg.payload);
 }
 return msg;</pre>
+
+    <h3>Rate Limiting Support</h3>
+    <p>When rate limiting is enabled, the endpoint enforces request limits per time window using a token bucket algorithm.</p>
+
+    <h4>Configuration</h4>
+    <dl class="message-properties">
+        <dt>Enable Rate Limiting
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>Enable or disable rate limiting for this endpoint.</dd>
+
+        <dt>Requests
+            <span class="property-type">number</span>
+        </dt>
+        <dd>Maximum number of requests allowed per time window. Default is 100.</dd>
+
+        <dt>Window
+            <span class="property-type">number</span>
+        </dt>
+        <dd>Time window in milliseconds. Default is 60000 (1 minute).</dd>
+
+        <dt>Key Type
+            <span class="property-type">string</span>
+        </dt>
+        <dd>The method used to identify clients for rate limiting:
+            <ul>
+                <li><b>IP Address:</b> Uses client IP (supports X-Forwarded-For for proxied requests)</li>
+                <li><b>User ID:</b> Uses authenticated user ID from <code>req.auth.userId</code> or <code>req.auth.sub</code></li>
+                <li><b>API Key:</b> Uses API key from <code>X-API-Key</code> header or Authorization Bearer token</li>
+                <li><b>Custom:</b> Uses a custom path expression to extract the key from the request</li>
+            </ul>
+        </dd>
+
+        <dt>Key Path (Custom only)
+            <span class="property-type">string</span>
+        </dt>
+        <dd>Dot-notation path to extract the rate limit key from the request object (e.g., <code>headers.x-tenant-id</code>).</dd>
+    </dl>
+
+    <h4>Response Headers</h4>
+    <p>When rate limiting is enabled, the following headers are added to all responses:</p>
+    <ul>
+        <li><code>X-RateLimit-Limit</code> - Maximum requests per window</li>
+        <li><code>X-RateLimit-Remaining</code> - Remaining requests in current window</li>
+        <li><code>X-RateLimit-Reset</code> - Unix timestamp when the window resets</li>
+        <li><code>Retry-After</code> - Seconds to wait before retrying (only on 429 responses)</li>
+    </ul>
+
+    <h4>429 Response</h4>
+    <p>When a client exceeds the rate limit, a 429 Too Many Requests response is returned:</p>
+    <pre>{
+  "statusCode": 429,
+  "error": "Too Many Requests",
+  "message": "Rate limit exceeded. Please try again later.",
+  "details": {
+    "limit": 100,
+    "remaining": 0,
+    "resetTime": "2024-01-01T12:01:00.000Z",
+    "retryAfter": 30
+  }
+}</pre>
+
+    <h4>Message Context</h4>
+    <p>When rate limiting is enabled, the <code>msg.rateLimit</code> object is added to the message:</p>
+    <pre>{
+  "allowed": true,
+  "limit": 100,
+  "remaining": 95,
+  "resetTime": 1704110460000,
+  "key": "192.168.1.1"
+}</pre>
+
+    <h4>Rate Limit Error</h4>
+    <p>When rate limited, <code>msg.rateLimitError</code> contains the error details. The message flow is stopped and a 429 response is sent automatically if <code>msg.res</code> is available.</p>
+
+    <h4>Methods Available</h4>
+    <dl class="message-properties">
+        <dt>getRateLimitingConfig()</dt>
+        <dd>Returns the rate limiting configuration: <code>{enabled, requests, windowMs, keyType, customKeyPath}</code>.</dd>
+        <dt>checkRateLimit(req)</dt>
+        <dd>Checks rate limit for a request. Returns <code>{allowed, remaining, limit, resetTime, retryAfter, key}</code>.</dd>
+        <dt>getRateLimitStatistics()</dt>
+        <dd>Returns rate limiter statistics including total checks, allowed/blocked counts, and block rate.</dd>
+        <dt>resetRateLimit(key)</dt>
+        <dd>Resets rate limit for a specific key.</dd>
+    </dl>
 </script>
