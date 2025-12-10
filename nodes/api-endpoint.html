@@ -6,7 +6,11 @@
             name: { value: "" },
             server: { value: "", type: "api-server" },
             path: { value: "/", required: true },
-            method: { value: "GET", required: true }
+            method: { value: "GET", required: true },
+            validationEnabled: { value: true },
+            bodySchema: { value: "" },
+            querySchema: { value: "" },
+            paramsSchema: { value: "" }
         },
         inputs: 1,
         outputs: 1,
@@ -32,12 +36,9 @@
                 if (!path.startsWith('/')) {
                     return { valid: false, error: 'Path must start with /' };
                 }
-                // Check for double slashes (except at start for protocol)
                 if (path.indexOf('//') !== -1) {
                     return { valid: false, error: 'Path cannot contain double slashes' };
                 }
-                // Validate parameter names
-                var paramRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)/g;
                 var invalidParamRegex = /:([^/]*)/g;
                 var match;
                 while ((match = invalidParamRegex.exec(path)) !== null) {
@@ -49,7 +50,37 @@
                 return { valid: true };
             }
 
-            // Extract and display parameters from path
+            // JSON Schema validation
+            function validateJsonSchema(schemaStr) {
+                if (!schemaStr || schemaStr.trim() === '') {
+                    return { valid: true };
+                }
+                try {
+                    var schema = JSON.parse(schemaStr);
+                    if (typeof schema !== 'object' || schema === null) {
+                        return { valid: false, error: 'Schema must be a JSON object' };
+                    }
+                    return { valid: true };
+                } catch (e) {
+                    return { valid: false, error: 'Invalid JSON: ' + e.message };
+                }
+            }
+
+            // Format JSON in textarea
+            function formatJson(textareaId) {
+                var $textarea = $(textareaId);
+                var value = $textarea.val().trim();
+                if (value) {
+                    try {
+                        var obj = JSON.parse(value);
+                        $textarea.val(JSON.stringify(obj, null, 2));
+                    } catch (e) {
+                        // Leave as-is if not valid JSON
+                    }
+                }
+            }
+
+            // Update param display
             function updateParamDisplay() {
                 var path = $('#node-input-path').val();
                 var params = [];
@@ -85,13 +116,67 @@
                 }
             }
 
-            // Attach event listener for path changes
-            $('#node-input-path').on('input change', function() {
-                updateParamDisplay();
+            // Setup schema editor validation
+            function setupSchemaValidation(textareaId, errorId) {
+                $(textareaId).on('input change', function() {
+                    var validation = validateJsonSchema($(this).val());
+                    var $error = $(errorId);
+                    if (!validation.valid) {
+                        $(this).addClass('input-error');
+                        $error.text(validation.error).show();
+                    } else {
+                        $(this).removeClass('input-error');
+                        $error.hide();
+                    }
+                });
+            }
+
+            // Toggle validation section visibility
+            function updateValidationVisibility() {
+                var enabled = $('#node-input-validationEnabled').is(':checked');
+                if (enabled) {
+                    $('#validation-schemas').show();
+                } else {
+                    $('#validation-schemas').hide();
+                }
+            }
+
+            // Initialize collapsible sections
+            $('.schema-section-header').on('click', function() {
+                var $content = $(this).next('.schema-section-content');
+                var $icon = $(this).find('.section-toggle-icon');
+                $content.slideToggle(200);
+                $icon.toggleClass('fa-chevron-down fa-chevron-right');
             });
 
-            // Initial update
+            // Event listeners
+            $('#node-input-path').on('input change', updateParamDisplay);
+            $('#node-input-validationEnabled').on('change', updateValidationVisibility);
+
+            // Setup schema validation for each editor
+            setupSchemaValidation('#node-input-bodySchema', '#body-schema-error');
+            setupSchemaValidation('#node-input-querySchema', '#query-schema-error');
+            setupSchemaValidation('#node-input-paramsSchema', '#params-schema-error');
+
+            // Format buttons
+            $('#format-body-schema').on('click', function() {
+                formatJson('#node-input-bodySchema');
+            });
+            $('#format-query-schema').on('click', function() {
+                formatJson('#node-input-querySchema');
+            });
+            $('#format-params-schema').on('click', function() {
+                formatJson('#node-input-paramsSchema');
+            });
+
+            // Initial updates
             updateParamDisplay();
+            updateValidationVisibility();
+
+            // Format existing schemas on open
+            formatJson('#node-input-bodySchema');
+            formatJson('#node-input-querySchema');
+            formatJson('#node-input-paramsSchema');
         },
         oneditsave: function() {
             // Normalize path on save
@@ -99,11 +184,24 @@
             if (path && !path.startsWith('/')) {
                 path = '/' + path;
             }
-            // Remove trailing slash unless it's the root path
             if (path && path.length > 1 && path.endsWith('/')) {
                 path = path.slice(0, -1);
             }
             this.path = path || '/';
+
+            // Minify schemas on save to reduce storage
+            var schemas = ['bodySchema', 'querySchema', 'paramsSchema'];
+            schemas.forEach(function(schema) {
+                var value = $('#node-input-' + schema).val().trim();
+                if (value) {
+                    try {
+                        var obj = JSON.parse(value);
+                        $('#node-input-' + schema).val(JSON.stringify(obj));
+                    } catch (e) {
+                        // Leave as-is if not valid JSON
+                    }
+                }
+            });
         }
     });
 </script>
@@ -136,6 +234,67 @@
         <label><i class="fa fa-list"></i> Parameters</label>
         <div id="param-list" style="display: inline-block;"></div>
     </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-validationEnabled">
+            <i class="fa fa-check-square"></i> Validation
+        </label>
+        <input type="checkbox" id="node-input-validationEnabled" style="width: auto; margin-left: 5px;">
+        <span style="margin-left: 5px;">Enable request validation</span>
+    </div>
+
+    <div id="validation-schemas">
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-file-code-o"></i> Request Body Schema
+            </div>
+            <div class="schema-section-content">
+                <div class="form-row">
+                    <textarea id="node-input-bodySchema" rows="8" placeholder='{"type": "object", "properties": {...}, "required": [...]}'></textarea>
+                    <div id="body-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                    <button type="button" id="format-body-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
+                        <i class="fa fa-indent"></i> Format
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-question-circle"></i> Query Parameters Schema
+            </div>
+            <div class="schema-section-content">
+                <div class="form-row">
+                    <textarea id="node-input-querySchema" rows="6" placeholder='{"type": "object", "properties": {"page": {"type": "integer"}, "limit": {"type": "integer"}}}'></textarea>
+                    <div id="query-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                    <button type="button" id="format-query-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
+                        <i class="fa fa-indent"></i> Format
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="schema-section">
+            <div class="schema-section-header">
+                <i class="fa fa-chevron-down section-toggle-icon"></i>
+                <i class="fa fa-link"></i> Path Parameters Schema
+            </div>
+            <div class="schema-section-content">
+                <div class="form-row">
+                    <textarea id="node-input-paramsSchema" rows="4" placeholder='{"type": "object", "properties": {"id": {"type": "integer"}}}'></textarea>
+                    <div id="params-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                    <button type="button" id="format-params-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
+                        <i class="fa fa-indent"></i> Format
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <style>
         .param-badge {
             display: inline-block;
@@ -150,11 +309,44 @@
         .input-error {
             border-color: #d9534f !important;
         }
+        .schema-section {
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .schema-section-header {
+            padding: 8px 12px;
+            background-color: #f5f5f5;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .schema-section-header:hover {
+            background-color: #e8e8e8;
+        }
+        .schema-section-header i {
+            margin-right: 5px;
+        }
+        .section-toggle-icon {
+            transition: transform 0.2s;
+        }
+        .schema-section-content {
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+        .schema-section-content textarea {
+            width: 100%;
+            font-family: monospace;
+            font-size: 12px;
+            resize: vertical;
+        }
+        #validation-schemas {
+            margin-top: 10px;
+        }
     </style>
 </script>
 
 <script type="text/html" data-help-name="api-endpoint">
-    <p>Configures an API endpoint with path and HTTP method for the API Gateway.</p>
+    <p>Configures an API endpoint with path, HTTP method, and request validation for the API Gateway.</p>
 
     <h3>Properties</h3>
     <dl class="message-properties">
@@ -172,7 +364,27 @@
             <span class="property-type">string</span>
         </dt>
         <dd>The URL path pattern for this endpoint. Supports path parameters using colon notation
-            (e.g., <code>/users/:id</code>, <code>/posts/:postId/comments/:commentId</code>).</dd>
+            (e.g., <code>/users/:id</code>).</dd>
+
+        <dt>Validation
+            <span class="property-type">boolean</span>
+        </dt>
+        <dd>Enable or disable request validation. When enabled, requests are validated against the defined schemas.</dd>
+
+        <dt>Request Body Schema
+            <span class="property-type">JSON Schema</span>
+        </dt>
+        <dd>JSON Schema to validate the request body (typically for POST, PUT, PATCH requests).</dd>
+
+        <dt>Query Parameters Schema
+            <span class="property-type">JSON Schema</span>
+        </dt>
+        <dd>JSON Schema to validate query string parameters. Type coercion is automatically applied.</dd>
+
+        <dt>Path Parameters Schema
+            <span class="property-type">JSON Schema</span>
+        </dt>
+        <dd>JSON Schema to validate path parameters. Type coercion is automatically applied.</dd>
     </dl>
 
     <h3>Path Parameters</h3>
@@ -181,47 +393,50 @@
         <li><code>/users/:id</code> - captures a user ID</li>
         <li><code>/posts/:postId/comments/:commentId</code> - captures both post and comment IDs</li>
     </ul>
-    <p>Parameter names must start with a letter or underscore, followed by alphanumeric characters or underscores.</p>
+
+    <h3>Schema Validation</h3>
+    <p>Request validation uses JSON Schema (draft-07). Common formats are supported:</p>
+    <ul>
+        <li><code>email</code> - validates email addresses</li>
+        <li><code>uri</code> - validates URIs</li>
+        <li><code>date-time</code> - validates ISO 8601 date-times</li>
+        <li><code>uuid</code> - validates UUIDs</li>
+    </ul>
+
+    <h3>Example Body Schema</h3>
+    <pre>{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "email": { "type": "string", "format": "email" },
+    "age": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["name", "email"]
+}</pre>
+
+    <h3>Validation Errors</h3>
+    <p>When validation fails:</p>
+    <ul>
+        <li>If <code>msg.res</code> is available, a 400 Bad Request response is automatically sent</li>
+        <li>The error details are added to <code>msg.validationError</code></li>
+        <li>The error response includes the path, message, and details for each validation failure</li>
+    </ul>
 
     <h3>Inputs</h3>
     <dl class="message-properties">
-        <dt>payload
-            <span class="property-type">any</span>
-        </dt>
-        <dd>The incoming message payload.</dd>
-
-        <dt class="optional">req.path
-            <span class="property-type">string</span>
-        </dt>
-        <dd>If provided, path parameters will be extracted and stored in <code>msg.req.params</code>.</dd>
+        <dt>req.body <span class="property-type">any</span></dt>
+        <dd>Request body to validate against the body schema.</dd>
+        <dt>req.query <span class="property-type">object</span></dt>
+        <dd>Query parameters to validate against the query schema.</dd>
+        <dt>req.params <span class="property-type">object</span></dt>
+        <dd>Path parameters to validate against the params schema.</dd>
     </dl>
 
     <h3>Outputs</h3>
     <dl class="message-properties">
-        <dt>payload
-            <span class="property-type">any</span>
-        </dt>
-        <dd>The original payload, passed through unchanged.</dd>
-
-        <dt>endpoint
-            <span class="property-type">object</span>
-        </dt>
-        <dd>Endpoint metadata including path, method, and paramNames.</dd>
-
-        <dt>req.params
-            <span class="property-type">object</span>
-        </dt>
-        <dd>Extracted path parameters (if req.path was provided and matched).</dd>
+        <dt>endpoint <span class="property-type">object</span></dt>
+        <dd>Endpoint metadata including path, method, paramNames, and validationEnabled.</dd>
+        <dt>validationError <span class="property-type">object</span></dt>
+        <dd>Present only when validation fails. Contains statusCode, error, message, and details.</dd>
     </dl>
-
-    <h3>Details</h3>
-    <p>This node defines an API endpoint within the API Gateway. It registers with an API Server
-    configuration node which handles the actual HTTP server and route registration.</p>
-
-    <p>When a message passes through this node, it adds endpoint metadata to the message and,
-    if a request path is provided, extracts any path parameters according to the configured pattern.</p>
-
-    <h3>Example</h3>
-    <p>For a path pattern <code>/users/:id</code> and a request path <code>/users/123</code>:</p>
-    <pre>msg.req.params = { id: "123" }</pre>
 </script>

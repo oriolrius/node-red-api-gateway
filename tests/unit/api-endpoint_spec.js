@@ -434,4 +434,442 @@ describe("api-endpoint Node", function () {
             });
         });
     });
+
+    describe("Schema Validation Configuration", function () {
+        it("should enable validation by default", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("validationEnabled", true);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should allow disabling validation", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                validationEnabled: false
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("validationEnabled", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse body schema from JSON string", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: { name: { type: "string" } },
+                required: ["name"]
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                bodySchema: bodySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("bodySchema");
+                    n1.bodySchema.should.have.property("type", "object");
+                    n1.bodySchema.should.have.property("required").which.containEql("name");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse query schema from JSON string", function (done) {
+            const querySchema = JSON.stringify({
+                type: "object",
+                properties: {
+                    page: { type: "integer" },
+                    limit: { type: "integer" }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                querySchema: querySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("querySchema");
+                    n1.querySchema.properties.should.have.property("page");
+                    n1.querySchema.properties.should.have.property("limit");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should parse params schema from JSON string", function (done) {
+            const paramsSchema = JSON.stringify({
+                type: "object",
+                properties: { id: { type: "integer" } }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                paramsSchema: paramsSchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("paramsSchema");
+                    n1.paramsSchema.properties.should.have.property("id");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not parse schemas when validation is disabled", function (done) {
+            const bodySchema = JSON.stringify({ type: "object" });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                validationEnabled: false,
+                bodySchema: bodySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    (n1.bodySchema === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should include validation info in getEndpointInfo", function (done) {
+            const bodySchema = JSON.stringify({ type: "object" });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                bodySchema: bodySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const info = n1.getEndpointInfo();
+                    info.should.have.property("validationEnabled", true);
+                    info.should.have.property("hasBodySchema", true);
+                    info.should.have.property("hasQuerySchema", false);
+                    info.should.have.property("hasParamsSchema", false);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Request Validation", function () {
+        it("should validate request body against schema", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: {
+                    name: { type: "string" },
+                    email: { type: "string", format: "email" }
+                },
+                required: ["name", "email"]
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                method: "POST",
+                bodySchema: bodySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateRequest({
+                        body: { name: "John", email: "john@example.com" }
+                    });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return validation errors for invalid body", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: { name: { type: "string" } },
+                required: ["name"]
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                method: "POST",
+                bodySchema: bodySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateRequest({ body: {} });
+                    result.valid.should.be.false();
+                    result.errors.length.should.be.above(0);
+                    result.errors[0].should.have.property("location", "body");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should validate query parameters with type coercion", function (done) {
+            const querySchema = JSON.stringify({
+                type: "object",
+                properties: {
+                    page: { type: "integer", minimum: 1 }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                querySchema: querySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // Query params are strings, should be coerced to integer
+                    const result = n1.validateRequest({ query: { page: "5" } });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return error for invalid query params", function (done) {
+            const querySchema = JSON.stringify({
+                type: "object",
+                properties: {
+                    page: { type: "integer", minimum: 1 }
+                }
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users",
+                querySchema: querySchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateRequest({ query: { page: "0" } });
+                    result.valid.should.be.false();
+                    result.errors[0].should.have.property("location", "query");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should validate path parameters", function (done) {
+            const paramsSchema = JSON.stringify({
+                type: "object",
+                properties: { id: { type: "integer" } },
+                required: ["id"]
+            });
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users/:id",
+                paramsSchema: paramsSchema
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateRequest({ params: { id: "123" } });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should pass when no schemas are defined", function (done) {
+            const flow = [{
+                id: "n1",
+                type: "api-endpoint",
+                path: "/users"
+            }];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    const result = n1.validateRequest({
+                        body: { any: "data" },
+                        query: { any: "param" },
+                        params: { id: "123" }
+                    });
+                    result.valid.should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Message Handling with Validation", function () {
+        it("should add validationEnabled to endpoint metadata", function (done) {
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", validationEnabled: true, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.endpoint.should.have.property("validationEnabled", true);
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+
+        it("should add validationError to message on validation failure", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: { name: { type: "string" } },
+                required: ["name"]
+            });
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.have.property("validationError");
+                        msg.validationError.should.have.property("statusCode", 400);
+                        msg.validationError.should.have.property("error", "Bad Request");
+                        msg.validationError.should.have.property("details").which.is.an.Array();
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: { body: {} } });
+            });
+        });
+
+        it("should pass message through on successful validation", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: { name: { type: "string" } },
+                required: ["name"]
+            });
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("validationError");
+                        msg.payload.should.deepEqual({ name: "John" });
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: { name: "John" }, req: { body: { name: "John" } } });
+            });
+        });
+
+        it("should skip validation when disabled", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                properties: { name: { type: "string" } },
+                required: ["name"]
+            });
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, validationEnabled: false, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        // Should pass through even with invalid body since validation is disabled
+                        msg.should.not.have.property("validationError");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ req: { body: {} } });
+            });
+        });
+
+        it("should skip validation when no req object present", function (done) {
+            const bodySchema = JSON.stringify({
+                type: "object",
+                required: ["name"]
+            });
+            const flow = [
+                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.should.not.have.property("validationError");
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test" });
+            });
+        });
+    });
 });
