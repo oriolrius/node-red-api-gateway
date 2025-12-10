@@ -143,6 +143,16 @@ module.exports = function(RED) {
         node.apiBasePath = config.apiBasePath;
         node.apiVersionInPath = config.apiVersionInPath;
 
+        // OpenAPI configuration
+        node.openapiTitle = config.openapiTitle || 'API Gateway';
+        node.openapiDescription = config.openapiDescription || '';
+        node.openapiContactName = config.openapiContactName || '';
+        node.openapiContactEmail = config.openapiContactEmail || '';
+        node.openapiContactUrl = config.openapiContactUrl || '';
+        node.openapiLicenseName = config.openapiLicenseName || '';
+        node.openapiLicenseUrl = config.openapiLicenseUrl || '';
+        node.openapiTermsOfService = config.openapiTermsOfService || '';
+
         /**
          * Get the full API base path including version if configured
          * @returns {string} Full base path (e.g., "/api/v1" or "/api")
@@ -166,11 +176,40 @@ module.exports = function(RED) {
 
         /**
          * Get OpenAPI info object for the API
-         * @returns {Object} OpenAPI info object
+         * @returns {Object} OpenAPI info object with full specification metadata
          */
         node.getOpenApiInfo = function() {
+            const info = {
+                title: node.openapiTitle || 'API Gateway',
+                version: node.apiVersion || '1.0.0'
+            };
+
+            // Add description if provided
+            if (node.openapiDescription) {
+                info.description = node.openapiDescription;
+            }
+
+            // Add contact info if any field is provided
+            if (node.openapiContactName || node.openapiContactEmail || node.openapiContactUrl) {
+                info.contact = {};
+                if (node.openapiContactName) info.contact.name = node.openapiContactName;
+                if (node.openapiContactEmail) info.contact.email = node.openapiContactEmail;
+                if (node.openapiContactUrl) info.contact.url = node.openapiContactUrl;
+            }
+
+            // Add license info if provided
+            if (node.openapiLicenseName) {
+                info.license = { name: node.openapiLicenseName };
+                if (node.openapiLicenseUrl) info.license.url = node.openapiLicenseUrl;
+            }
+
+            // Add terms of service if provided
+            if (node.openapiTermsOfService) {
+                info.termsOfService = node.openapiTermsOfService;
+            }
+
             return {
-                version: node.apiVersion || '1.0.0',
+                info,
                 basePath: node.getFullBasePath()
             };
         };

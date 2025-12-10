@@ -1,16 +1,330 @@
+'use strict';
+
+const { OpenApiGenerator } = require('../lib/openapi-generator');
+
 module.exports = function(RED) {
     function ApiServerNode(config) {
         RED.nodes.createNode(this, config);
         var node = this;
 
+        // Store configuration
+        node.name = config.name;
+        node.port = parseInt(config.port, 10) || 3000;
+        node.host = config.host || '0.0.0.0';
+
+        // OpenAPI configuration
+        node.openapiEnabled = config.openapiEnabled !== false;  // Enabled by default
+        node.openapiPath = config.openapiPath || '/openapi.json';
+        node.swaggerUiEnabled = config.swaggerUiEnabled === true;
+        node.swaggerUiPath = config.swaggerUiPath || '/docs';
+
+        // Get reference to api-config node
+        node.configNodeId = config.config;
+        node.configNode = null;
+
+        if (node.configNodeId) {
+            node.configNode = RED.nodes.getNode(node.configNodeId);
+        }
+
+        // Registered endpoints
+        node.endpoints = new Map();
+
+        // OpenAPI generator instance
+        node.openapiGenerator = null;
+
+        // Fastify instance (will be created on deploy)
+        node.fastify = null;
+        node.serverStarted = false;
+
+        /**
+         * Initialize the OpenAPI generator with config settings
+         */
+        function initializeOpenApiGenerator() {
+            const options = {
+                info: {
+                    title: 'API Gateway',
+                    description: 'Node-RED powered API Gateway',
+                    version: '1.0.0'
+                },
+                basePath: '',
+                config: null
+            };
+
+            // Get settings from config node if available
+            if (node.configNode) {
+                const openApiInfo = node.configNode.getOpenApiInfo();
+                options.info = openApiInfo.info;
+                options.basePath = openApiInfo.basePath || '';
+                options.config = node.configNode;
+            }
+
+            node.openapiGenerator = new OpenApiGenerator(options);
+        }
+
+        /**
+         * Initialize and start the Fastify server
+         */
+        async function startServer() {
+            if (node.serverStarted) {
+                return;
+            }
+
+            try {
+                // Dynamically require fastify
+                let fastify;
+                try {
+                    fastify = require('fastify');
+                } catch (err) {
+                    node.warn('Fastify not installed. OpenAPI endpoints will not be available. Install with: npm install fastify');
+                    return;
+                }
+
+                // Create Fastify instance
+                node.fastify = fastify({
+                    logger: false,
+                    ignoreTrailingSlash: true
+                });
+
+                // Register OpenAPI spec endpoint
+                if (node.openapiEnabled) {
+                    // JSON endpoint
+                    node.fastify.get(node.openapiPath, async (request, reply) => {
+                        const spec = node.openapiGenerator.generate();
+
+                        // Add server URL based on request
+                        if (!spec.servers || spec.servers.length === 0) {
+                            const protocol = request.protocol || 'http';
+                            const host = request.hostname || `${node.host}:${node.port}`;
+                            spec.servers = [{
+                                url: `${protocol}://${host}`,
+                                description: 'Current server'
+                            }];
+                        }
+
+                        reply.type('application/json');
+                        return spec;
+                    });
+
+                    // YAML endpoint
+                    const yamlPath = node.openapiPath.replace(/\.json$/, '.yaml');
+                    if (yamlPath !== node.openapiPath) {
+                        node.fastify.get(yamlPath, async (request, reply) => {
+                            reply.type('text/yaml');
+                            return node.openapiGenerator.toYAML();
+                        });
+                    }
+                }
+
+                // Register Swagger UI if enabled
+                if (node.swaggerUiEnabled) {
+                    try {
+                        const swaggerUi = require('@fastify/swagger-ui');
+                        await node.fastify.register(swaggerUi, {
+                            routePrefix: node.swaggerUiPath,
+                            uiConfig: {
+                                docExpansion: 'list',
+                                deepLinking: true,
+                                displayRequestDuration: true,
+                                filter: true
+                            },
+                            staticCSP: true,
+                            transformSpecificationClone: true
+                        });
+                    } catch (err) {
+                        node.warn('Swagger UI not available. Install with: npm install @fastify/swagger-ui');
+                    }
+                }
+
+                // Start the server
+                await node.fastify.listen({ port: node.port, host: node.host });
+                node.serverStarted = true;
+                node.status({
+                    fill: 'green',
+                    shape: 'dot',
+                    text: `listening on ${node.host}:${node.port}`
+                });
+
+                node.log(`API Server started on ${node.host}:${node.port}`);
+                if (node.openapiEnabled) {
+                    node.log(`OpenAPI spec available at ${node.openapiPath}`);
+                }
+                if (node.swaggerUiEnabled) {
+                    node.log(`Swagger UI available at ${node.swaggerUiPath}`);
+                }
+
+            } catch (err) {
+                node.error(`Failed to start server: ${err.message}`);
+                node.status({
+                    fill: 'red',
+                    shape: 'ring',
+                    text: 'failed to start'
+                });
+            }
+        }
+
+        /**
+         * Stop the Fastify server
+         */
+        async function stopServer() {
+            if (node.fastify && node.serverStarted) {
+                try {
+                    await node.fastify.close();
+                    node.serverStarted = false;
+                    node.fastify = null;
+                    node.log('API Server stopped');
+                } catch (err) {
+                    node.error(`Error stopping server: ${err.message}`);
+                }
+            }
+        }
+
+        /**
+         * Register an endpoint with this server
+         * @param {Object} endpointNode - The api-endpoint node
+         */
+        node.registerEndpoint = function(endpointNode) {
+            if (!endpointNode || !endpointNode.id) {
+                return;
+            }
+
+            node.endpoints.set(endpointNode.id, endpointNode);
+
+            // Register with OpenAPI generator
+            if (node.openapiGenerator) {
+                node.openapiGenerator.registerEndpoint(endpointNode);
+            }
+
+            node.log(`Registered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
+            updateStatus();
+        };
+
+        /**
+         * Unregister an endpoint from this server
+         * @param {Object} endpointNode - The api-endpoint node
+         */
+        node.unregisterEndpoint = function(endpointNode) {
+            if (!endpointNode || !endpointNode.id) {
+                return;
+            }
+
+            node.endpoints.delete(endpointNode.id);
+
+            // Unregister from OpenAPI generator
+            if (node.openapiGenerator) {
+                node.openapiGenerator.unregisterEndpoint(endpointNode.id);
+            }
+
+            node.log(`Unregistered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
+            updateStatus();
+        };
+
+        /**
+         * Get the OpenAPI specification
+         * @returns {Object} OpenAPI spec object
+         */
+        node.getOpenApiSpec = function() {
+            if (!node.openapiGenerator) {
+                return null;
+            }
+            return node.openapiGenerator.generate();
+        };
+
+        /**
+         * Get the OpenAPI specification as JSON string
+         * @returns {string} JSON string
+         */
+        node.getOpenApiJSON = function() {
+            if (!node.openapiGenerator) {
+                return '{}';
+            }
+            return node.openapiGenerator.toJSON();
+        };
+
+        /**
+         * Get the OpenAPI specification as YAML string
+         * @returns {string} YAML string
+         */
+        node.getOpenApiYAML = function() {
+            if (!node.openapiGenerator) {
+                return '';
+            }
+            return node.openapiGenerator.toYAML();
+        };
+
+        /**
+         * Get registered endpoint count
+         * @returns {number} Number of registered endpoints
+         */
+        node.getEndpointCount = function() {
+            return node.endpoints.size;
+        };
+
+        /**
+         * Get all registered endpoints info
+         * @returns {Array} Array of endpoint info objects
+         */
+        node.getEndpointsInfo = function() {
+            return Array.from(node.endpoints.values()).map(ep => {
+                if (typeof ep.getEndpointInfo === 'function') {
+                    return ep.getEndpointInfo();
+                }
+                return {
+                    id: ep.id,
+                    name: ep.name,
+                    path: ep.path,
+                    method: ep.method
+                };
+            });
+        };
+
+        /**
+         * Update node status based on current state
+         */
+        function updateStatus() {
+            const endpointCount = node.endpoints.size;
+            if (node.serverStarted) {
+                node.status({
+                    fill: 'green',
+                    shape: 'dot',
+                    text: `${node.host}:${node.port} (${endpointCount} endpoints)`
+                });
+            } else {
+                node.status({
+                    fill: 'yellow',
+                    shape: 'ring',
+                    text: `${endpointCount} endpoints registered`
+                });
+            }
+        }
+
+        // Initialize OpenAPI generator
+        initializeOpenApiGenerator();
+
+        // Start server if we have fastify dependencies
+        // Use setImmediate to allow endpoints to register first
+        setImmediate(() => {
+            startServer().catch(err => {
+                node.error(`Server startup error: ${err.message}`);
+            });
+        });
+
+        // Handle input messages (pass through for now)
         node.on("input", function(msg, send, done) {
             // Node-RED 1.0+ compatibility
             send = send || function() { node.send.apply(node, arguments); };
 
             try {
-                if (typeof msg.payload === "string") {
-                    msg.payload = msg.payload.toLowerCase();
-                }
+                // Add server info to message
+                msg.server = {
+                    host: node.host,
+                    port: node.port,
+                    endpointCount: node.endpoints.size,
+                    openapiEnabled: node.openapiEnabled,
+                    openapiPath: node.openapiPath,
+                    swaggerUiEnabled: node.swaggerUiEnabled,
+                    swaggerUiPath: node.swaggerUiPath
+                };
+
                 send(msg);
                 if (done) {
                     done();
@@ -24,8 +338,19 @@ module.exports = function(RED) {
             }
         });
 
-        node.on("close", function(removed, done) {
-            // Cleanup resources if needed
+        node.on("close", async function(removed, done) {
+            // Stop the server
+            await stopServer();
+
+            // Clear registered endpoints
+            node.endpoints.clear();
+
+            // Clear OpenAPI generator
+            if (node.openapiGenerator) {
+                node.openapiGenerator.clearEndpoints();
+                node.openapiGenerator = null;
+            }
+
             if (done) {
                 done();
             }

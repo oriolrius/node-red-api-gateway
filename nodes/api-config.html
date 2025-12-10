@@ -45,7 +45,16 @@
             // API Version configuration
             apiVersion: { value: "v1" },
             apiBasePath: { value: "/api" },
-            apiVersionInPath: { value: true }
+            apiVersionInPath: { value: true },
+            // OpenAPI configuration
+            openapiTitle: { value: "API Gateway" },
+            openapiDescription: { value: "" },
+            openapiContactName: { value: "" },
+            openapiContactEmail: { value: "" },
+            openapiContactUrl: { value: "" },
+            openapiLicenseName: { value: "" },
+            openapiLicenseUrl: { value: "" },
+            openapiTermsOfService: { value: "" }
         },
         credentials: {
             dbUser: { type: "text" },
@@ -369,6 +378,51 @@
         </label>
         <input type="checkbox" id="node-config-input-apiVersionInPath" style="width: auto; margin-left: 5px;">
     </div>
+
+    <!-- OpenAPI Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-file-code-o"></i> OpenAPI Documentation
+        </h4>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiTitle"><i class="fa fa-header"></i> API Title</label>
+        <input type="text" id="node-config-input-openapiTitle" placeholder="API Gateway">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiDescription"><i class="fa fa-align-left"></i> Description</label>
+        <textarea id="node-config-input-openapiDescription" rows="3" style="width: 70%;" placeholder="API description for documentation"></textarea>
+    </div>
+    <div class="form-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-address-card"></i> Contact Information</label>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiContactName"><i class="fa fa-user"></i> Contact Name</label>
+        <input type="text" id="node-config-input-openapiContactName" placeholder="API Support">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiContactEmail"><i class="fa fa-envelope"></i> Contact Email</label>
+        <input type="text" id="node-config-input-openapiContactEmail" placeholder="support@example.com">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiContactUrl"><i class="fa fa-link"></i> Contact URL</label>
+        <input type="text" id="node-config-input-openapiContactUrl" placeholder="https://example.com/support">
+    </div>
+    <div class="form-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-legal"></i> License Information</label>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiLicenseName"><i class="fa fa-certificate"></i> License Name</label>
+        <input type="text" id="node-config-input-openapiLicenseName" placeholder="MIT">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiLicenseUrl"><i class="fa fa-link"></i> License URL</label>
+        <input type="text" id="node-config-input-openapiLicenseUrl" placeholder="https://opensource.org/licenses/MIT">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-openapiTermsOfService"><i class="fa fa-file-text-o"></i> Terms of Service</label>
+        <input type="text" id="node-config-input-openapiTermsOfService" placeholder="https://example.com/terms">
+    </div>
 </script>
 
 <script type="text/html" data-help-name="api-config">
@@ -457,6 +511,29 @@
     <p>Example paths with version in path disabled:</p>
     <pre>/api/users
 /api/products</pre>
+
+    <h3>OpenAPI Documentation</h3>
+    <p>Configure OpenAPI 3.0 specification metadata:</p>
+    <ul>
+        <li><b>API Title</b> - Title displayed in the API documentation</li>
+        <li><b>Description</b> - Detailed description of the API</li>
+    </ul>
+
+    <h4>Contact Information</h4>
+    <p>Optional contact details for API support:</p>
+    <ul>
+        <li><b>Contact Name</b> - Name of the contact person or team</li>
+        <li><b>Contact Email</b> - Email address for API support</li>
+        <li><b>Contact URL</b> - URL for API support documentation</li>
+    </ul>
+
+    <h4>License Information</h4>
+    <p>Optional license details:</p>
+    <ul>
+        <li><b>License Name</b> - Name of the license (e.g., "MIT", "Apache 2.0")</li>
+        <li><b>License URL</b> - URL to the full license text</li>
+        <li><b>Terms of Service</b> - URL to terms of service</li>
+    </ul>
 
     <h3>Usage</h3>
     <p>This configuration node appears in the config nodes sidebar. Select it from the

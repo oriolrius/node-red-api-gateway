@@ -48,5 +48,10 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "jsonata": "^2.0.6"
+  },
+  "optionalDependencies": {
+    "fastify": "^5.1.0",
+    "@fastify/swagger-ui": "^5.2.0",
+    "js-yaml": "^4.1.0"
   }
 }

@@ -313,14 +313,19 @@ describe("api-config Node", function () {
             name: "OpenAPI Info Config",
             apiVersion: "v2",
             apiBasePath: "/api",
-            apiVersionInPath: true
+            apiVersionInPath: true,
+            openapiTitle: "Test API",
+            openapiDescription: "Test Description"
         }];
         helper.load(apiConfigNode, flow, function () {
             const c1 = helper.getNode("c1");
             try {
-                const info = c1.getOpenApiInfo();
-                info.should.have.property("version", "v2");
-                info.should.have.property("basePath", "/api/v2");
+                const result = c1.getOpenApiInfo();
+                result.should.have.property("info");
+                result.info.should.have.property("title", "Test API");
+                result.info.should.have.property("version", "v2");
+                result.info.should.have.property("description", "Test Description");
+                result.should.have.property("basePath", "/api/v2");
                 done();
             } catch (err) {
                 done(err);

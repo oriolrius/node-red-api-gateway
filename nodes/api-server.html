@@ -3,15 +3,45 @@
         category: 'API Gateway',
         color: '#87CEEB',
         defaults: {
-            name: { value: "" }
+            name: { value: "" },
+            config: { value: "", type: "api-config" },
+            port: { value: 3000, validate: RED.validators.number() },
+            host: { value: "0.0.0.0" },
+            // OpenAPI configuration
+            openapiEnabled: { value: true },
+            openapiPath: { value: "/openapi.json" },
+            swaggerUiEnabled: { value: false },
+            swaggerUiPath: { value: "/docs" }
         },
         inputs: 1,
         outputs: 1,
         icon: "font-awesome/fa-server",
         label: function() {
-            return this.name || "API server";
+            if (this.name) {
+                return this.name;
+            }
+            return "API server:" + (this.port || 3000);
         },
-        paletteLabel: "API server"
+        paletteLabel: "API server",
+        oneditprepare: function() {
+            // Toggle OpenAPI settings visibility
+            $("#node-input-openapiEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".openapi-config-row").show();
+                } else {
+                    $(".openapi-config-row").hide();
+                }
+            }).trigger("change");
+
+            // Toggle Swagger UI path visibility
+            $("#node-input-swaggerUiEnabled").on("change", function() {
+                if ($(this).is(":checked")) {
+                    $(".swagger-ui-path-row").show();
+                } else {
+                    $(".swagger-ui-path-row").hide();
+                }
+            }).trigger("change");
+        }
     });
 </script>
 
@@ -20,28 +50,149 @@
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
     </div>
+
+    <div class="form-row">
+        <label for="node-input-config"><i class="fa fa-cog"></i> Config</label>
+        <input type="text" id="node-input-config">
+    </div>
+
+    <!-- Server Configuration -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-server"></i> Server Configuration
+        </h4>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-host"><i class="fa fa-globe"></i> Host</label>
+        <input type="text" id="node-input-host" placeholder="0.0.0.0">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-port"><i class="fa fa-plug"></i> Port</label>
+        <input type="number" id="node-input-port" placeholder="3000" min="1" max="65535">
+    </div>
+
+    <!-- OpenAPI Configuration -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-file-code-o"></i> OpenAPI Configuration
+        </h4>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-openapiEnabled">
+            <i class="fa fa-toggle-on"></i> Enable OpenAPI
+        </label>
+        <input type="checkbox" id="node-input-openapiEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+
+    <div class="form-row openapi-config-row">
+        <label for="node-input-openapiPath"><i class="fa fa-link"></i> Spec Path</label>
+        <input type="text" id="node-input-openapiPath" placeholder="/openapi.json">
+    </div>
+
+    <div class="form-row openapi-config-row">
+        <label for="node-input-swaggerUiEnabled">
+            <i class="fa fa-book"></i> Enable Swagger UI
+        </label>
+        <input type="checkbox" id="node-input-swaggerUiEnabled" style="width: auto; margin-left: 5px;">
+    </div>
+
+    <div class="form-row openapi-config-row swagger-ui-path-row">
+        <label for="node-input-swaggerUiPath"><i class="fa fa-file-text-o"></i> Docs Path</label>
+        <input type="text" id="node-input-swaggerUiPath" placeholder="/docs">
+    </div>
 </script>
 
 <script type="text/html" data-help-name="api-server">
-    <p>API Server node for the API Gateway.</p>
+    <p>API Server node that serves OpenAPI documentation and acts as the central registration point for API endpoints.</p>
+
+    <h3>Overview</h3>
+    <p>The API Server node provides:</p>
+    <ul>
+        <li>Automatic OpenAPI 3.0 specification generation from registered endpoints</li>
+        <li>JSON and YAML spec endpoints for API documentation</li>
+        <li>Optional Swagger UI for interactive API exploration</li>
+        <li>Endpoint registration and lifecycle management</li>
+    </ul>
+
+    <h3>Configuration</h3>
+
+    <h4>Server Configuration</h4>
+    <dl class="message-properties">
+        <dt>Config</dt>
+        <dd>Reference to an API Config node containing shared settings (database, OAuth2, etc.)</dd>
+
+        <dt>Host</dt>
+        <dd>The host address to bind to (default: 0.0.0.0 for all interfaces)</dd>
+
+        <dt>Port</dt>
+        <dd>The port number for the server (default: 3000)</dd>
+    </dl>
+
+    <h4>OpenAPI Configuration</h4>
+    <dl class="message-properties">
+        <dt>Enable OpenAPI</dt>
+        <dd>When enabled, serves the OpenAPI specification at the configured path</dd>
+
+        <dt>Spec Path</dt>
+        <dd>URL path for the OpenAPI specification (default: /openapi.json). A YAML version is automatically available at /openapi.yaml</dd>
+
+        <dt>Enable Swagger UI</dt>
+        <dd>When enabled, serves interactive Swagger UI documentation (requires @fastify/swagger-ui package)</dd>
+
+        <dt>Docs Path</dt>
+        <dd>URL path for Swagger UI (default: /docs)</dd>
+    </dl>
 
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>payload
-            <span class="property-type">string</span>
+            <span class="property-type">any</span>
         </dt>
-        <dd>The string payload to process.</dd>
+        <dd>Any message payload (passed through)</dd>
     </dl>
 
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>payload
-            <span class="property-type">string</span>
+            <span class="property-type">any</span>
         </dt>
-        <dd>The processed payload (converted to lower case).</dd>
+        <dd>The original payload (passed through)</dd>
+
+        <dt>server
+            <span class="property-type">object</span>
+        </dt>
+        <dd>Server status information including host, port, endpoint count, and OpenAPI settings</dd>
     </dl>
 
-    <h3>Details</h3>
-    <p>This node represents an API server in the API Gateway architecture.
-    Currently converts string payloads to lower case as a placeholder implementation.</p>
+    <h3>OpenAPI Generation</h3>
+    <p>The OpenAPI specification is automatically generated from all API Endpoint nodes that reference this server. The spec includes:</p>
+    <ul>
+        <li><b>Paths</b> - All endpoint paths and HTTP methods</li>
+        <li><b>Parameters</b> - Path, query, and header parameters with schemas</li>
+        <li><b>Request Bodies</b> - Request body schemas for POST/PUT/PATCH methods</li>
+        <li><b>Responses</b> - Response schemas for each status code</li>
+        <li><b>Security</b> - OAuth2 security requirements from endpoint scopes</li>
+        <li><b>Tags</b> - Automatically generated from path segments</li>
+    </ul>
+
+    <h3>Dependencies</h3>
+    <p>Optional dependencies for full functionality:</p>
+    <ul>
+        <li><code>fastify</code> - Required for serving endpoints (npm install fastify)</li>
+        <li><code>@fastify/swagger-ui</code> - Required for Swagger UI (npm install @fastify/swagger-ui)</li>
+        <li><code>js-yaml</code> - Required for YAML output (npm install js-yaml)</li>
+    </ul>
+
+    <h3>Example URLs</h3>
+    <p>With default configuration (port 3000):</p>
+    <pre>http://localhost:3000/openapi.json  - OpenAPI spec (JSON)
+http://localhost:3000/openapi.yaml  - OpenAPI spec (YAML)
+http://localhost:3000/docs          - Swagger UI (if enabled)</pre>
+
+    <h3>Endpoint Registration</h3>
+    <p>API Endpoint nodes automatically register with the server when deployed.
+    The server tracks all registered endpoints and includes them in the generated OpenAPI specification.</p>
 </script>
