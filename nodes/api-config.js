@@ -133,6 +133,7 @@ module.exports = function(RED) {
         // TLS/SSL configuration
         node.tlsEnabled = config.tlsEnabled;
         node.tlsRejectUnauthorized = config.tlsRejectUnauthorized;
+        node.tlsMinVersion = config.tlsMinVersion;
         node.tlsCertPath = config.tlsCertPath;
         node.tlsKeyPath = config.tlsKeyPath;
         node.tlsCaPath = config.tlsCaPath;

@@ -183,6 +183,7 @@ describe("api-config Node", function () {
             name: "TLS Config",
             tlsEnabled: true,
             tlsRejectUnauthorized: true,
+            tlsMinVersion: "TLSv1.3",
             tlsCertPath: "/path/to/cert.pem",
             tlsKeyPath: "/path/to/key.pem",
             tlsCaPath: "/path/to/ca.pem"
@@ -192,9 +193,29 @@ describe("api-config Node", function () {
             try {
                 c1.should.have.property("tlsEnabled", true);
                 c1.should.have.property("tlsRejectUnauthorized", true);
+                c1.should.have.property("tlsMinVersion", "TLSv1.3");
                 c1.should.have.property("tlsCertPath", "/path/to/cert.pem");
                 c1.should.have.property("tlsKeyPath", "/path/to/key.pem");
                 c1.should.have.property("tlsCaPath", "/path/to/ca.pem");
+                done();
+            } catch (err) {
+                done(err);
+            }
+        });
+    });
+
+    it("should support different TLS minimum versions", function (done) {
+        const flow = [{
+            id: "c1",
+            type: "api-config",
+            name: "TLS 1.2 Config",
+            tlsEnabled: true,
+            tlsMinVersion: "TLSv1.2"
+        }];
+        helper.load(apiConfigNode, flow, function () {
+            const c1 = helper.getNode("c1");
+            try {
+                c1.should.have.property("tlsMinVersion", "TLSv1.2");
                 done();
             } catch (err) {
                 done(err);
