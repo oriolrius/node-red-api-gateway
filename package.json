@@ -42,7 +42,8 @@
       "api-config": "nodes/api-config.js",
       "api-server": "nodes/api-server.js",
       "api-endpoint": "nodes/api-endpoint.js"
-    }
+    },
+    "resources": "resources"
   },
   "dependencies": {
     "ajv": "^8.17.1",

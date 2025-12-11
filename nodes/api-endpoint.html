@@ -1,3 +1,4 @@
+<script type="text/javascript" src="resources/@oriolrius/node-red-api-gateway/api-endpoint-editor.js"></script>
 <script type="text/javascript">
     RED.nodes.registerType('api-endpoint', {
         category: 'API Gateway',
@@ -79,83 +80,24 @@
         paletteLabel: "API endpoint",
         oneditprepare: function() {
             var node = this;
-
-            // Path validation function
-            function validatePath(path) {
-                if (!path || path.trim() === '') {
-                    return { valid: false, error: 'Path is required' };
-                }
-                if (!path.startsWith('/')) {
-                    return { valid: false, error: 'Path must start with /' };
-                }
-                if (path.indexOf('//') !== -1) {
-                    return { valid: false, error: 'Path cannot contain double slashes' };
-                }
-                var invalidParamRegex = /:([^/]*)/g;
-                var match;
-                while ((match = invalidParamRegex.exec(path)) !== null) {
-                    var paramName = match[1];
-                    if (paramName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(paramName)) {
-                        return { valid: false, error: 'Invalid parameter name: ' + paramName };
-                    }
-                }
-                return { valid: true };
-            }
-
-            // JSON Schema validation
-            function validateJsonSchema(schemaStr) {
-                if (!schemaStr || schemaStr.trim() === '') {
-                    return { valid: true };
-                }
-                try {
-                    var schema = JSON.parse(schemaStr);
-                    if (typeof schema !== 'object' || schema === null) {
-                        return { valid: false, error: 'Schema must be a JSON object' };
-                    }
-                    return { valid: true };
-                } catch (e) {
-                    return { valid: false, error: 'Invalid JSON: ' + e.message };
-                }
-            }
-
-            // Format JSON in textarea
-            function formatJson(textareaId) {
-                var $textarea = $(textareaId);
-                var value = $textarea.val().trim();
-                if (value) {
-                    try {
-                        var obj = JSON.parse(value);
-                        $textarea.val(JSON.stringify(obj, null, 2));
-                    } catch (e) {
-                        // Leave as-is if not valid JSON
-                    }
-                }
-            }
+            var E = window.ApiEndpointEditor;
 
             // Update param display
             function updateParamDisplay() {
                 var path = $('#node-input-path').val();
-                var params = [];
-                var paramRegex = /:([a-zA-Z_][a-zA-Z0-9_]*)/g;
-                var match;
-                while ((match = paramRegex.exec(path)) !== null) {
-                    params.push(match[1]);
-                }
-
+                var params = E.extractParams(path);
                 var $paramList = $('#param-list');
                 $paramList.empty();
 
                 if (params.length > 0) {
                     $('#param-display').show();
-                    params.forEach(function(param) {
-                        $paramList.append('<span class="param-badge">' + param + '</span> ');
-                    });
+                    E.renderBadges('#param-list', params, 'param-badge');
                 } else {
                     $('#param-display').hide();
                 }
 
                 // Validate path
-                var validation = validatePath(path);
+                var validation = E.validatePath(path);
                 var $pathInput = $('#node-input-path');
                 var $pathError = $('#path-error');
 
@@ -165,31 +107,6 @@
                 } else {
                     $pathInput.removeClass('input-error');
                     $pathError.hide();
-                }
-            }
-
-            // Setup schema editor validation
-            function setupSchemaValidation(textareaId, errorId) {
-                $(textareaId).on('input change', function() {
-                    var validation = validateJsonSchema($(this).val());
-                    var $error = $(errorId);
-                    if (!validation.valid) {
-                        $(this).addClass('input-error');
-                        $error.text(validation.error).show();
-                    } else {
-                        $(this).removeClass('input-error');
-                        $error.hide();
-                    }
-                });
-            }
-
-            // Toggle validation section visibility
-            function updateValidationVisibility() {
-                var enabled = $('#node-input-validationEnabled').is(':checked');
-                if (enabled) {
-                    $('#validation-schemas').show();
-                } else {
-                    $('#validation-schemas').hide();
                 }
             }
 
@@ -203,91 +120,38 @@
 
             // Event listeners
             $('#node-input-path').on('input change', updateParamDisplay);
-            $('#node-input-validationEnabled').on('change', updateValidationVisibility);
 
-            // Setup schema validation for each editor
-            setupSchemaValidation('#node-input-bodySchema', '#body-schema-error');
-            setupSchemaValidation('#node-input-querySchema', '#query-schema-error');
-            setupSchemaValidation('#node-input-paramsSchema', '#params-schema-error');
+            // Validation visibility toggle
+            E.setupToggle('#node-input-validationEnabled', '#validation-schemas');
 
-            // Setup response schemas validation (different format - object with status codes as keys)
-            $('#node-input-responseSchemas').on('input change', function() {
-                var value = $(this).val().trim();
-                var $error = $('#response-schemas-error');
-                if (!value) {
-                    $(this).removeClass('input-error');
-                    $error.hide();
-                    return;
-                }
-                try {
-                    var schemas = JSON.parse(value);
-                    if (typeof schemas !== 'object' || schemas === null || Array.isArray(schemas)) {
-                        $(this).addClass('input-error');
-                        $error.text('Must be an object mapping status codes to schemas').show();
-                        return;
-                    }
-                    // Validate each status code
-                    for (var statusCode in schemas) {
-                        if (statusCode !== 'default' && !/^[1-5][0-9]{2}$/.test(statusCode)) {
-                            $(this).addClass('input-error');
-                            $error.text('Invalid status code: ' + statusCode).show();
-                            return;
-                        }
-                        if (typeof schemas[statusCode] !== 'object' || schemas[statusCode] === null) {
-                            $(this).addClass('input-error');
-                            $error.text('Schema for ' + statusCode + ' must be an object').show();
-                            return;
-                        }
-                    }
-                    $(this).removeClass('input-error');
-                    $error.hide();
-                } catch (e) {
-                    $(this).addClass('input-error');
-                    $error.text('Invalid JSON: ' + e.message).show();
-                }
-            });
+            // Setup schema validation
+            E.setupValidation('#node-input-bodySchema', '#body-schema-error', E.validateJsonSchema);
+            E.setupValidation('#node-input-querySchema', '#query-schema-error', E.validateJsonSchema);
+            E.setupValidation('#node-input-paramsSchema', '#params-schema-error', E.validateJsonSchema);
+            E.setupValidation('#node-input-responseSchemas', '#response-schemas-error', E.validateResponseSchemas);
 
             // Format buttons
-            $('#format-body-schema').on('click', function() {
-                formatJson('#node-input-bodySchema');
-            });
-            $('#format-query-schema').on('click', function() {
-                formatJson('#node-input-querySchema');
-            });
-            $('#format-params-schema').on('click', function() {
-                formatJson('#node-input-paramsSchema');
-            });
-            $('#format-response-schemas').on('click', function() {
-                formatJson('#node-input-responseSchemas');
-            });
+            $('#format-body-schema').on('click', function() { E.formatJson('#node-input-bodySchema'); });
+            $('#format-query-schema').on('click', function() { E.formatJson('#node-input-querySchema'); });
+            $('#format-params-schema').on('click', function() { E.formatJson('#node-input-paramsSchema'); });
+            $('#format-response-schemas').on('click', function() { E.formatJson('#node-input-responseSchemas'); });
 
             // Update scope display
             function updateScopeDisplay() {
-                var scopesStr = $('#node-input-requiredScopes').val();
-                var scopes = scopesStr ? scopesStr.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; }) : [];
-
-                var $scopeList = $('#scope-list');
-                $scopeList.empty();
-
+                var scopes = E.parseScopes($('#node-input-requiredScopes').val());
                 if (scopes.length > 0) {
                     $('#scope-display').show();
                     var operator = $('#node-input-scopeOperator').val();
-                    scopes.forEach(function(scope, index) {
-                        $scopeList.append('<span class="scope-badge">' + scope + '</span>');
-                        if (index < scopes.length - 1) {
-                            $scopeList.append(' <span style="color: #666;">' + operator + '</span> ');
-                        }
-                    });
+                    E.renderScopeBadges('#scope-list', scopes, operator);
                 } else {
                     $('#scope-display').hide();
                 }
             }
 
-            // Event listeners for scopes
             $('#node-input-requiredScopes').on('input change', updateScopeDisplay);
             $('#node-input-scopeOperator').on('change', updateScopeDisplay);
 
-            // Toggle CRUD configuration visibility
+            // CRUD visibility and SQL preview
             function updateCrudVisibility() {
                 var operation = $('#node-input-crudOperation').val();
                 if (operation && operation !== 'none') {
@@ -298,96 +162,54 @@
                 }
             }
 
-            // Toggle SQL preview based on auto-generate option
             function updateSqlPreview() {
                 var autoGenerate = $('#node-input-autoGenerateSql').is(':checked');
                 if (autoGenerate) {
                     $('#sql-preview-section').show();
-                    generateSqlPreview();
+                    var sql = E.generateSqlPreview(
+                        $('#node-input-crudOperation').val(),
+                        $('#node-input-tableName').val().trim(),
+                        $('#node-input-primaryKey').val().trim()
+                    );
+                    $('#sql-preview').text(sql);
                 } else {
                     $('#sql-preview-section').hide();
                 }
             }
 
-            // Generate and display SQL preview
-            function generateSqlPreview() {
-                var operation = $('#node-input-crudOperation').val();
-                var tableName = $('#node-input-tableName').val().trim() || '[table_name]';
-                var primaryKey = $('#node-input-primaryKey').val().trim() || 'id';
-                var sql = '';
-
-                switch (operation) {
-                    case 'list':
-                        sql = 'SELECT * FROM ' + tableName;
-                        break;
-                    case 'get':
-                        sql = 'SELECT * FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
-                        break;
-                    case 'create':
-                        sql = 'INSERT INTO ' + tableName + ' (@columns) VALUES (@values)';
-                        break;
-                    case 'update':
-                        sql = 'UPDATE ' + tableName + ' SET @assignments WHERE ' + primaryKey + ' = @' + primaryKey;
-                        break;
-                    case 'delete':
-                        sql = 'DELETE FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
-                        break;
-                    default:
-                        sql = '-- No operation selected';
-                }
-
-                $('#sql-preview').text(sql);
-            }
-
-            // Validate table name
             function validateTableName() {
-                var tableName = $('#node-input-tableName').val().trim();
+                var validation = E.validateTableName($('#node-input-tableName').val());
                 var $error = $('#table-name-error');
-                if (!tableName) {
-                    $error.hide();
-                    return;
-                }
-                if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(tableName)) {
-                    $error.text('Invalid table name format').show();
+                if (!validation.valid) {
+                    $error.text(validation.error).show();
                 } else {
                     $error.hide();
                 }
             }
 
-            // Event listeners for CRUD
             $('#node-input-crudOperation').on('change', updateCrudVisibility);
             $('#node-input-autoGenerateSql').on('change', updateSqlPreview);
             $('#node-input-tableName').on('input change', function() {
                 validateTableName();
-                generateSqlPreview();
+                updateSqlPreview();
             });
-            $('#node-input-primaryKey').on('input change', generateSqlPreview);
+            $('#node-input-primaryKey').on('input change', updateSqlPreview);
 
-            // Toggle pagination configuration visibility
-            function updatePaginationVisibility() {
-                var enabled = $('#node-input-paginationEnabled').is(':checked');
-                if (enabled) {
-                    $('#pagination-config').show();
-                } else {
-                    $('#pagination-config').hide();
-                }
-            }
+            // Pagination
+            E.setupToggle('#node-input-paginationEnabled', '#pagination-config');
 
-            // Validate pagination configuration
             function validatePaginationConfig() {
                 var defaultSize = parseInt($('#node-input-defaultPageSize').val(), 10);
                 var maxSize = parseInt($('#node-input-maxPageSize').val(), 10);
                 var $defaultError = $('#default-page-size-error');
                 var $maxError = $('#max-page-size-error');
 
-                // Validate default page size
                 if (isNaN(defaultSize) || defaultSize < 1) {
                     $defaultError.text('Must be a positive integer').show();
                 } else {
                     $defaultError.hide();
                 }
 
-                // Validate max page size
                 if (isNaN(maxSize) || maxSize < 1) {
                     $maxError.text('Must be a positive integer').show();
                 } else if (!isNaN(defaultSize) && defaultSize > maxSize) {
@@ -397,217 +219,40 @@
                 }
             }
 
-            // Event listeners for pagination
-            $('#node-input-paginationEnabled').on('change', updatePaginationVisibility);
             $('#node-input-defaultPageSize').on('input change', validatePaginationConfig);
             $('#node-input-maxPageSize').on('input change', validatePaginationConfig);
 
-            // Toggle filtering configuration visibility
-            function updateFilteringVisibility() {
-                var enabled = $('#node-input-filteringEnabled').is(':checked');
-                if (enabled) {
-                    $('#filtering-config').show();
-                } else {
-                    $('#filtering-config').hide();
-                }
-            }
+            // Filtering and Sorting
+            E.setupToggle('#node-input-filteringEnabled', '#filtering-config');
+            E.setupToggle('#node-input-sortingEnabled', '#sorting-config');
 
-            // Toggle sorting configuration visibility
-            function updateSortingVisibility() {
-                var enabled = $('#node-input-sortingEnabled').is(':checked');
-                if (enabled) {
-                    $('#sorting-config').show();
-                } else {
-                    $('#sorting-config').hide();
-                }
-            }
-
-            // Display field badges for filtering
             function updateFilterableFieldsDisplay() {
-                var fields = $('#node-input-filterableFields').val();
-                var $display = $('#filterable-fields-display');
-                $display.empty();
-                if (fields) {
-                    fields.split(',').forEach(function(field) {
-                        field = field.trim();
-                        if (field && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
-                            $display.append('<span class="field-badge">' + field + '</span>');
-                        }
-                    });
-                }
+                var fields = E.parseFieldList($('#node-input-filterableFields').val());
+                E.renderBadges('#filterable-fields-display', fields, 'field-badge');
             }
 
-            // Display field badges for sorting
             function updateSortableFieldsDisplay() {
-                var fields = $('#node-input-sortableFields').val();
-                var $display = $('#sortable-fields-display');
-                $display.empty();
-                if (fields) {
-                    fields.split(',').forEach(function(field) {
-                        field = field.trim();
-                        if (field && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field)) {
-                            $display.append('<span class="field-badge">' + field + '</span>');
-                        }
-                    });
-                }
+                var fields = E.parseFieldList($('#node-input-sortableFields').val());
+                E.renderBadges('#sortable-fields-display', fields, 'field-badge');
             }
 
-            // Event listeners for filtering/sorting
-            $('#node-input-filteringEnabled').on('change', updateFilteringVisibility);
-            $('#node-input-sortingEnabled').on('change', updateSortingVisibility);
             $('#node-input-filterableFields').on('input change', updateFilterableFieldsDisplay);
             $('#node-input-sortableFields').on('input change', updateSortableFieldsDisplay);
 
-            // Toggle transformation configuration visibility
-            function updateTransformationVisibility() {
-                var enabled = $('#node-input-transformationEnabled').is(':checked');
-                if (enabled) {
-                    $('#transformation-config').show();
-                } else {
-                    $('#transformation-config').hide();
-                }
-            }
+            // Transformation
+            E.setupToggle('#node-input-transformationEnabled', '#transformation-config');
+            E.setupValidation('#node-input-requestTransformExpression', '#request-transform-error', E.validateJsonataExpression);
+            E.setupValidation('#node-input-responseTransformExpression', '#response-transform-error', E.validateJsonataExpression);
+            E.setupValidation('#node-input-fieldMappings', '#field-mappings-error', E.validateFieldMappings);
 
-            // Validate JSONata expression
-            function validateJsonataExpression(exprStr) {
-                if (!exprStr || exprStr.trim() === '') {
-                    return { valid: true };
-                }
-                // Basic syntax check - just verify it's not obviously broken
-                // Full validation happens on the server side
-                var trimmed = exprStr.trim();
-                // Check for balanced brackets and parentheses
-                var brackets = 0;
-                var parens = 0;
-                var braces = 0;
-                var inString = false;
-                var stringChar = null;
-                for (var i = 0; i < trimmed.length; i++) {
-                    var c = trimmed[i];
-                    if (inString) {
-                        if (c === stringChar && trimmed[i-1] !== '\\') {
-                            inString = false;
-                        }
-                    } else {
-                        if (c === '"' || c === "'") {
-                            inString = true;
-                            stringChar = c;
-                        } else if (c === '[') brackets++;
-                        else if (c === ']') brackets--;
-                        else if (c === '(') parens++;
-                        else if (c === ')') parens--;
-                        else if (c === '{') braces++;
-                        else if (c === '}') braces--;
-                    }
-                }
-                if (brackets !== 0) {
-                    return { valid: false, error: 'Unbalanced brackets []' };
-                }
-                if (parens !== 0) {
-                    return { valid: false, error: 'Unbalanced parentheses ()' };
-                }
-                if (braces !== 0) {
-                    return { valid: false, error: 'Unbalanced braces {}' };
-                }
-                if (inString) {
-                    return { valid: false, error: 'Unterminated string' };
-                }
-                return { valid: true };
-            }
-
-            // Setup JSONata expression validation
-            function setupExpressionValidation(textareaId, errorId) {
-                $(textareaId).on('input change', function() {
-                    var validation = validateJsonataExpression($(this).val());
-                    var $error = $(errorId);
-                    if (!validation.valid) {
-                        $(this).addClass('input-error');
-                        $error.text(validation.error).show();
-                    } else {
-                        $(this).removeClass('input-error');
-                        $error.hide();
-                    }
-                });
-            }
-
-            // Validate field mappings
-            function validateFieldMappings(mappingStr) {
-                if (!mappingStr || mappingStr.trim() === '') {
-                    return { valid: true };
-                }
-                var pairs = mappingStr.split(',');
-                for (var i = 0; i < pairs.length; i++) {
-                    var pair = pairs[i].trim();
-                    if (!pair) continue;
-                    // Support both -> and : as separators
-                    var parts = pair.split('->');
-                    if (parts.length !== 2) {
-                        parts = pair.split(':');
-                    }
-                    if (parts.length !== 2) {
-                        return { valid: false, error: 'Invalid format: "' + pair + '". Use oldName->newName' };
-                    }
-                    var oldName = parts[0].trim();
-                    var newName = parts[1].trim();
-                    if (!oldName || !newName) {
-                        return { valid: false, error: 'Both old and new names required in: "' + pair + '"' };
-                    }
-                    var fieldNameRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-                    if (!fieldNameRegex.test(oldName)) {
-                        return { valid: false, error: 'Invalid source field name: "' + oldName + '"' };
-                    }
-                    if (!fieldNameRegex.test(newName)) {
-                        return { valid: false, error: 'Invalid target field name: "' + newName + '"' };
-                    }
-                }
-                return { valid: true };
-            }
-
-            // Setup field mappings validation
-            $('#node-input-fieldMappings').on('input change', function() {
-                var validation = validateFieldMappings($(this).val());
-                var $error = $('#field-mappings-error');
-                if (!validation.valid) {
-                    $(this).addClass('input-error');
-                    $error.text(validation.error).show();
-                } else {
-                    $(this).removeClass('input-error');
-                    $error.hide();
-                }
-                updateFieldMappingsDisplay();
-            });
-
-            // Display field mappings as badges
             function updateFieldMappingsDisplay() {
-                var mappingStr = $('#node-input-fieldMappings').val();
-                var $display = $('#field-mappings-display');
-                $display.empty();
-                if (mappingStr) {
-                    var pairs = mappingStr.split(',');
-                    pairs.forEach(function(pair) {
-                        pair = pair.trim();
-                        if (!pair) return;
-                        var parts = pair.split('->');
-                        if (parts.length !== 2) {
-                            parts = pair.split(':');
-                        }
-                        if (parts.length === 2) {
-                            var oldName = parts[0].trim();
-                            var newName = parts[1].trim();
-                            if (oldName && newName) {
-                                $display.append('<span class="mapping-badge">' + oldName + ' → ' + newName + '</span>');
-                            }
-                        }
-                    });
-                }
+                var mappings = E.parseFieldMappings($('#node-input-fieldMappings').val());
+                E.renderMappingBadges('#field-mappings-display', mappings);
             }
 
-            // Event listeners for transformation
-            $('#node-input-transformationEnabled').on('change', updateTransformationVisibility);
-            setupExpressionValidation('#node-input-requestTransformExpression', '#request-transform-error');
-            setupExpressionValidation('#node-input-responseTransformExpression', '#response-transform-error');
+            $('#node-input-fieldMappings').on('input change', updateFieldMappingsDisplay);
 
-            // Toggle rate limiting configuration visibility
+            // Rate Limiting
             function updateRateLimitingVisibility() {
                 var enabled = $('#node-input-rateLimitingEnabled').is(':checked');
                 if (enabled) {
@@ -618,7 +263,6 @@
                 updateCustomKeyPathVisibility();
             }
 
-            // Toggle custom key path visibility based on key type
             function updateCustomKeyPathVisibility() {
                 var keyType = $('#node-input-rateLimitKeyType').val();
                 if (keyType === 'custom') {
@@ -628,21 +272,18 @@
                 }
             }
 
-            // Validate rate limit configuration
             function validateRateLimitConfig() {
                 var requests = parseInt($('#node-input-rateLimitRequests').val(), 10);
                 var windowMs = parseInt($('#node-input-rateLimitWindowMs').val(), 10);
                 var $requestsError = $('#rate-limit-requests-error');
                 var $windowError = $('#rate-limit-window-error');
 
-                // Validate requests
                 if (isNaN(requests) || requests < 1) {
                     $requestsError.text('Must be a positive integer').show();
                 } else {
                     $requestsError.hide();
                 }
 
-                // Validate window
                 if (isNaN(windowMs) || windowMs < 1000) {
                     $windowError.text('Must be at least 1000ms (1 second)').show();
                 } else {
@@ -650,13 +291,12 @@
                 }
             }
 
-            // Event listeners for rate limiting
             $('#node-input-rateLimitingEnabled').on('change', updateRateLimitingVisibility);
             $('#node-input-rateLimitKeyType').on('change', updateCustomKeyPathVisibility);
             $('#node-input-rateLimitRequests').on('input change', validateRateLimitConfig);
             $('#node-input-rateLimitWindowMs').on('input change', validateRateLimitConfig);
 
-            // Toggle caching configuration visibility
+            // Caching
             function updateCachingVisibility() {
                 var enabled = $('#node-input-cachingEnabled').is(':checked');
                 if (enabled) {
@@ -667,7 +307,6 @@
                 updateCacheKeyExpressionVisibility();
             }
 
-            // Toggle custom key expression visibility based on strategy
             function updateCacheKeyExpressionVisibility() {
                 var keyStrategy = $('#node-input-cacheKeyStrategy').val();
                 if (keyStrategy === 'custom') {
@@ -677,21 +316,18 @@
                 }
             }
 
-            // Validate caching configuration
             function validateCachingConfig() {
                 var ttl = parseInt($('#node-input-cacheTTL').val(), 10);
                 var maxSize = parseInt($('#node-input-cacheMaxSize').val(), 10);
                 var $ttlError = $('#cache-ttl-error');
                 var $sizeError = $('#cache-size-error');
 
-                // Validate TTL
                 if (isNaN(ttl) || ttl < 0) {
                     $ttlError.text('Must be a non-negative integer (0 = no expiry)').show();
                 } else {
                     $ttlError.hide();
                 }
 
-                // Validate max size
                 if (isNaN(maxSize) || maxSize < 1) {
                     $sizeError.text('Must be a positive integer').show();
                 } else {
@@ -699,124 +335,68 @@
                 }
             }
 
-            // Display vary headers as badges
             function updateVaryHeadersDisplay() {
                 var varyHeaders = $('#node-input-cacheVaryHeaders').val() || '';
                 var headers = varyHeaders.split(',').map(function(h) { return h.trim(); }).filter(function(h) { return h.length > 0; });
-                var $display = $('#vary-headers-display');
-                $display.empty();
-                headers.forEach(function(header) {
-                    $display.append('<span class="field-badge">' + header + '</span>');
-                });
+                E.renderBadges('#vary-headers-display', headers, 'field-badge');
             }
 
-            // Error handling UI functions
-            function updateErrorHandlingVisibility() {
-                var enabled = $('#node-input-errorHandlingEnabled').is(':checked');
-                if (enabled) {
-                    $('#error-handling-options').show();
-                } else {
-                    $('#error-handling-options').hide();
-                }
-            }
-
-            // Validate custom error codes JSON
-            function validateCustomErrorCodes() {
-                var value = $('#node-input-customErrorCodes').val().trim();
-                var $warning = $('#custom-error-codes-warning');
-
-                if (!value) {
-                    $warning.hide();
-                    return true;
-                }
-
-                try {
-                    var codes = JSON.parse(value);
-                    if (typeof codes !== 'object' || codes === null || Array.isArray(codes)) {
-                        $warning.text('Error codes must be a JSON object').show();
-                        return false;
-                    }
-                    // Validate each mapping
-                    for (var code in codes) {
-                        var mapping = codes[code];
-                        if (typeof mapping !== 'object' || mapping === null) {
-                            $warning.text('Code "' + code + '" must have an object mapping').show();
-                            return false;
-                        }
-                        if (mapping.status !== undefined) {
-                            var status = parseInt(mapping.status, 10);
-                            if (isNaN(status) || status < 400 || status > 599) {
-                                $warning.text('Code "' + code + '" has invalid status (must be 400-599)').show();
-                                return false;
-                            }
-                        }
-                    }
-                    $warning.hide();
-                    return true;
-                } catch (e) {
-                    $warning.text('Invalid JSON: ' + e.message).show();
-                    return false;
-                }
-            }
-
-            // Event listeners for caching
             $('#node-input-cachingEnabled').on('change', updateCachingVisibility);
             $('#node-input-cacheKeyStrategy').on('change', updateCacheKeyExpressionVisibility);
             $('#node-input-cacheTTL').on('input change', validateCachingConfig);
             $('#node-input-cacheMaxSize').on('input change', validateCachingConfig);
             $('#node-input-cacheVaryHeaders').on('input change', updateVaryHeadersDisplay);
 
-            // Event listeners for error handling
-            $('#node-input-errorHandlingEnabled').on('change', updateErrorHandlingVisibility);
+            // Error Handling
+            E.setupToggle('#node-input-errorHandlingEnabled', '#error-handling-options');
+
+            function validateCustomErrorCodes() {
+                var validation = E.validateCustomErrorCodes($('#node-input-customErrorCodes').val());
+                var $warning = $('#custom-error-codes-warning');
+                if (!validation.valid) {
+                    $warning.text(validation.error).show();
+                    return false;
+                }
+                $warning.hide();
+                return true;
+            }
+
             $('#node-input-customErrorCodes').on('input change', validateCustomErrorCodes);
 
             // Initial updates
             updateParamDisplay();
-            updateValidationVisibility();
+            $('#node-input-validationEnabled').trigger('change');
             updateScopeDisplay();
             updateCrudVisibility();
-            updatePaginationVisibility();
-            updateFilteringVisibility();
-            updateSortingVisibility();
+            $('#node-input-paginationEnabled').trigger('change');
+            $('#node-input-filteringEnabled').trigger('change');
+            $('#node-input-sortingEnabled').trigger('change');
             updateFilterableFieldsDisplay();
             updateSortableFieldsDisplay();
-            updateTransformationVisibility();
+            $('#node-input-transformationEnabled').trigger('change');
             updateFieldMappingsDisplay();
             updateRateLimitingVisibility();
             updateCachingVisibility();
             updateVaryHeadersDisplay();
-            updateErrorHandlingVisibility();
+            $('#node-input-errorHandlingEnabled').trigger('change');
             validateCustomErrorCodes();
 
             // Format existing schemas on open
-            formatJson('#node-input-bodySchema');
-            formatJson('#node-input-querySchema');
-            formatJson('#node-input-paramsSchema');
-            formatJson('#node-input-responseSchemas');
+            E.formatJson('#node-input-bodySchema');
+            E.formatJson('#node-input-querySchema');
+            E.formatJson('#node-input-paramsSchema');
+            E.formatJson('#node-input-responseSchemas');
         },
         oneditsave: function() {
+            var E = window.ApiEndpointEditor;
+
             // Normalize path on save
-            var path = $('#node-input-path').val().trim();
-            if (path && !path.startsWith('/')) {
-                path = '/' + path;
-            }
-            if (path && path.length > 1 && path.endsWith('/')) {
-                path = path.slice(0, -1);
-            }
-            this.path = path || '/';
+            this.path = E.normalizePath($('#node-input-path').val());
 
             // Minify schemas on save to reduce storage
             var schemas = ['bodySchema', 'querySchema', 'paramsSchema', 'responseSchemas'];
             schemas.forEach(function(schema) {
-                var value = $('#node-input-' + schema).val().trim();
-                if (value) {
-                    try {
-                        var obj = JSON.parse(value);
-                        $('#node-input-' + schema).val(JSON.stringify(obj));
-                    } catch (e) {
-                        // Leave as-is if not valid JSON
-                    }
-                }
+                E.minifyJson('#node-input-' + schema);
             });
         }
     });
@@ -847,89 +427,87 @@
         <div id="path-error" class="form-tips" style="color: #d9534f; display: none;"></div>
     </div>
     <div class="form-row" id="param-display" style="display: none;">
-        <label><i class="fa fa-list"></i> Parameters</label>
-        <div id="param-list" style="display: inline-block;"></div>
+        <label><i class="fa fa-puzzle-piece"></i> Params</label>
+        <div id="param-list" style="display: inline;"></div>
     </div>
 
-    <hr>
-
+    <!-- Validation Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-check-circle"></i> Request Validation
+        </h4>
+    </div>
     <div class="form-row">
-        <label for="node-input-validationEnabled">
-            <i class="fa fa-check-square"></i> Validation
-        </label>
-        <input type="checkbox" id="node-input-validationEnabled" style="width: auto; margin-left: 5px;">
+        <label for="node-input-validationEnabled"><i class="fa fa-shield"></i> Enable</label>
+        <input type="checkbox" id="node-input-validationEnabled" style="width: auto;">
         <span style="margin-left: 5px;">Enable request validation</span>
     </div>
 
     <div id="validation-schemas">
+        <!-- Body Schema -->
         <div class="schema-section">
-            <div class="schema-section-header">
+            <div class="schema-section-header" style="cursor: pointer; padding: 5px; background: #f5f5f5; border-radius: 3px;">
                 <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-file-code-o"></i> Request Body Schema
+                <span>Body Schema (JSON Schema)</span>
             </div>
             <div class="schema-section-content">
                 <div class="form-row">
-                    <textarea id="node-input-bodySchema" rows="8" placeholder='{"type": "object", "properties": {...}, "required": [...]}'></textarea>
+                    <textarea id="node-input-bodySchema" rows="6" placeholder='{"type": "object", "properties": {...}}' style="width: 100%; font-family: monospace; font-size: 11px;"></textarea>
                     <div id="body-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                    <button type="button" id="format-body-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
-                        <i class="fa fa-indent"></i> Format
-                    </button>
+                    <button type="button" id="format-body-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">Format JSON</button>
                 </div>
             </div>
         </div>
 
+        <!-- Query Schema -->
         <div class="schema-section">
-            <div class="schema-section-header">
+            <div class="schema-section-header" style="cursor: pointer; padding: 5px; background: #f5f5f5; border-radius: 3px; margin-top: 10px;">
                 <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-question-circle"></i> Query Parameters Schema
+                <span>Query Schema (JSON Schema)</span>
             </div>
             <div class="schema-section-content">
                 <div class="form-row">
-                    <textarea id="node-input-querySchema" rows="6" placeholder='{"type": "object", "properties": {"page": {"type": "integer"}, "limit": {"type": "integer"}}}'></textarea>
+                    <textarea id="node-input-querySchema" rows="4" placeholder='{"type": "object", "properties": {"page": {"type": "integer"}}}' style="width: 100%; font-family: monospace; font-size: 11px;"></textarea>
                     <div id="query-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                    <button type="button" id="format-query-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
-                        <i class="fa fa-indent"></i> Format
-                    </button>
+                    <button type="button" id="format-query-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">Format JSON</button>
                 </div>
             </div>
         </div>
 
+        <!-- Params Schema -->
         <div class="schema-section">
-            <div class="schema-section-header">
+            <div class="schema-section-header" style="cursor: pointer; padding: 5px; background: #f5f5f5; border-radius: 3px; margin-top: 10px;">
                 <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-link"></i> Path Parameters Schema
+                <span>Path Params Schema (JSON Schema)</span>
             </div>
             <div class="schema-section-content">
                 <div class="form-row">
-                    <textarea id="node-input-paramsSchema" rows="4" placeholder='{"type": "object", "properties": {"id": {"type": "integer"}}}'></textarea>
+                    <textarea id="node-input-paramsSchema" rows="4" placeholder='{"type": "object", "properties": {"id": {"type": "integer"}}}' style="width: 100%; font-family: monospace; font-size: 11px;"></textarea>
                     <div id="params-schema-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                    <button type="button" id="format-params-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
-                        <i class="fa fa-indent"></i> Format
-                    </button>
+                    <button type="button" id="format-params-schema" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">Format JSON</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-reply"></i> Response Configuration</label>
+    <!-- Response Configuration Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-reply"></i> Response Configuration
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-successStatusCode"><i class="fa fa-check-circle"></i> Success Code</label>
-        <select id="node-input-successStatusCode" style="width: 120px;">
+        <label for="node-input-successStatusCode"><i class="fa fa-hashtag"></i> Status</label>
+        <select id="node-input-successStatusCode">
             <option value="200">200 OK</option>
             <option value="201">201 Created</option>
             <option value="202">202 Accepted</option>
             <option value="204">204 No Content</option>
         </select>
     </div>
-
     <div class="form-row">
-        <label for="node-input-responseContentType"><i class="fa fa-file-text-o"></i> Content-Type</label>
-        <select id="node-input-responseContentType" style="width: 200px;">
+        <label for="node-input-responseContentType"><i class="fa fa-file-text"></i> Content-Type</label>
+        <select id="node-input-responseContentType">
             <option value="application/json">application/json</option>
             <option value="application/xml">application/xml</option>
             <option value="text/plain">text/plain</option>
@@ -937,1438 +515,446 @@
         </select>
     </div>
 
-    <div class="form-row">
-        <label for="node-input-validateResponseEnabled">
-            <i class="fa fa-bug"></i> Dev Mode
-        </label>
-        <input type="checkbox" id="node-input-validateResponseEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Validate responses (for debugging)</span>
-    </div>
-
+    <!-- Response Schemas -->
     <div class="schema-section">
-        <div class="schema-section-header">
+        <div class="schema-section-header" style="cursor: pointer; padding: 5px; background: #f5f5f5; border-radius: 3px; margin-top: 10px;">
             <i class="fa fa-chevron-down section-toggle-icon"></i>
-            <i class="fa fa-reply"></i> Response Schemas
+            <span>Response Schemas (by Status Code)</span>
         </div>
         <div class="schema-section-content">
-            <div class="form-tips" style="margin-bottom: 10px;">
-                Define response schemas per status code. Use status codes as keys (e.g., "200", "404") or "default" for fallback.
+            <div class="form-row">
+                <textarea id="node-input-responseSchemas" rows="6" placeholder='{"200": {"type": "object", ...}, "404": {"type": "object", ...}}' style="width: 100%; font-family: monospace; font-size: 11px;"></textarea>
+                <div id="response-schemas-error" class="form-tips" style="color: #d9534f; display: none;"></div>
+                <button type="button" id="format-response-schemas" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">Format JSON</button>
             </div>
             <div class="form-row">
-                <textarea id="node-input-responseSchemas" rows="10" placeholder='{
-  "200": {
-    "type": "object",
-    "properties": {
-      "id": { "type": "integer" },
-      "name": { "type": "string" }
-    }
-  },
-  "404": {
-    "type": "object",
-    "properties": {
-      "error": { "type": "string" },
-      "message": { "type": "string" }
-    }
-  }
-}'></textarea>
-                <div id="response-schemas-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                <button type="button" id="format-response-schemas" class="red-ui-button red-ui-button-small" style="margin-top: 5px;">
-                    <i class="fa fa-indent"></i> Format
-                </button>
+                <label for="node-input-validateResponseEnabled"><i class="fa fa-bug"></i> Dev Mode</label>
+                <input type="checkbox" id="node-input-validateResponseEnabled" style="width: auto;">
+                <span style="margin-left: 5px;">Validate response data against schema (development only)</span>
             </div>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-lock"></i> Authorization</label>
+    <!-- Authorization Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-lock"></i> Authorization
+        </h4>
     </div>
-
     <div class="form-row">
         <label for="node-input-requiredScopes"><i class="fa fa-key"></i> Scopes</label>
-        <input type="text" id="node-input-requiredScopes" placeholder="read:users, write:users, admin">
-        <div class="form-tips" style="margin-top: 5px;">
-            Comma-separated list of OAuth2 scopes required to access this endpoint.
-        </div>
+        <input type="text" id="node-input-requiredScopes" placeholder="read:users, write:posts">
     </div>
-
+    <div class="form-row" id="scope-display" style="display: none;">
+        <label>&nbsp;</label>
+        <div id="scope-list" style="display: inline;"></div>
+    </div>
     <div class="form-row">
-        <label for="node-input-scopeOperator"><i class="fa fa-filter"></i> Operator</label>
-        <select id="node-input-scopeOperator" style="width: 200px;">
-            <option value="AND">AND (require all scopes)</option>
-            <option value="OR">OR (require any scope)</option>
+        <label for="node-input-scopeOperator"><i class="fa fa-code-fork"></i> Operator</label>
+        <select id="node-input-scopeOperator">
+            <option value="AND">AND (all required)</option>
+            <option value="OR">OR (any required)</option>
         </select>
     </div>
 
-    <div id="scope-display" style="display: none; margin-left: 105px; margin-top: 5px;">
-        <label style="width: auto;">Required scopes:</label>
-        <div id="scope-list" style="display: inline-block;"></div>
+    <!-- CRUD Operation Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-database"></i> CRUD Operation
+        </h4>
     </div>
-
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-database"></i> CRUD Mapping</label>
-    </div>
-
     <div class="form-row">
         <label for="node-input-crudOperation"><i class="fa fa-cog"></i> Operation</label>
-        <select id="node-input-crudOperation" style="width: 200px;">
+        <select id="node-input-crudOperation">
             <option value="none">None (custom logic)</option>
-            <option value="list">List (GET all)</option>
-            <option value="get">Get (GET by ID)</option>
+            <option value="list">List (GET collection)</option>
+            <option value="get">Get (GET single)</option>
             <option value="create">Create (POST)</option>
-            <option value="update">Update (PUT)</option>
+            <option value="update">Update (PUT/PATCH)</option>
             <option value="delete">Delete (DELETE)</option>
         </select>
     </div>
 
     <div id="crud-config" style="display: none;">
         <div class="form-row">
-            <label for="node-input-tableName"><i class="fa fa-table"></i> Table Name</label>
+            <label for="node-input-tableName"><i class="fa fa-table"></i> Table</label>
             <input type="text" id="node-input-tableName" placeholder="users">
             <div id="table-name-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
             <label for="node-input-primaryKey"><i class="fa fa-key"></i> Primary Key</label>
             <input type="text" id="node-input-primaryKey" placeholder="id">
         </div>
-
         <div class="form-row">
-            <label for="node-input-autoGenerateSql">
-                <i class="fa fa-code"></i> Auto SQL
-            </label>
-            <input type="checkbox" id="node-input-autoGenerateSql" style="width: auto; margin-left: 5px;">
-            <span style="margin-left: 5px;">Generate basic SQL template</span>
+            <label for="node-input-autoGenerateSql"><i class="fa fa-magic"></i> Auto SQL</label>
+            <input type="checkbox" id="node-input-autoGenerateSql" style="width: auto;">
+            <span style="margin-left: 5px;">Auto-generate SQL template</span>
         </div>
-
         <div class="form-row">
-            <label for="node-input-useFlowOutput">
-                <i class="fa fa-share-alt"></i> Flow Output
-            </label>
-            <input type="checkbox" id="node-input-useFlowOutput" style="width: auto; margin-left: 5px;" checked>
-            <span style="margin-left: 5px;">Delegate to flow for custom logic</span>
+            <label for="node-input-useFlowOutput"><i class="fa fa-share"></i> Flow Output</label>
+            <input type="checkbox" id="node-input-useFlowOutput" style="width: auto;">
+            <span style="margin-left: 5px;">Delegate to downstream nodes</span>
         </div>
-
-        <div id="sql-preview-section" style="display: none; margin-top: 10px;">
-            <div class="form-row">
-                <label><i class="fa fa-file-code-o"></i> SQL Preview</label>
-            </div>
-            <div class="form-row" style="margin-left: 105px;">
-                <pre id="sql-preview" style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-wrap: break-word;"></pre>
-            </div>
-            <div class="form-tips" style="margin-left: 105px;">
-                <i class="fa fa-info-circle"></i> @columns, @values, and @assignments are placeholders filled from request body at runtime.
-            </div>
+        <div id="sql-preview-section" class="form-row" style="display: none;">
+            <label><i class="fa fa-code"></i> Preview</label>
+            <pre id="sql-preview" style="background: #f5f5f5; padding: 10px; border-radius: 3px; font-size: 11px; overflow-x: auto;"></pre>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-list-ol"></i> Pagination</label>
+    <!-- Pagination Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-list-ol"></i> Pagination
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-paginationEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-paginationEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Enable pagination for this endpoint</span>
+        <label for="node-input-paginationEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-paginationEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable pagination for list endpoints</span>
     </div>
 
     <div id="pagination-config" style="display: none;">
         <div class="form-row">
-            <label for="node-input-paginationStyle"><i class="fa fa-sliders"></i> Style</label>
-            <select id="node-input-paginationStyle" style="width: 200px;">
-                <option value="offset">Offset-based (page, limit, offset)</option>
-                <option value="cursor">Cursor-based (cursor, limit)</option>
-            </select>
-        </div>
-
-        <div class="form-row">
-            <label for="node-input-defaultPageSize"><i class="fa fa-file-text-o"></i> Default Size</label>
-            <input type="number" id="node-input-defaultPageSize" min="1" style="width: 80px;" placeholder="20">
-            <span style="margin-left: 5px; color: #666;">items per page</span>
+            <label for="node-input-defaultPageSize"><i class="fa fa-list"></i> Default Size</label>
+            <input type="number" id="node-input-defaultPageSize" min="1" placeholder="20">
             <div id="default-page-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
-            <label for="node-input-maxPageSize"><i class="fa fa-expand"></i> Max Size</label>
-            <input type="number" id="node-input-maxPageSize" min="1" style="width: 80px;" placeholder="100">
-            <span style="margin-left: 5px; color: #666;">maximum items per page</span>
+            <label for="node-input-maxPageSize"><i class="fa fa-list"></i> Max Size</label>
+            <input type="number" id="node-input-maxPageSize" min="1" placeholder="100">
             <div id="max-page-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> <b>Offset-based:</b> Uses <code>page</code>, <code>limit</code>, and <code>offset</code> query params.<br>
-            <i class="fa fa-info-circle"></i> <b>Cursor-based:</b> Uses <code>cursor</code> and <code>limit</code> query params for efficient pagination of large datasets.
+        <div class="form-row">
+            <label for="node-input-paginationStyle"><i class="fa fa-bookmark"></i> Style</label>
+            <select id="node-input-paginationStyle">
+                <option value="offset">Offset (page/limit)</option>
+                <option value="cursor">Cursor-based</option>
+            </select>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-filter"></i> Filtering</label>
+    <!-- Filtering Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-filter"></i> Filtering
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-filteringEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-filteringEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Enable query-based filtering</span>
+        <label for="node-input-filteringEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-filteringEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable field filtering</span>
     </div>
 
     <div id="filtering-config" style="display: none;">
         <div class="form-row">
-            <label for="node-input-filterableFields"><i class="fa fa-columns"></i> Fields</label>
-            <input type="text" id="node-input-filterableFields" placeholder="name, status, created_at">
-            <div class="form-tips" style="margin-left: 105px;">Comma-separated list of filterable field names</div>
+            <label for="node-input-filterableFields"><i class="fa fa-list"></i> Fields</label>
+            <input type="text" id="node-input-filterableFields" placeholder="name, email, status">
         </div>
-
-        <div class="form-row" style="margin-left: 105px;">
-            <div id="filterable-fields-display"></div>
-        </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> Filter syntax: <code>filter[field]=value</code> or <code>filter[field][op]=value</code><br>
-            <i class="fa fa-info-circle"></i> Operators: <code>eq</code>, <code>ne</code>, <code>gt</code>, <code>gte</code>, <code>lt</code>, <code>lte</code>, <code>like</code>, <code>in</code>
+        <div class="form-row">
+            <label>&nbsp;</label>
+            <div id="filterable-fields-display" style="display: inline;"></div>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-sort"></i> Sorting</label>
+    <!-- Sorting Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-sort"></i> Sorting
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-sortingEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-sortingEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Enable query-based sorting</span>
+        <label for="node-input-sortingEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-sortingEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable field sorting</span>
     </div>
 
     <div id="sorting-config" style="display: none;">
         <div class="form-row">
-            <label for="node-input-sortableFields"><i class="fa fa-columns"></i> Fields</label>
-            <input type="text" id="node-input-sortableFields" placeholder="name, created_at, updated_at">
-            <div class="form-tips" style="margin-left: 105px;">Comma-separated list of sortable field names</div>
+            <label for="node-input-sortableFields"><i class="fa fa-list"></i> Fields</label>
+            <input type="text" id="node-input-sortableFields" placeholder="name, createdAt, status">
         </div>
-
-        <div class="form-row" style="margin-left: 105px;">
-            <div id="sortable-fields-display"></div>
-        </div>
-
         <div class="form-row">
-            <label for="node-input-defaultSortField"><i class="fa fa-sort-amount-asc"></i> Default Sort</label>
-            <input type="text" id="node-input-defaultSortField" style="width: 120px;" placeholder="created_at">
-            <select id="node-input-defaultSortDirection" style="width: 100px; margin-left: 5px;">
+            <label>&nbsp;</label>
+            <div id="sortable-fields-display" style="display: inline;"></div>
+        </div>
+        <div class="form-row">
+            <label for="node-input-defaultSortField"><i class="fa fa-sort-alpha-asc"></i> Default</label>
+            <input type="text" id="node-input-defaultSortField" placeholder="createdAt">
+        </div>
+        <div class="form-row">
+            <label for="node-input-defaultSortDirection"><i class="fa fa-long-arrow-down"></i> Direction</label>
+            <select id="node-input-defaultSortDirection">
                 <option value="asc">Ascending</option>
                 <option value="desc">Descending</option>
             </select>
         </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> Sort syntax: <code>sort=field</code> (asc) or <code>sort=-field</code> (desc)<br>
-            <i class="fa fa-info-circle"></i> Multiple fields: <code>sort=field1,-field2</code>
-        </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-random"></i> Transformation</label>
+    <!-- Transformation Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-exchange"></i> Transformation
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-transformationEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-transformationEnabled" style="width: auto; margin-left: 5px;">
+        <label for="node-input-transformationEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-transformationEnabled" style="width: auto;">
         <span style="margin-left: 5px;">Enable request/response transformation</span>
     </div>
 
     <div id="transformation-config" style="display: none;">
-        <div class="schema-section">
-            <div class="schema-section-header">
-                <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-sign-in"></i> Request Transformation
-            </div>
-            <div class="schema-section-content">
-                <div class="form-tips" style="margin-bottom: 10px;">
-                    JSONata expression to transform the request body before validation. Use <code>$</code> to reference the body.
-                </div>
-                <div class="form-row">
-                    <textarea id="node-input-requestTransformExpression" rows="6" placeholder='$merge([$$, {
-  "fullName": $.firstName & " " & $.lastName,
-  "emailLower": $lowercase($.email)
-}])'></textarea>
-                    <div id="request-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                </div>
-            </div>
+        <div class="form-row">
+            <label for="node-input-requestTransformExpression"><i class="fa fa-sign-in"></i> Request</label>
+            <textarea id="node-input-requestTransformExpression" rows="3" placeholder='{"userId": $.id, "fullName": $.firstName & " " & $.lastName}' style="width: 70%; font-family: monospace; font-size: 11px;"></textarea>
+            <div id="request-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
-        <div class="schema-section">
-            <div class="schema-section-header">
-                <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-sign-out"></i> Response Transformation
-            </div>
-            <div class="schema-section-content">
-                <div class="form-tips" style="margin-bottom: 10px;">
-                    JSONata expression to transform the response data. Stored in <code>msg.endpoint.responseTransformExpression</code> for downstream use.
-                </div>
-                <div class="form-row">
-                    <textarea id="node-input-responseTransformExpression" rows="6" placeholder='{
-  "id": $.id,
-  "displayName": $.full_name,
-  "contact": { "email": $.email }
-}'></textarea>
-                    <div id="response-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                </div>
-            </div>
+        <div class="form-row">
+            <label for="node-input-responseTransformExpression"><i class="fa fa-sign-out"></i> Response</label>
+            <textarea id="node-input-responseTransformExpression" rows="3" placeholder='{"data": $, "timestamp": $now()}' style="width: 70%; font-family: monospace; font-size: 11px;"></textarea>
+            <div id="response-transform-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
-        <div class="schema-section">
-            <div class="schema-section-header">
-                <i class="fa fa-chevron-down section-toggle-icon"></i>
-                <i class="fa fa-exchange"></i> Field Mappings
-            </div>
-            <div class="schema-section-content">
-                <div class="form-tips" style="margin-bottom: 10px;">
-                    Simple field renaming. Applied before JSONata expression. Format: <code>oldName->newName</code>
-                </div>
-                <div class="form-row">
-                    <input type="text" id="node-input-fieldMappings" placeholder="firstName->first_name, lastName->last_name">
-                    <div id="field-mappings-error" class="form-tips" style="color: #d9534f; display: none;"></div>
-                </div>
-                <div class="form-row" style="margin-top: 5px;">
-                    <div id="field-mappings-display"></div>
-                </div>
-            </div>
+        <div class="form-row">
+            <label for="node-input-fieldMappings"><i class="fa fa-random"></i> Mappings</label>
+            <input type="text" id="node-input-fieldMappings" placeholder="oldName->newName, foo->bar">
+            <div id="field-mappings-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> <b>JSONata</b> is a lightweight query and transformation language for JSON.<br>
-            <i class="fa fa-info-circle"></i> <b>Context variables:</b> <code>$msg</code> (message), <code>$params</code> (path params), <code>$query</code> (query params), <code>$headers</code> (headers)<br>
-            <i class="fa fa-info-circle"></i> <b>Common functions:</b> <code>$merge()</code>, <code>$lowercase()</code>, <code>$uppercase()</code>, <code>$trim()</code>, <code>$now()</code>
+        <div class="form-row">
+            <label>&nbsp;</label>
+            <div id="field-mappings-display" style="display: inline;"></div>
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-tachometer"></i> Rate Limiting</label>
+    <!-- Rate Limiting Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-tachometer"></i> Rate Limiting
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-rateLimitingEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-rateLimitingEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Enable rate limiting for this endpoint</span>
+        <label for="node-input-rateLimitingEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-rateLimitingEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable rate limiting</span>
     </div>
 
     <div id="rate-limiting-config" style="display: none;">
         <div class="form-row">
             <label for="node-input-rateLimitRequests"><i class="fa fa-hashtag"></i> Requests</label>
-            <input type="number" id="node-input-rateLimitRequests" min="1" style="width: 100px;" placeholder="100">
-            <span style="margin-left: 5px; color: #666;">requests per window</span>
+            <input type="number" id="node-input-rateLimitRequests" min="1" placeholder="100">
             <div id="rate-limit-requests-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
-            <label for="node-input-rateLimitWindowMs"><i class="fa fa-clock-o"></i> Window</label>
-            <input type="number" id="node-input-rateLimitWindowMs" min="1000" step="1000" style="width: 100px;" placeholder="60000">
-            <span style="margin-left: 5px; color: #666;">milliseconds (60000 = 1 minute)</span>
+            <label for="node-input-rateLimitWindowMs"><i class="fa fa-clock-o"></i> Window (ms)</label>
+            <input type="number" id="node-input-rateLimitWindowMs" min="1000" placeholder="60000">
             <div id="rate-limit-window-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
             <label for="node-input-rateLimitKeyType"><i class="fa fa-key"></i> Key Type</label>
-            <select id="node-input-rateLimitKeyType" style="width: 200px;">
+            <select id="node-input-rateLimitKeyType">
                 <option value="ip">IP Address</option>
-                <option value="user">User ID (from auth)</option>
-                <option value="apiKey">API Key (from header)</option>
-                <option value="custom">Custom (path expression)</option>
+                <option value="user">User ID</option>
+                <option value="combined">IP + User</option>
+                <option value="custom">Custom</option>
             </select>
         </div>
-
         <div class="form-row" id="custom-key-path-row" style="display: none;">
             <label for="node-input-rateLimitCustomKeyPath"><i class="fa fa-code"></i> Key Path</label>
-            <input type="text" id="node-input-rateLimitCustomKeyPath" placeholder="headers.x-tenant-id">
-            <div class="form-tips" style="margin-left: 105px;">Dot-notation path to extract key from request (e.g., <code>headers.x-tenant-id</code>)</div>
-        </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> Rate limiting restricts the number of requests per time window.<br>
-            <i class="fa fa-info-circle"></i> <b>Key types:</b><br>
-            &nbsp;&nbsp;- <b>IP Address:</b> Limits requests per client IP (supports X-Forwarded-For for proxies)<br>
-            &nbsp;&nbsp;- <b>User ID:</b> Limits requests per authenticated user (from <code>req.auth.userId</code>)<br>
-            &nbsp;&nbsp;- <b>API Key:</b> Limits requests per API key (from <code>X-API-Key</code> header)<br>
-            &nbsp;&nbsp;- <b>Custom:</b> Limits by custom request property (specify dot-notation path)<br>
-            <i class="fa fa-info-circle"></i> <b>Response headers:</b> <code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>, <code>Retry-After</code>
+            <input type="text" id="node-input-rateLimitCustomKeyPath" placeholder="req.headers.x-api-key">
         </div>
     </div>
 
-    <hr>
-
-    <div class="form-row">
-        <label><i class="fa fa-database"></i> Response Caching</label>
+    <!-- Caching Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-archive"></i> Caching
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-cachingEnabled">
-            <i class="fa fa-toggle-on"></i> Enable
-        </label>
-        <input type="checkbox" id="node-input-cachingEnabled" style="width: auto; margin-left: 5px;">
-        <span style="margin-left: 5px;">Enable response caching (GET/HEAD only)</span>
+        <label for="node-input-cachingEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-cachingEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable response caching</span>
     </div>
 
     <div id="caching-config" style="display: none;">
         <div class="form-row">
             <label for="node-input-cacheTTL"><i class="fa fa-clock-o"></i> TTL (ms)</label>
-            <input type="number" id="node-input-cacheTTL" min="0" style="width: 100px;" placeholder="300000">
-            <span style="margin-left: 5px; color: #666;">milliseconds (300000 = 5 minutes, 0 = no expiry)</span>
+            <input type="number" id="node-input-cacheTTL" min="0" placeholder="300000">
             <div id="cache-ttl-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
-            <label for="node-input-cacheMaxSize"><i class="fa fa-expand"></i> Max Size</label>
-            <input type="number" id="node-input-cacheMaxSize" min="1" style="width: 100px;" placeholder="100">
-            <span style="margin-left: 5px; color: #666;">maximum cached responses</span>
+            <label for="node-input-cacheMaxSize"><i class="fa fa-database"></i> Max Size</label>
+            <input type="number" id="node-input-cacheMaxSize" min="1" placeholder="100">
             <div id="cache-size-error" class="form-tips" style="color: #d9534f; display: none;"></div>
         </div>
-
         <div class="form-row">
             <label for="node-input-cacheKeyStrategy"><i class="fa fa-key"></i> Key Strategy</label>
-            <select id="node-input-cacheKeyStrategy" style="width: 200px;">
-                <option value="full">Full (method + path + query)</option>
-                <option value="path">Path Only (ignore query params)</option>
-                <option value="query">Query (method + path + sorted query)</option>
-                <option value="custom">Custom (expression)</option>
+            <select id="node-input-cacheKeyStrategy">
+                <option value="full">Full URL + Query</option>
+                <option value="path">Path Only</option>
+                <option value="custom">Custom Expression</option>
             </select>
         </div>
-
         <div class="form-row" id="cache-key-expression-row" style="display: none;">
-            <label for="node-input-cacheKeyExpression"><i class="fa fa-code"></i> Key Expression</label>
-            <input type="text" id="node-input-cacheKeyExpression" placeholder="req.path">
-            <div class="form-tips" style="margin-left: 105px;">Dot-notation path to extract cache key from request (e.g., <code>req.url</code>)</div>
+            <label for="node-input-cacheKeyExpression"><i class="fa fa-code"></i> Key Expr</label>
+            <input type="text" id="node-input-cacheKeyExpression" placeholder="req.path & req.query.id">
         </div>
-
         <div class="form-row">
-            <label for="node-input-cacheVaryHeaders"><i class="fa fa-random"></i> Vary Headers</label>
-            <input type="text" id="node-input-cacheVaryHeaders" placeholder="Accept, Accept-Language">
-            <div class="form-tips" style="margin-left: 105px;">Comma-separated headers to include in cache key variation</div>
+            <label for="node-input-cacheVaryHeaders"><i class="fa fa-header"></i> Vary</label>
+            <input type="text" id="node-input-cacheVaryHeaders" placeholder="Accept, Authorization">
         </div>
-        <div class="form-row" style="margin-top: 5px;">
-            <div id="vary-headers-display" style="margin-left: 105px;"></div>
-        </div>
-
         <div class="form-row">
-            <label for="node-input-cachePrivate">
-                <i class="fa fa-lock"></i> Private
-            </label>
-            <input type="checkbox" id="node-input-cachePrivate" style="width: auto; margin-left: 5px;">
-            <span style="margin-left: 5px;">Use private cache (Cache-Control: private)</span>
+            <label>&nbsp;</label>
+            <div id="vary-headers-display" style="display: inline;"></div>
         </div>
-
-        <div class="form-tips" style="margin-top: 10px;">
-            <i class="fa fa-info-circle"></i> Response caching stores responses to reduce processing for repeated requests.<br>
-            <i class="fa fa-info-circle"></i> <b>Key strategies:</b><br>
-            &nbsp;&nbsp;- <b>Full:</b> Cache key includes method, path, and sorted query parameters<br>
-            &nbsp;&nbsp;- <b>Path:</b> Cache key includes only method and path (ignores query params)<br>
-            &nbsp;&nbsp;- <b>Query:</b> Same as Full (method + path + sorted query params)<br>
-            &nbsp;&nbsp;- <b>Custom:</b> Use custom expression to extract cache key<br>
-            <i class="fa fa-info-circle"></i> <b>Features:</b><br>
-            &nbsp;&nbsp;- ETag generation and 304 Not Modified support<br>
-            &nbsp;&nbsp;- Cache-Control and Vary headers<br>
-            &nbsp;&nbsp;- X-Cache: HIT/MISS headers<br>
-            <i class="fa fa-info-circle"></i> <b>Note:</b> Only GET and HEAD requests are cached.
+        <div class="form-row">
+            <label for="node-input-cachePrivate"><i class="fa fa-user-secret"></i> Private</label>
+            <input type="checkbox" id="node-input-cachePrivate" style="width: auto;">
+            <span style="margin-left: 5px;">Cache is private (user-specific)</span>
         </div>
     </div>
 
-    <!-- Error Handling Configuration -->
-    <div class="form-row" style="margin-bottom: 0; margin-top: 15px;">
-        <label><i class="fa fa-exclamation-triangle"></i> Error Handling</label>
+    <!-- Error Handling Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-exclamation-triangle"></i> Error Handling
+        </h4>
     </div>
-
     <div class="form-row">
-        <label for="node-input-errorHandlingEnabled" style="width: auto;">
-            <input type="checkbox" id="node-input-errorHandlingEnabled" style="width: auto; margin-right: 5px;">
-            Enable standardized error responses
-        </label>
+        <label for="node-input-errorHandlingEnabled"><i class="fa fa-toggle-on"></i> Enable</label>
+        <input type="checkbox" id="node-input-errorHandlingEnabled" style="width: auto;">
+        <span style="margin-left: 5px;">Enable standardized error handling</span>
     </div>
 
-    <div id="error-handling-options">
+    <div id="error-handling-options" style="display: none;">
         <div class="form-row">
-            <label for="node-input-errorFormat"><i class="fa fa-file-code-o"></i> Format</label>
-            <select id="node-input-errorFormat" style="width: 70%;">
-                <option value="rfc7807">RFC 7807 Problem Details (Recommended)</option>
+            <label for="node-input-errorFormat"><i class="fa fa-file-text"></i> Format</label>
+            <select id="node-input-errorFormat">
+                <option value="rfc7807">RFC 7807 (Problem Details)</option>
                 <option value="simple">Simple JSON</option>
                 <option value="legacy">Legacy Format</option>
             </select>
         </div>
-
         <div class="form-row">
-            <label for="node-input-includeStackTrace" style="width: auto;">
-                <input type="checkbox" id="node-input-includeStackTrace" style="width: auto; margin-right: 5px;">
-                Include stack traces (dev mode only)
-            </label>
+            <label for="node-input-includeStackTrace"><i class="fa fa-bug"></i> Stack Trace</label>
+            <input type="checkbox" id="node-input-includeStackTrace" style="width: auto;">
+            <span style="margin-left: 5px;">Include stack trace (development only)</span>
         </div>
-
         <div class="form-row">
-            <label for="node-input-logErrors" style="width: auto;">
-                <input type="checkbox" id="node-input-logErrors" style="width: auto; margin-right: 5px;">
-                Log errors to Node-RED debug
-            </label>
+            <label for="node-input-logErrors"><i class="fa fa-pencil"></i> Log Errors</label>
+            <input type="checkbox" id="node-input-logErrors" style="width: auto;">
+            <span style="margin-left: 5px;">Log errors to console</span>
         </div>
-
         <div class="form-row">
-            <label for="node-input-customErrorCodes"><i class="fa fa-list"></i> Custom Error Codes</label>
-            <textarea id="node-input-customErrorCodes" rows="6" placeholder='{"MY_ERROR": {"status": 422, "title": "My Custom Error", "type": "urn:error:my-error"}}' style="width: 100%; font-family: monospace; font-size: 12px;"></textarea>
-            <div id="custom-error-codes-warning" style="color: #d9534f; margin-top: 5px; display: none;"></div>
-        </div>
-
-        <div class="form-tips" style="margin-top: 5px;">
-            <i class="fa fa-info-circle"></i> <b>RFC 7807 Problem Details</b> is the recommended format for API errors.<br>
-            <b>Built-in error codes:</b> VALIDATION_ERROR, AUTHENTICATION_REQUIRED, FORBIDDEN, RESOURCE_NOT_FOUND, RATE_LIMIT_EXCEEDED, INTERNAL_ERROR<br>
-            <b>Custom error codes</b> allow mapping your own error codes to HTTP status codes and RFC 7807 fields.
+            <label for="node-input-customErrorCodes"><i class="fa fa-list-alt"></i> Custom Codes</label>
+            <textarea id="node-input-customErrorCodes" rows="3" placeholder='{"CUSTOM_ERROR": {"status": 400, "title": "Custom Error"}}' style="width: 70%; font-family: monospace; font-size: 11px;"></textarea>
+            <div id="custom-error-codes-warning" class="form-tips" style="color: #f0ad4e; display: none;"></div>
         </div>
     </div>
 
     <style>
-        .field-badge {
+        .param-badge, .scope-badge, .field-badge, .mapping-badge {
             display: inline-block;
             padding: 2px 8px;
             margin: 2px;
-            background-color: #5cb85c;
-            color: white;
-            border-radius: 3px;
-            font-size: 12px;
+            border-radius: 10px;
+            font-size: 11px;
             font-family: monospace;
         }
-        .param-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            margin: 2px;
-            background-color: #5bc0de;
-            color: white;
-            border-radius: 3px;
-            font-size: 12px;
-            font-family: monospace;
-        }
-        .scope-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            margin: 2px;
-            background-color: #f0ad4e;
-            color: white;
-            border-radius: 3px;
-            font-size: 12px;
-            font-family: monospace;
-        }
-        .mapping-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            margin: 2px;
-            background-color: #9b59b6;
-            color: white;
-            border-radius: 3px;
-            font-size: 12px;
-            font-family: monospace;
-        }
-        .input-error {
-            border-color: #d9534f !important;
-        }
-        .schema-section {
-            margin-bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .schema-section-header {
-            padding: 8px 12px;
-            background-color: #f5f5f5;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .schema-section-header:hover {
-            background-color: #e8e8e8;
-        }
-        .schema-section-header i {
-            margin-right: 5px;
-        }
-        .section-toggle-icon {
-            transition: transform 0.2s;
-        }
-        .schema-section-content {
-            padding: 10px;
-            border-top: 1px solid #ddd;
-        }
-        .schema-section-content textarea {
-            width: 100%;
-            font-family: monospace;
-            font-size: 12px;
-            resize: vertical;
-        }
-        #validation-schemas {
-            margin-top: 10px;
-        }
+        .param-badge { background: #e3f2fd; color: #1565c0; }
+        .scope-badge { background: #fce4ec; color: #c62828; }
+        .field-badge { background: #e8f5e9; color: #2e7d32; }
+        .mapping-badge { background: #fff3e0; color: #ef6c00; }
+        .input-error { border-color: #d9534f !important; }
+        .schema-section { margin-bottom: 10px; }
+        .schema-section-header { cursor: pointer; }
+        .schema-section-header:hover { background: #eee !important; }
     </style>
 </script>
 
 <script type="text/html" data-help-name="api-endpoint">
-    <p>Configures an API endpoint with path, HTTP method, and request validation for the API Gateway.</p>
-
-    <h3>Properties</h3>
-    <dl class="message-properties">
-        <dt>Server
-            <span class="property-type">api-server</span>
-        </dt>
-        <dd>Reference to the API Server configuration node that will handle this endpoint.</dd>
-
-        <dt>Method
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The HTTP method for this endpoint: GET, POST, PUT, DELETE, or PATCH.</dd>
-
-        <dt>Path
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The URL path pattern for this endpoint. Supports path parameters using colon notation
-            (e.g., <code>/users/:id</code>).</dd>
-
-        <dt>Validation
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>Enable or disable request validation. When enabled, requests are validated against the defined schemas.</dd>
-
-        <dt>Request Body Schema
-            <span class="property-type">JSON Schema</span>
-        </dt>
-        <dd>JSON Schema to validate the request body (typically for POST, PUT, PATCH requests).</dd>
-
-        <dt>Query Parameters Schema
-            <span class="property-type">JSON Schema</span>
-        </dt>
-        <dd>JSON Schema to validate query string parameters. Type coercion is automatically applied.</dd>
-
-        <dt>Path Parameters Schema
-            <span class="property-type">JSON Schema</span>
-        </dt>
-        <dd>JSON Schema to validate path parameters. Type coercion is automatically applied.</dd>
-
-        <dt>Success Code
-            <span class="property-type">number</span>
-        </dt>
-        <dd>The HTTP status code for successful responses (200, 201, 202, or 204).</dd>
-
-        <dt>Content-Type
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The Content-Type header for responses (e.g., application/json, application/xml).</dd>
-
-        <dt>Dev Mode
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>Enable response validation for debugging. When enabled, outgoing responses are validated against the response schemas.</dd>
-
-        <dt>Response Schemas
-            <span class="property-type">object</span>
-        </dt>
-        <dd>JSON object mapping HTTP status codes to JSON Schemas. Used for OpenAPI generation and optional response validation.</dd>
-
-        <dt>Required Scopes
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Comma-separated list of OAuth2 scopes required to access this endpoint. When configured, requests without valid scopes will receive 401 (unauthenticated) or 403 (insufficient permissions) responses.</dd>
-
-        <dt>Scope Operator
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Controls how multiple scopes are evaluated: <b>AND</b> requires all scopes to be present, <b>OR</b> requires at least one scope.</dd>
-
-        <dt>CRUD Operation
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Maps this endpoint to a database CRUD operation: <b>list</b> (GET all), <b>get</b> (GET by ID), <b>create</b> (POST), <b>update</b> (PUT), or <b>delete</b> (DELETE).</dd>
-
-        <dt>Table Name
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Database table name for the CRUD operation. Supports schema.table notation (e.g., <code>public.users</code>).</dd>
-
-        <dt>Primary Key
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Primary key column name for get, update, and delete operations. Defaults to <code>id</code>.</dd>
-
-        <dt>Auto SQL
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>When enabled, generates basic SQL templates that are added to <code>msg.crud.sql</code>.</dd>
-
-        <dt>Flow Output
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>When enabled, delegates database operations to the flow for custom business logic. The CRUD context is passed in <code>msg.crud</code>.</dd>
-
-        <dt>Enable Pagination
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>When enabled, the endpoint parses pagination parameters from query string and provides pagination context in <code>msg.pagination</code>.</dd>
-
-        <dt>Pagination Style
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Choose between <b>offset</b> (uses page/limit/offset params) or <b>cursor</b> (uses cursor/limit params) pagination.</dd>
-
-        <dt>Default Page Size
-            <span class="property-type">number</span>
-        </dt>
-        <dd>The default number of items per page when no limit is specified. Default is 20.</dd>
-
-        <dt>Max Page Size
-            <span class="property-type">number</span>
-        </dt>
-        <dd>The maximum number of items allowed per page. Requests for larger limits are capped at this value. Default is 100.</dd>
-
-        <dt>Enable Filtering
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>When enabled, the endpoint parses filter parameters from query string and provides filter context in <code>msg.filtering</code>.</dd>
-
-        <dt>Filterable Fields
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Comma-separated list of field names that can be filtered. Only these fields will be accepted in filter parameters.</dd>
-
-        <dt>Enable Sorting
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>When enabled, the endpoint parses sort parameters from query string and provides sort context in <code>msg.sorting</code>.</dd>
-
-        <dt>Sortable Fields
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Comma-separated list of field names that can be sorted. Only these fields will be accepted in sort parameters.</dd>
-
-        <dt>Default Sort Field
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The field to sort by when no sort parameter is provided. Leave empty for no default sorting.</dd>
-
-        <dt>Default Sort Direction
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The default sort direction (<b>asc</b> or <b>desc</b>) when using the default sort field.</dd>
-    </dl>
-
-    <h3>Path Parameters</h3>
-    <p>Path parameters are defined using a colon followed by the parameter name. For example:</p>
-    <ul>
-        <li><code>/users/:id</code> - captures a user ID</li>
-        <li><code>/posts/:postId/comments/:commentId</code> - captures both post and comment IDs</li>
-    </ul>
-
-    <h3>Schema Validation</h3>
-    <p>Request validation uses JSON Schema (draft-07). Common formats are supported:</p>
-    <ul>
-        <li><code>email</code> - validates email addresses</li>
-        <li><code>uri</code> - validates URIs</li>
-        <li><code>date-time</code> - validates ISO 8601 date-times</li>
-        <li><code>uuid</code> - validates UUIDs</li>
-    </ul>
-
-    <h3>Example Body Schema</h3>
-    <pre>{
-  "type": "object",
-  "properties": {
-    "name": { "type": "string", "minLength": 1 },
-    "email": { "type": "string", "format": "email" },
-    "age": { "type": "integer", "minimum": 0 }
-  },
-  "required": ["name", "email"]
-}</pre>
-
-    <h3>Response Schema Configuration</h3>
-    <p>Response schemas define the expected format of API responses for different status codes.
-    They are used for:</p>
-    <ul>
-        <li>OpenAPI specification generation</li>
-        <li>Optional response validation in development mode</li>
-        <li>API documentation</li>
-    </ul>
-
-    <h3>Example Response Schemas</h3>
-    <pre>{
-  "200": {
-    "type": "object",
-    "properties": {
-      "id": { "type": "integer" },
-      "name": { "type": "string" },
-      "email": { "type": "string", "format": "email" }
-    },
-    "required": ["id", "name"]
-  },
-  "404": {
-    "type": "object",
-    "properties": {
-      "error": { "type": "string" },
-      "message": { "type": "string" }
-    }
-  },
-  "default": {
-    "type": "object",
-    "properties": {
-      "error": { "type": "string" }
-    }
-  }
-}</pre>
-
-    <h3>Validation Errors</h3>
-    <p>When validation fails:</p>
-    <ul>
-        <li>If <code>msg.res</code> is available, a 400 Bad Request response is automatically sent</li>
-        <li>The error details are added to <code>msg.validationError</code></li>
-        <li>The error response includes the path, message, and details for each validation failure</li>
-    </ul>
-
-    <h3>Authorization</h3>
-    <p>When required scopes are configured, the endpoint checks authorization before processing requests:</p>
-    <ul>
-        <li><b>401 Unauthorized</b>: Returned when <code>msg.req.auth.authenticated</code> is not set (user not logged in)</li>
-        <li><b>403 Forbidden</b>: Returned when the user's scopes don't satisfy the required scopes</li>
-    </ul>
-    <p>The authorization check expects scopes to be provided in <code>msg.req.auth.scopes</code> as an array of strings.</p>
-
-    <h3>Example Authorization Configuration</h3>
-    <p>For an endpoint requiring admin access:</p>
-    <ul>
-        <li>Required Scopes: <code>admin:read, admin:write</code></li>
-        <li>Operator: <b>AND</b> - User must have both scopes</li>
-    </ul>
-    <p>For an endpoint accessible by multiple roles:</p>
-    <ul>
-        <li>Required Scopes: <code>admin, moderator, owner</code></li>
-        <li>Operator: <b>OR</b> - User needs at least one scope</li>
-    </ul>
-
-    <h3>CRUD Operation Mapping</h3>
-    <p>The CRUD mapping feature allows you to map HTTP endpoints to database operations. When configured:</p>
-    <ul>
-        <li>A <code>msg.crud</code> object is added with operation details</li>
-        <li>When Auto SQL is enabled, SQL templates are generated</li>
-        <li>The flow can use this context to execute database operations</li>
-    </ul>
-
-    <h3>CRUD Operations</h3>
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-        <tr style="background: #f5f5f5;">
-            <th style="padding: 8px; border: 1px solid #ddd;">Operation</th>
-            <th style="padding: 8px; border: 1px solid #ddd;">HTTP Method</th>
-            <th style="padding: 8px; border: 1px solid #ddd;">SQL Template</th>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><b>list</b></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">GET</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>SELECT * FROM table</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><b>get</b></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">GET</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>SELECT * FROM table WHERE pk = @pk</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><b>create</b></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">POST</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>INSERT INTO table (@columns) VALUES (@values)</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><b>update</b></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">PUT</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>UPDATE table SET @assignments WHERE pk = @pk</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><b>delete</b></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">DELETE</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>DELETE FROM table WHERE pk = @pk</code></td>
-        </tr>
-    </table>
+    <p>Defines an API endpoint with comprehensive request/response handling capabilities.</p>
 
     <h3>Inputs</h3>
     <dl class="message-properties">
-        <dt>req.body <span class="property-type">any</span></dt>
-        <dd>Request body to validate against the body schema.</dd>
-        <dt>req.query <span class="property-type">object</span></dt>
-        <dd>Query parameters to validate against the query schema.</dd>
-        <dt>req.params <span class="property-type">object</span></dt>
-        <dd>Path parameters to validate against the params schema.</dd>
-        <dt>req.auth.authenticated <span class="property-type">boolean</span></dt>
-        <dd>Whether the request is authenticated (populated by upstream auth middleware).</dd>
-        <dt>req.auth.scopes <span class="property-type">array</span></dt>
-        <dd>Array of OAuth2 scope strings associated with the authenticated user/token.</dd>
+        <dt>req <span class="property-type">object</span></dt>
+        <dd>The HTTP request object (populated by api-server)</dd>
+        <dt>res <span class="property-type">object</span></dt>
+        <dd>The HTTP response object (populated by api-server)</dd>
     </dl>
 
     <h3>Outputs</h3>
     <dl class="message-properties">
         <dt>endpoint <span class="property-type">object</span></dt>
-        <dd>Endpoint metadata including path, method, paramNames, validationEnabled, successStatusCode, responseContentType, validateResponseEnabled, requiredScopes, scopeOperator, and CRUD configuration.</dd>
-        <dt>validationError <span class="property-type">object</span></dt>
-        <dd>Present only when validation fails. Contains statusCode, error, message, and details.</dd>
-        <dt>authorizationError <span class="property-type">object</span></dt>
-        <dd>Present only when authorization fails. Contains statusCode (401 or 403), error, message, and details including requiredScopes, scopeOperator, and missingScopes.</dd>
+        <dd>Endpoint metadata including path, method, and configuration</dd>
         <dt>crud <span class="property-type">object</span></dt>
-        <dd>Present when a CRUD operation is configured. Contains <code>operation</code>, <code>tableName</code>, <code>primaryKey</code>, and optionally <code>sql</code> (when Auto SQL is enabled) with the generated SQL template.</dd>
+        <dd>CRUD operation context (if configured)</dd>
         <dt>pagination <span class="property-type">object</span></dt>
-        <dd>Present when pagination is enabled and query params exist. Contains parsed pagination parameters based on the configured style.</dd>
+        <dd>Parsed pagination parameters (if enabled)</dd>
         <dt>filtering <span class="property-type">object</span></dt>
-        <dd>Present when filtering is enabled and query params exist. Contains <code>filters</code> array, <code>errors</code> array, and <code>whereClause</code> object with generated SQL.</dd>
+        <dd>Parsed filter parameters with SQL WHERE clause</dd>
         <dt>sorting <span class="property-type">object</span></dt>
-        <dd>Present when sorting is enabled and query params exist. Contains <code>sorts</code> array, <code>errors</code> array, and <code>orderByClause</code> string with generated SQL.</dd>
-        <dt>transformationError <span class="property-type">object</span></dt>
-        <dd>Present only when request transformation fails. Contains statusCode (400), error, message, and details.</dd>
+        <dd>Parsed sort parameters with SQL ORDER BY clause</dd>
+        <dt>rateLimit <span class="property-type">object</span></dt>
+        <dd>Rate limit status and remaining quota</dd>
+        <dt>cache <span class="property-type">object</span></dt>
+        <dd>Cache hit/miss status and key</dd>
     </dl>
 
-    <h3>Pagination Support</h3>
-    <p>When pagination is enabled, the endpoint automatically parses pagination parameters from the query string and adds them to <code>msg.pagination</code>.</p>
+    <h3>Configuration</h3>
+    <p><b>Path:</b> Express-style path with parameters (e.g., <code>/users/:id</code>)</p>
+    <p><b>Method:</b> HTTP method (GET, POST, PUT, DELETE, PATCH)</p>
 
-    <h4>Offset-Based Pagination</h4>
-    <p>Uses traditional page-based navigation with the following query parameters:</p>
-    <ul>
-        <li><code>page</code> - Page number (1-indexed)</li>
-        <li><code>limit</code> - Number of items per page</li>
-        <li><code>offset</code> - Number of items to skip (alternative to page)</li>
-    </ul>
-    <p>The <code>msg.pagination</code> object contains:</p>
+    <h3>Request Validation</h3>
+    <p>Define JSON Schema for body, query params, and path params. Invalid requests return 400 errors with details.</p>
     <pre>{
-  "style": "offset",
-  "page": 1,
-  "limit": 20,
-  "offset": 0,
-  "cursor": null
+    "type": "object",
+    "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "email": { "type": "string", "format": "email" }
+    },
+    "required": ["name", "email"]
 }</pre>
 
-    <h4>Cursor-Based Pagination</h4>
-    <p>Uses opaque cursors for efficient pagination of large datasets:</p>
-    <ul>
-        <li><code>cursor</code> - Opaque cursor string from previous response</li>
-        <li><code>limit</code> - Number of items per page</li>
-    </ul>
-    <p>The <code>msg.pagination</code> object contains:</p>
+    <h3>Response Configuration</h3>
+    <p>Define response schemas per status code for OpenAPI documentation:</p>
     <pre>{
-  "style": "cursor",
-  "limit": 20,
-  "cursor": "eyJpZCI6MTAwfQ==",
-  "page": null,
-  "offset": null
+    "200": {
+        "type": "object",
+        "properties": {
+            "id": { "type": "integer" },
+            "name": { "type": "string" }
+        }
+    },
+    "404": {
+        "type": "object",
+        "properties": {
+            "error": { "type": "string" }
+        }
+    }
 }</pre>
 
-    <h4>Generating Response Metadata</h4>
-    <p>Use the <code>generatePaginationMeta()</code> method to create pagination metadata for your response:</p>
-    <pre>// In a function node after database query
-const meta = node.context().flow.get('endpointNode').generatePaginationMeta(
-  msg.pagination,
-  {
-    total: 150,     // Total item count (optional for cursor-based)
-    count: 20,      // Items in current page
-    nextCursor: 'eyJpZCI6MTIwfQ==',  // For cursor-based
-    prevCursor: 'eyJpZCI6ODB9'       // For cursor-based
-  }
-);</pre>
+    <h3>Authorization</h3>
+    <p>Define required OAuth2 scopes with AND/OR operator logic.</p>
 
-    <h3>Methods Available</h3>
-    <p>The node provides several methods for use by other nodes:</p>
-    <dl class="message-properties">
-        <dt>validateResponseData(statusCode, data)</dt>
-        <dd>Validates response data against the schema for the given status code. Returns a ValidationResult.</dd>
-        <dt>getResponseSchema(statusCode)</dt>
-        <dd>Returns the JSON Schema for the given status code, or the default schema if not found.</dd>
-        <dt>getOpenApiResponses()</dt>
-        <dd>Returns response definitions in OpenAPI format for documentation generation.</dd>
-        <dt>checkAuthorization(tokenScopes)</dt>
-        <dd>Checks if the provided token scopes satisfy the endpoint's required scopes. Returns <code>{authorized: boolean, missingScopes: array}</code>.</dd>
-        <dt>getOpenApiSecurity()</dt>
-        <dd>Returns OpenAPI security requirements for this endpoint (OAuth2 scopes). Returns an empty array if no scopes are required.</dd>
-        <dt>getCrudSql()</dt>
-        <dd>Returns the generated SQL template object when Auto SQL is enabled. Returns <code>null</code> if no CRUD operation or Auto SQL is disabled.</dd>
-        <dt>getCrudInfo()</dt>
-        <dd>Returns the CRUD operation configuration: <code>{operation, tableName, primaryKey, autoGenerateSql, useFlowOutput, hasCrudOperation}</code>.</dd>
-        <dt>getPaginationConfig()</dt>
-        <dd>Returns the pagination configuration: <code>{enabled, defaultPageSize, maxPageSize, style}</code>.</dd>
-        <dt>parsePagination(query)</dt>
-        <dd>Parses pagination parameters from a query object. Returns <code>null</code> if pagination is disabled, otherwise returns the parsed pagination params.</dd>
-        <dt>generatePaginationMeta(params, resultInfo)</dt>
-        <dd>Generates pagination metadata for responses. Pass the parsed pagination params and result info (total, count, nextCursor, prevCursor). Returns metadata object with hasNext, hasPrev, etc.</dd>
-        <dt>getFilteringConfig()</dt>
-        <dd>Returns the filtering configuration: <code>{enabled, filterableFields}</code>.</dd>
-        <dt>getSortingConfig()</dt>
-        <dd>Returns the sorting configuration: <code>{enabled, sortableFields, defaultSortField, defaultSortDirection}</code>.</dd>
-        <dt>parseFilters(query)</dt>
-        <dd>Parses filter parameters from a query object. Returns <code>null</code> if filtering is disabled, otherwise returns <code>{filters: array, errors: array}</code>.</dd>
-        <dt>parseSorts(query)</dt>
-        <dd>Parses sort parameters from a query object. Returns <code>null</code> if sorting is disabled, otherwise returns <code>{sorts: array, errors: array}</code>.</dd>
-        <dt>generateWhereClause(filters, paramPrefix)</dt>
-        <dd>Generates SQL WHERE clause from parsed filters. Returns <code>{clause: string, params: object}</code>.</dd>
-        <dt>generateOrderByClause(sorts)</dt>
-        <dd>Generates SQL ORDER BY clause from parsed sorts. Returns a string like <code>ORDER BY field ASC</code>.</dd>
-        <dt>getTransformationConfig()</dt>
-        <dd>Returns the transformation configuration: <code>{enabled, hasRequestTransform, hasResponseTransform, hasFieldMappings}</code>.</dd>
-        <dt>transformRequestBody(body, context)</dt>
-        <dd>Transforms request body using configured field mappings and JSONata expression. Returns <code>{success: boolean, data: any, error?: string}</code>.</dd>
-        <dt>transformResponseData(data, context)</dt>
-        <dd>Transforms response data using configured JSONata expression. Returns <code>{success: boolean, data: any, error?: string}</code>.</dd>
-    </dl>
+    <h3>CRUD Operations</h3>
+    <p>Map endpoints to database operations with optional SQL generation.</p>
 
-    <h3>Filtering Support</h3>
-    <p>When filtering is enabled, the endpoint automatically parses filter parameters from the query string and adds them to <code>msg.filtering</code>.</p>
+    <h3>Pagination</h3>
+    <p>Supports offset-based (<code>?page=1&limit=20</code>) and cursor-based pagination.</p>
 
-    <h4>Filter Syntax</h4>
-    <p>Filters use the <code>filter[field]=value</code> format. Operators can be specified as <code>filter[field][op]=value</code>:</p>
-    <ul>
-        <li><code>filter[status]=active</code> - Equality (default)</li>
-        <li><code>filter[age][gte]=18</code> - Greater than or equal</li>
-        <li><code>filter[name][like]=%john%</code> - Pattern matching</li>
-        <li><code>filter[status][in]=active,pending</code> - In list</li>
-    </ul>
+    <h3>Filtering & Sorting</h3>
+    <p>Filter: <code>?filter[status]=active</code> or <code>?filter[age][gt]=18</code></p>
+    <p>Sort: <code>?sort=name,-createdAt</code> (- prefix for descending)</p>
 
-    <h4>Supported Operators</h4>
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-        <tr style="background: #f5f5f5;">
-            <th style="padding: 8px; border: 1px solid #ddd;">Operator</th>
-            <th style="padding: 8px; border: 1px solid #ddd;">Description</th>
-            <th style="padding: 8px; border: 1px solid #ddd;">SQL</th>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>eq</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">Equal (default)</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field = @value</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>ne</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">Not equal</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field != @value</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>gt</code>, <code>gte</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">Greater than (or equal)</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field > @value</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>lt</code>, <code>lte</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">Less than (or equal)</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field < @value</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>like</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">Pattern matching</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field LIKE @value</code></td>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>in</code></td>
-            <td style="padding: 8px; border: 1px solid #ddd;">In list</td>
-            <td style="padding: 8px; border: 1px solid #ddd;"><code>field IN (@v1, @v2)</code></td>
-        </tr>
-    </table>
+    <h3>Transformation</h3>
+    <p>Use JSONata expressions for request/response transformation:</p>
+    <pre>{"userId": $.id, "fullName": $.firstName & " " & $.lastName}</pre>
 
-    <p>The <code>msg.filtering</code> object contains:</p>
-    <pre>{
-  "filters": [
-    { "field": "status", "operator": "eq", "value": "active" },
-    { "field": "age", "operator": "gte", "value": "18" }
-  ],
-  "errors": [],
-  "whereClause": {
-    "clause": "WHERE status = @filter_status_0 AND age >= @filter_age_1",
-    "params": { "filter_status_0": "active", "filter_age_1": "18" }
-  }
-}</pre>
+    <h3>Rate Limiting</h3>
+    <p>Limit requests per IP, user, or custom key with configurable windows.</p>
 
-    <h3>Sorting Support</h3>
-    <p>When sorting is enabled, the endpoint automatically parses sort parameters from the query string and adds them to <code>msg.sorting</code>.</p>
+    <h3>Caching</h3>
+    <p>Cache GET responses with configurable TTL, key strategy, and Vary headers.</p>
 
-    <h4>Sort Syntax</h4>
-    <ul>
-        <li><code>sort=name</code> - Sort by name ascending</li>
-        <li><code>sort=-created_at</code> - Sort by created_at descending (- prefix)</li>
-        <li><code>sort=status,-created_at</code> - Multiple fields (comma-separated)</li>
-    </ul>
-
-    <p>The <code>msg.sorting</code> object contains:</p>
-    <pre>{
-  "sorts": [
-    { "field": "status", "direction": "asc" },
-    { "field": "created_at", "direction": "desc" }
-  ],
-  "errors": [],
-  "orderByClause": "ORDER BY status ASC, created_at DESC"
-}</pre>
-
-    <h3>Transformation Support</h3>
-    <p>When transformation is enabled, the endpoint can transform request bodies before validation and provide response transformation expressions for downstream use.</p>
-
-    <h4>Request Transformation</h4>
-    <p>Request transformations are applied <b>before</b> validation. This allows you to:</p>
-    <ul>
-        <li>Normalize incoming data formats</li>
-        <li>Rename fields to match internal conventions</li>
-        <li>Compute derived fields</li>
-        <li>Restructure nested data</li>
-    </ul>
-
-    <h4>JSONata Expressions</h4>
-    <p>Transformations use <a href="https://jsonata.org" target="_blank">JSONata</a>, a lightweight query and transformation language for JSON.</p>
-
-    <h5>Context Variables</h5>
-    <p>The following variables are available in transformation expressions:</p>
-    <ul>
-        <li><code>$</code> - The data being transformed (request body or response data)</li>
-        <li><code>$msg</code> - The full message object</li>
-        <li><code>$params</code> - Path parameters</li>
-        <li><code>$query</code> - Query parameters</li>
-        <li><code>$headers</code> - Request headers</li>
-    </ul>
-
-    <h5>Example: Request Transformation</h5>
-    <pre>$merge([$$, {
-  "fullName": $.firstName & " " & $.lastName,
-  "emailLower": $lowercase($.email),
-  "createdAt": $now()
-}])</pre>
-    <p>This merges the original body with computed fields.</p>
-
-    <h5>Example: Response Transformation</h5>
-    <pre>{
-  "id": $.id,
-  "displayName": $.full_name,
-  "contact": {
-    "email": $.email,
-    "phone": $.phone_number
-  },
-  "active": $.status = "active"
-}</pre>
-    <p>This reshapes the response data for the API consumer.</p>
-
-    <h4>Field Mappings</h4>
-    <p>For simple field renaming, use the field mappings feature instead of JSONata:</p>
-    <pre>firstName->first_name, lastName->last_name, emailAddr->email</pre>
-    <p>Field mappings are applied <b>before</b> JSONata expressions.</p>
-
-    <h4>Response Transformation Usage</h4>
-    <p>Response transformations are stored in <code>msg.endpoint.responseTransformExpression</code> for downstream nodes to apply. Example usage in a function node:</p>
-    <pre>// Apply response transformation
-if (msg.endpoint.responseTransformExpression) {
-    const jsonata = require('jsonata');
-    const expr = jsonata(msg.endpoint.responseTransformExpression);
-    msg.payload = await expr.evaluate(msg.payload);
-}
-return msg;</pre>
-
-    <h3>Rate Limiting Support</h3>
-    <p>When rate limiting is enabled, the endpoint enforces request limits per time window using a token bucket algorithm.</p>
-
-    <h4>Configuration</h4>
-    <dl class="message-properties">
-        <dt>Enable Rate Limiting
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>Enable or disable rate limiting for this endpoint.</dd>
-
-        <dt>Requests
-            <span class="property-type">number</span>
-        </dt>
-        <dd>Maximum number of requests allowed per time window. Default is 100.</dd>
-
-        <dt>Window
-            <span class="property-type">number</span>
-        </dt>
-        <dd>Time window in milliseconds. Default is 60000 (1 minute).</dd>
-
-        <dt>Key Type
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The method used to identify clients for rate limiting:
-            <ul>
-                <li><b>IP Address:</b> Uses client IP (supports X-Forwarded-For for proxied requests)</li>
-                <li><b>User ID:</b> Uses authenticated user ID from <code>req.auth.userId</code> or <code>req.auth.sub</code></li>
-                <li><b>API Key:</b> Uses API key from <code>X-API-Key</code> header or Authorization Bearer token</li>
-                <li><b>Custom:</b> Uses a custom path expression to extract the key from the request</li>
-            </ul>
-        </dd>
-
-        <dt>Key Path (Custom only)
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Dot-notation path to extract the rate limit key from the request object (e.g., <code>headers.x-tenant-id</code>).</dd>
-    </dl>
-
-    <h4>Response Headers</h4>
-    <p>When rate limiting is enabled, the following headers are added to all responses:</p>
-    <ul>
-        <li><code>X-RateLimit-Limit</code> - Maximum requests per window</li>
-        <li><code>X-RateLimit-Remaining</code> - Remaining requests in current window</li>
-        <li><code>X-RateLimit-Reset</code> - Unix timestamp when the window resets</li>
-        <li><code>Retry-After</code> - Seconds to wait before retrying (only on 429 responses)</li>
-    </ul>
-
-    <h4>429 Response</h4>
-    <p>When a client exceeds the rate limit, a 429 Too Many Requests response is returned:</p>
-    <pre>{
-  "statusCode": 429,
-  "error": "Too Many Requests",
-  "message": "Rate limit exceeded. Please try again later.",
-  "details": {
-    "limit": 100,
-    "remaining": 0,
-    "resetTime": "2024-01-01T12:01:00.000Z",
-    "retryAfter": 30
-  }
-}</pre>
-
-    <h4>Message Context</h4>
-    <p>When rate limiting is enabled, the <code>msg.rateLimit</code> object is added to the message:</p>
-    <pre>{
-  "allowed": true,
-  "limit": 100,
-  "remaining": 95,
-  "resetTime": 1704110460000,
-  "key": "192.168.1.1"
-}</pre>
-
-    <h4>Rate Limit Error</h4>
-    <p>When rate limited, <code>msg.rateLimitError</code> contains the error details. The message flow is stopped and a 429 response is sent automatically if <code>msg.res</code> is available.</p>
-
-    <h4>Methods Available</h4>
-    <dl class="message-properties">
-        <dt>getRateLimitingConfig()</dt>
-        <dd>Returns the rate limiting configuration: <code>{enabled, requests, windowMs, keyType, customKeyPath}</code>.</dd>
-        <dt>checkRateLimit(req)</dt>
-        <dd>Checks rate limit for a request. Returns <code>{allowed, remaining, limit, resetTime, retryAfter, key}</code>.</dd>
-        <dt>getRateLimitStatistics()</dt>
-        <dd>Returns rate limiter statistics including total checks, allowed/blocked counts, and block rate.</dd>
-        <dt>resetRateLimit(key)</dt>
-        <dd>Resets rate limit for a specific key.</dd>
-    </dl>
-
-    <h3>Response Caching Support</h3>
-    <p>When caching is enabled, the endpoint caches responses for GET and HEAD requests using an LRU cache with TTL expiration.</p>
-
-    <h4>Configuration</h4>
-    <dl class="message-properties">
-        <dt>Enable Caching
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>Enable or disable response caching for this endpoint.</dd>
-
-        <dt>TTL (ms)
-            <span class="property-type">number</span>
-        </dt>
-        <dd>Time to live in milliseconds. Default is 300000 (5 minutes). Set to 0 for no expiry.</dd>
-
-        <dt>Max Size
-            <span class="property-type">number</span>
-        </dt>
-        <dd>Maximum number of cached responses. Default is 100. Uses LRU eviction.</dd>
-
-        <dt>Key Strategy
-            <span class="property-type">string</span>
-        </dt>
-        <dd>The method used to generate cache keys:
-            <ul>
-                <li><b>Full:</b> method + path + sorted query parameters</li>
-                <li><b>Path:</b> method + path only (ignores query params)</li>
-                <li><b>Query:</b> Same as Full</li>
-                <li><b>Custom:</b> Uses custom expression to extract key</li>
-            </ul>
-        </dd>
-
-        <dt>Key Expression (Custom only)
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Dot-notation path to extract the cache key from the request object.</dd>
-
-        <dt>Vary Headers
-            <span class="property-type">string</span>
-        </dt>
-        <dd>Comma-separated header names to include in cache key variation (e.g., "Accept, Accept-Language").</dd>
-
-        <dt>Private
-            <span class="property-type">boolean</span>
-        </dt>
-        <dd>Use private cache (Cache-Control: private instead of public).</dd>
-    </dl>
-
-    <h4>Response Headers</h4>
-    <p>When caching is enabled, the following headers are added to responses:</p>
-    <ul>
-        <li><code>Cache-Control</code> - Cache directives (public/private, max-age)</li>
-        <li><code>ETag</code> - Entity tag for conditional requests</li>
-        <li><code>Vary</code> - Headers that affect cache variation</li>
-        <li><code>X-Cache</code> - HIT or MISS indicator</li>
-        <li><code>Age</code> - Time since response was cached (seconds)</li>
-    </ul>
-
-    <h4>Conditional Requests</h4>
-    <p>The endpoint supports conditional requests with the <code>If-None-Match</code> header:</p>
-    <ul>
-        <li>Client sends <code>If-None-Match: "etag-value"</code></li>
-        <li>If ETag matches cached response, returns 304 Not Modified</li>
-        <li>Otherwise, returns full response with new ETag</li>
-    </ul>
-
-    <h4>Message Context</h4>
-    <p>When caching is enabled, the <code>msg.cache</code> object is added to the message:</p>
-    <pre>{
-  "hit": true,
-  "key": "GET|/users|page=1",
-  "age": 30000
-}</pre>
-
-    <h4>Cache Methods</h4>
-    <dl class="message-properties">
-        <dt>getCachingConfig()</dt>
-        <dd>Returns the caching configuration: <code>{enabled, ttl, maxSize, keyStrategy, keyExpression, varyHeaders, private}</code>.</dd>
-        <dt>checkCache(req)</dt>
-        <dd>Checks cache for a request. Returns <code>{hit, data, statusCode, etag, age, key}</code>.</dd>
-        <dt>storeInCache(req, data, statusCode, headers)</dt>
-        <dd>Stores a response in the cache. Returns <code>{key, etag}</code>.</dd>
-        <dt>invalidateCache(req)</dt>
-        <dd>Removes a cache entry by request.</dd>
-        <dt>clearCache()</dt>
-        <dd>Clears all cached entries.</dd>
-        <dt>getCacheStatistics()</dt>
-        <dd>Returns cache statistics including hits, misses, evictions, and hit rate.</dd>
-        <dt>generateETag(data)</dt>
-        <dd>Generates an ETag for the given data.</dd>
-        <dt>checkConditionalRequest(req, etag)</dt>
-        <dd>Checks if request has matching If-None-Match header.</dd>
-    </dl>
-
-    <h4>Cache Invalidation</h4>
-    <p>To invalidate cached responses (e.g., after mutations), use the cache methods:</p>
-    <pre>// In a function node after a successful POST/PUT/DELETE
-const endpointNode = RED.nodes.getNode("endpoint-node-id");
-if (endpointNode) {
-    endpointNode.clearCache();  // Clear all cached responses
-    // Or invalidate specific entry
-    endpointNode.invalidateCache(msg.req);
-}</pre>
-
-    <h3>Error Response Handling</h3>
-    <p>When error handling is enabled, the endpoint provides standardized error responses following RFC 7807 Problem Details specification.</p>
-
-    <h4>Error Response Formats</h4>
-    <dl class="message-properties">
-        <dt>RFC 7807 (Recommended)
-            <span class="property-type">object</span>
-        </dt>
-        <dd>Standard Problem Details format with type, title, status, detail, and instance fields.
-<pre>{
-  "type": "urn:error:validation",
-  "title": "Validation Error",
-  "status": 400,
-  "detail": "The request body is invalid",
-  "instance": "/api/users",
-  "errors": [{"field": "email", "message": "Invalid format"}]
-}</pre>
-        </dd>
-
-        <dt>Simple JSON
-            <span class="property-type">object</span>
-        </dt>
-        <dd>Simplified error format:
-<pre>{
-  "statusCode": 400,
-  "error": "VALIDATION_ERROR",
-  "message": "The request body is invalid",
-  "details": {...}
-}</pre>
-        </dd>
-
-        <dt>Legacy
-            <span class="property-type">object</span>
-        </dt>
-        <dd>Legacy format for backwards compatibility:
-<pre>{
-  "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "The request body is invalid",
-    "status": 400
-  }
-}</pre>
-        </dd>
-    </dl>
-
-    <h4>Built-in Error Codes</h4>
-    <p>The following error codes are available by default:</p>
-    <ul>
-        <li><code>VALIDATION_ERROR</code> (400) - Input validation failed</li>
-        <li><code>INVALID_INPUT</code> (400) - Invalid request input</li>
-        <li><code>AUTHENTICATION_REQUIRED</code> (401) - Authentication required</li>
-        <li><code>INVALID_TOKEN</code> (401) - Invalid authentication token</li>
-        <li><code>TOKEN_EXPIRED</code> (401) - Authentication token expired</li>
-        <li><code>FORBIDDEN</code> (403) - Access forbidden</li>
-        <li><code>INSUFFICIENT_PERMISSIONS</code> (403) - Insufficient permissions</li>
-        <li><code>RESOURCE_NOT_FOUND</code> (404) - Resource not found</li>
-        <li><code>METHOD_NOT_ALLOWED</code> (405) - HTTP method not allowed</li>
-        <li><code>CONFLICT</code> (409) - Resource conflict</li>
-        <li><code>RATE_LIMIT_EXCEEDED</code> (429) - Rate limit exceeded</li>
-        <li><code>INTERNAL_ERROR</code> (500) - Internal server error</li>
-        <li><code>SERVICE_UNAVAILABLE</code> (503) - Service unavailable</li>
-    </ul>
-
-    <h4>Custom Error Codes</h4>
-    <p>Define custom error codes by providing a JSON object mapping error codes to their properties:</p>
-    <pre>{
-  "PAYMENT_REQUIRED": {
-    "status": 402,
-    "title": "Payment Required",
-    "type": "urn:error:payment-required"
-  },
-  "QUOTA_EXCEEDED": {
-    "status": 429,
-    "title": "Quota Exceeded",
-    "type": "urn:error:quota-exceeded"
-  }
-}</pre>
-
-    <h4>Error Methods</h4>
-    <dl class="message-properties">
-        <dt>handleError(error, context)</dt>
-        <dd>Handles an error and returns formatted response with statusCode, body, and headers.</dd>
-        <dt>createError(code, message, options)</dt>
-        <dd>Creates an ApiError with the given code and message.</dd>
-        <dt>createValidationError(message, errors)</dt>
-        <dd>Creates a validation error with an array of field errors.</dd>
-        <dt>createNotFoundError(resource, id)</dt>
-        <dd>Creates a not found error for a specific resource.</dd>
-        <dt>createAuthenticationError(message)</dt>
-        <dd>Creates an authentication error.</dd>
-        <dt>createAuthorizationError(message, missingScopes)</dt>
-        <dd>Creates an authorization error with missing scopes.</dd>
-        <dt>sendErrorResponse(res, error, context)</dt>
-        <dd>Sends an error response directly to the HTTP response object.</dd>
-    </dl>
-
-    <h4>Using Error Handling in Flow</h4>
-    <pre>// In a function node
-const error = node.createError('PAYMENT_REQUIRED', 'Subscription expired');
-node.sendErrorResponse(msg.res, error, { req: msg.req });
-return null;  // Stop message flow
-
-// Or handle manually
-const result = node.handleError(error, { req: msg.req });
-msg.res.status(result.statusCode).json(result.body);</pre>
-
-    <h4>Content-Type Headers</h4>
-    <p>The Content-Type header is automatically set based on the error format:</p>
-    <ul>
-        <li><b>RFC 7807:</b> <code>application/problem+json</code></li>
-        <li><b>Simple/Legacy:</b> <code>application/json</code></li>
-    </ul>
+    <h3>Error Handling</h3>
+    <p>Standardized error responses in RFC 7807, simple JSON, or legacy format.</p>
 </script>
