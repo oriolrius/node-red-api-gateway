@@ -1,6 +1,7 @@
 'use strict';
 
 const { OpenApiGenerator } = require('../lib/openapi-generator');
+const { OpenApiParser } = require('../lib/openapi-parser');
 const {
     generateRequestId,
     createTimer,
@@ -482,4 +483,94 @@ module.exports = function(RED) {
     }
 
     RED.nodes.registerType("api-server", ApiServerNode);
+
+    // HTTP Admin endpoint for OpenAPI import
+    RED.httpAdmin.post('/api-gateway/import-openapi', RED.auth.needsPermission('flows.write'), function(req, res) {
+        const parser = new OpenApiParser({ detectCrud: true });
+
+        try {
+            let content = req.body.content || '';
+
+            // Handle both raw text and form data
+            if (typeof content !== 'string') {
+                content = JSON.stringify(content);
+            }
+
+            if (!content || content.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No OpenAPI content provided'
+                });
+            }
+
+            // Parse the OpenAPI spec
+            const result = parser.parse(content);
+
+            // Apply filters if provided
+            let endpoints = result.endpoints;
+
+            if (req.body.filters) {
+                endpoints = parser.getFilteredEndpoints(req.body.filters);
+            }
+
+            // Return parsed result
+            res.json({
+                success: true,
+                apiInfo: result.apiInfo,
+                servers: result.servers,
+                securitySchemes: result.securitySchemes,
+                tags: result.tags,
+                endpoints: endpoints,
+                summary: {
+                    ...result.summary,
+                    filteredCount: endpoints.length
+                }
+            });
+
+        } catch (err) {
+            res.status(400).json({
+                success: false,
+                error: err.message
+            });
+        }
+    });
+
+    // HTTP Admin endpoint to get supported filters/tags from a parsed spec
+    RED.httpAdmin.post('/api-gateway/preview-openapi', RED.auth.needsPermission('flows.read'), function(req, res) {
+        const parser = new OpenApiParser({ detectCrud: true });
+
+        try {
+            let content = req.body.content || '';
+
+            if (typeof content !== 'string') {
+                content = JSON.stringify(content);
+            }
+
+            if (!content || content.trim() === '') {
+                return res.status(400).json({
+                    success: false,
+                    error: 'No OpenAPI content provided'
+                });
+            }
+
+            // Parse to get preview information
+            const result = parser.parse(content);
+
+            // Return preview with tags, methods, and summary for filtering UI
+            res.json({
+                success: true,
+                apiInfo: result.apiInfo,
+                tags: result.tags,
+                summary: result.summary,
+                // Include unique paths for partial import selection
+                paths: [...new Set(result.endpoints.map(e => e._metadata?.originalPath || e.path))]
+            });
+
+        } catch (err) {
+            res.status(400).json({
+                success: false,
+                error: err.message
+            });
+        }
+    });
 };
