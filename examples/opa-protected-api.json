@@ -67,7 +67,7 @@
         "type": "api-server",
         "z": "opa-protected-flow",
         "name": "OPA Protected API Server",
-        "port": "3202",
+        "port": "3200",
         "host": "0.0.0.0",
         "config": "opa-api-config",
         "openapiEnabled": true,

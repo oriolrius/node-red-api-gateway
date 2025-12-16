@@ -27,7 +27,8 @@
     "docker:e2e:down": "docker compose -f tests/e2e/docker-compose.yml down -v",
     "docker:e2e:logs": "docker compose -f tests/e2e/docker-compose.yml logs -f",
     "test:e2e": "node tests/e2e/run-e2e-tests.js",
-    "test:integration": "node tests/e2e/oauth2-integration.test.js"
+    "test:integration": "node tests/e2e/oauth2-integration.test.js",
+    "test:opa": "node tests/e2e/opa-integration.test.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
