@@ -600,15 +600,17 @@ module.exports = function(RED) {
                         // Register Swagger UI
                         await node.fastify.register(swaggerUi, {
                             routePrefix: node.swaggerUiPath,
+                            // Use our custom OpenAPI spec endpoint instead of the auto-generated one
+                            transformSpecificationClone: true,
+                            transformSpecification: () => node.getOpenApiSpec(),
                             uiConfig: {
                                 docExpansion: 'list',
                                 deepLinking: true,
                                 displayRequestDuration: true,
-                                filter: true,
-                                // Point to our custom OpenAPI spec endpoint
-                                url: node.openapiPath
+                                filter: true
                             },
-                            staticCSP: true
+                            // Disable CSP to allow Swagger UI scripts to run properly
+                            staticCSP: false
                         });
                     } catch (err) {
                         if (err.code === 'MODULE_NOT_FOUND') {
