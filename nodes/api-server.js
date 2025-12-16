@@ -9,6 +9,12 @@ const {
     responseSerializer
 } = require('../lib/logger');
 const { getMetricsCollector } = require('../lib/metrics-collector');
+const {
+    pathsConflict,
+    combinePaths,
+    normalizePath
+} = require('../lib/path-utils');
+const { KeycloakClient } = require('../lib/keycloak-client');
 
 module.exports = function(RED) {
     function ApiServerNode(config) {
@@ -49,6 +55,13 @@ module.exports = function(RED) {
         node.fastify = null;
         node.serverStarted = false;
 
+        // Route registration tracking
+        node.registeredRoutes = new Map();  // path+method -> endpointId
+        node.pendingEndpoints = [];  // Endpoints waiting for server to start
+
+        // Keycloak client for OAuth2 authentication
+        node.keycloakClient = null;
+
         /**
          * Initialize the OpenAPI generator with config settings
          */
@@ -72,6 +85,367 @@ module.exports = function(RED) {
             }
 
             node.openapiGenerator = new OpenApiGenerator(options);
+        }
+
+        /**
+         * Initialize Keycloak client for OAuth2 authentication
+         */
+        function initializeKeycloakClient() {
+            if (!node.configNode || !node.configNode.oauth2Enabled) {
+                return;
+            }
+
+            const logger = node.configNode.getLogger();
+            node.keycloakClient = new KeycloakClient({
+                keycloakUrl: node.configNode.keycloakUrl,
+                realm: node.configNode.keycloakRealm,
+                clientId: node.configNode.keycloakClientId,
+                clientSecret: node.configNode.credentials?.keycloakClientSecret,
+                timeout: 5000,
+                validateIssuer: node.configNode.jwtValidateIssuer !== false,
+                validateAudience: node.configNode.jwtValidateAudience === true,
+                audience: node.configNode.jwtAudience,
+                clockTolerance: node.configNode.jwtClockTolerance || 0,
+                logger: logger
+            });
+
+            node.keycloakClient.on('circuitOpen', () => {
+                node.warn('Keycloak circuit breaker opened - authentication may fail');
+            });
+
+            node.keycloakClient.on('circuitClosed', () => {
+                node.log('Keycloak circuit breaker closed - authentication restored');
+            });
+
+            // Pre-fetch JWKS
+            node.keycloakClient.getPublicKeys().catch(err => {
+                node.warn(`Failed to pre-fetch Keycloak JWKS: ${err.message}`);
+            });
+        }
+
+        /**
+         * Get the full path for an endpoint including base path from config
+         * @param {string} endpointPath - The endpoint's path
+         * @returns {string} Full path with base path prefix
+         */
+        function getFullPath(endpointPath) {
+            if (node.configNode) {
+                const basePath = node.configNode.getFullBasePath();
+                return combinePaths(basePath, endpointPath);
+            }
+            return normalizePath(endpointPath);
+        }
+
+        /**
+         * Check for route conflicts with existing routes
+         * @param {string} method - HTTP method
+         * @param {string} path - Route path
+         * @param {string} endpointId - ID of the endpoint being registered
+         * @returns {{conflict: boolean, existingEndpointId?: string}}
+         */
+        function checkRouteConflict(method, path, endpointId) {
+            const routeKey = `${method.toUpperCase()}:${path}`;
+
+            // Check exact match
+            if (node.registeredRoutes.has(routeKey)) {
+                const existingId = node.registeredRoutes.get(routeKey);
+                if (existingId !== endpointId) {
+                    return { conflict: true, existingEndpointId: existingId };
+                }
+            }
+
+            // Check for conflicting patterns (e.g., /users/:id vs /users/:userId)
+            for (const [key, existingId] of node.registeredRoutes) {
+                if (existingId === endpointId) continue;
+
+                const [existingMethod, existingPath] = key.split(':');
+                if (existingMethod === method.toUpperCase() && pathsConflict(existingPath, path)) {
+                    return { conflict: true, existingEndpointId: existingId };
+                }
+            }
+
+            return { conflict: false };
+        }
+
+        /**
+         * Create authentication middleware for an endpoint
+         * @param {Object} endpointNode - The api-endpoint node
+         * @returns {Function} Fastify preHandler hook
+         */
+        function createAuthMiddleware(endpointNode) {
+            return async function(request, reply) {
+                // Skip auth if no scopes required and OAuth2 not enabled
+                const requiresAuth = endpointNode.requiredScopes && endpointNode.requiredScopes.length > 0;
+                if (!requiresAuth && !node.configNode?.oauth2Enabled) {
+                    request.auth = { authenticated: false };
+                    return;
+                }
+
+                // Extract Bearer token from Authorization header
+                const authHeader = request.headers.authorization;
+                if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                    if (requiresAuth) {
+                        reply.code(401).send({
+                            statusCode: 401,
+                            error: 'Unauthorized',
+                            message: 'Missing or invalid Authorization header'
+                        });
+                        return;
+                    }
+                    request.auth = { authenticated: false };
+                    return;
+                }
+
+                const token = authHeader.substring(7);
+
+                // Validate token with Keycloak
+                if (!node.keycloakClient) {
+                    if (requiresAuth) {
+                        reply.code(503).send({
+                            statusCode: 503,
+                            error: 'Service Unavailable',
+                            message: 'OAuth2 authentication not configured'
+                        });
+                        return;
+                    }
+                    request.auth = { authenticated: false };
+                    return;
+                }
+
+                const validationResult = await node.keycloakClient.validateToken(token);
+
+                if (!validationResult.valid) {
+                    if (requiresAuth) {
+                        reply.code(401).send({
+                            statusCode: 401,
+                            error: 'Unauthorized',
+                            message: validationResult.error || 'Invalid token'
+                        });
+                        return;
+                    }
+                    request.auth = { authenticated: false };
+                    return;
+                }
+
+                // Extract user info and scopes
+                const payload = validationResult.payload;
+                const scopes = payload.scope ? payload.scope.split(' ') : [];
+
+                // Also extract realm and resource roles as scopes
+                if (payload.realm_access?.roles) {
+                    scopes.push(...payload.realm_access.roles);
+                }
+                if (payload.resource_access) {
+                    for (const [resource, access] of Object.entries(payload.resource_access)) {
+                        if (access.roles) {
+                            scopes.push(...access.roles.map(r => `${resource}:${r}`));
+                        }
+                    }
+                }
+
+                request.auth = {
+                    authenticated: true,
+                    sub: payload.sub,
+                    preferredUsername: payload.preferred_username,
+                    email: payload.email,
+                    scopes: scopes,
+                    roles: payload.realm_access?.roles || [],
+                    token: token,
+                    payload: payload
+                };
+
+                // Record metrics for token validation
+                if (node.metricsCollector) {
+                    node.metricsCollector.recordKeycloakValidation(true, 0);
+                }
+            };
+        }
+
+        /**
+         * Create the route handler that forwards requests to Node-RED
+         * @param {Object} endpointNode - The api-endpoint node
+         * @returns {Function} Fastify route handler
+         */
+        function createRouteHandler(endpointNode) {
+            return async function(request, reply) {
+                // Build message to send to Node-RED flow
+                const msg = {
+                    _msgid: generateRequestId(),
+                    req: {
+                        method: request.method,
+                        url: request.url,
+                        path: request.routeOptions?.url || request.url.split('?')[0],
+                        query: request.query || {},
+                        params: request.params || {},
+                        headers: request.headers,
+                        body: request.body,
+                        ip: request.ip,
+                        auth: request.auth || { authenticated: false }
+                    },
+                    res: {
+                        // Provide response helper methods
+                        _reply: reply,
+                        _responded: false,
+                        status: function(code) {
+                            this._statusCode = code;
+                            return this;
+                        },
+                        set: function(name, value) {
+                            if (!this._headers) this._headers = {};
+                            this._headers[name] = value;
+                            return this;
+                        },
+                        json: function(data) {
+                            if (this._responded) return;
+                            this._responded = true;
+                            if (this._headers) {
+                                for (const [name, value] of Object.entries(this._headers)) {
+                                    this._reply.header(name, value);
+                                }
+                            }
+                            this._reply.code(this._statusCode || 200).send(data);
+                        },
+                        send: function(data) {
+                            if (this._responded) return;
+                            this._responded = true;
+                            if (this._headers) {
+                                for (const [name, value] of Object.entries(this._headers)) {
+                                    this._reply.header(name, value);
+                                }
+                            }
+                            this._reply.code(this._statusCode || 200).send(data);
+                        },
+                        end: function() {
+                            if (this._responded) return;
+                            this._responded = true;
+                            this._reply.code(this._statusCode || 204).send();
+                        }
+                    },
+                    payload: request.body
+                };
+
+                // Create a promise that will be resolved when the response is sent
+                return new Promise((resolve, reject) => {
+                    // Set timeout for response
+                    const timeout = setTimeout(() => {
+                        if (!msg.res._responded) {
+                            msg.res._responded = true;
+                            reply.code(504).send({
+                                statusCode: 504,
+                                error: 'Gateway Timeout',
+                                message: 'Request timed out waiting for response'
+                            });
+                            resolve();
+                        }
+                    }, 30000);  // 30 second timeout
+
+                    // Override send methods to resolve the promise
+                    const originalJson = msg.res.json.bind(msg.res);
+                    const originalSend = msg.res.send.bind(msg.res);
+                    const originalEnd = msg.res.end.bind(msg.res);
+
+                    msg.res.json = function(data) {
+                        clearTimeout(timeout);
+                        originalJson(data);
+                        resolve();
+                    };
+                    msg.res.send = function(data) {
+                        clearTimeout(timeout);
+                        originalSend(data);
+                        resolve();
+                    };
+                    msg.res.end = function() {
+                        clearTimeout(timeout);
+                        originalEnd();
+                        resolve();
+                    };
+
+                    // Send message through the endpoint node
+                    // The endpoint node will process validation, authorization, etc.
+                    // and then forward to its output
+                    try {
+                        endpointNode.receive(msg);
+                    } catch (err) {
+                        clearTimeout(timeout);
+                        if (!msg.res._responded) {
+                            msg.res._responded = true;
+                            reply.code(500).send({
+                                statusCode: 500,
+                                error: 'Internal Server Error',
+                                message: err.message
+                            });
+                        }
+                        resolve();
+                    }
+                });
+            };
+        }
+
+        /**
+         * Register a single Fastify route for an endpoint
+         * @param {Object} endpointNode - The api-endpoint node
+         * @returns {boolean} True if route was registered successfully
+         */
+        function registerFastifyRoute(endpointNode) {
+            if (!node.fastify || !node.serverStarted) {
+                // Queue for later registration
+                if (!node.pendingEndpoints.includes(endpointNode)) {
+                    node.pendingEndpoints.push(endpointNode);
+                }
+                return false;
+            }
+
+            const fullPath = getFullPath(endpointNode.path);
+            const method = endpointNode.method.toLowerCase();
+
+            // Check for conflicts
+            const conflict = checkRouteConflict(endpointNode.method, fullPath, endpointNode.id);
+            if (conflict.conflict) {
+                node.warn(`Route conflict: ${endpointNode.method} ${fullPath} conflicts with endpoint ${conflict.existingEndpointId}`);
+                return false;
+            }
+
+            try {
+                // Convert Express-style params (:id) to Fastify style (:id is the same, but we need to handle it)
+                const fastifyPath = fullPath;
+
+                // Build route options
+                const routeOptions = {
+                    method: method.toUpperCase(),
+                    url: fastifyPath,
+                    handler: createRouteHandler(endpointNode)
+                };
+
+                // Add authentication middleware if OAuth2 is enabled
+                if (node.keycloakClient || (endpointNode.requiredScopes && endpointNode.requiredScopes.length > 0)) {
+                    routeOptions.preHandler = createAuthMiddleware(endpointNode);
+                }
+
+                // Register the route
+                node.fastify.route(routeOptions);
+
+                // Track registered route
+                const routeKey = `${endpointNode.method.toUpperCase()}:${fullPath}`;
+                node.registeredRoutes.set(routeKey, endpointNode.id);
+
+                node.log(`Registered Fastify route: ${endpointNode.method} ${fullPath}`);
+                return true;
+            } catch (err) {
+                node.error(`Failed to register route ${endpointNode.method} ${fullPath}: ${err.message}`);
+                return false;
+            }
+        }
+
+        /**
+         * Register all pending endpoints
+         */
+        function registerPendingEndpoints() {
+            const pending = node.pendingEndpoints.slice();
+            node.pendingEndpoints = [];
+
+            for (const endpointNode of pending) {
+                registerFastifyRoute(endpointNode);
+            }
         }
 
         /**
@@ -267,6 +641,9 @@ module.exports = function(RED) {
                     node.log(`Prometheus metrics available at ${node.metricsPath}`);
                 }
 
+                // Register any pending endpoints that were waiting for server to start
+                registerPendingEndpoints();
+
             } catch (err) {
                 node.error(`Failed to start server: ${err.message}`);
                 node.status({
@@ -286,10 +663,17 @@ module.exports = function(RED) {
                     await node.fastify.close();
                     node.serverStarted = false;
                     node.fastify = null;
+                    node.registeredRoutes.clear();
                     node.log('API Server stopped');
                 } catch (err) {
                     node.error(`Error stopping server: ${err.message}`);
                 }
+            }
+
+            // Shutdown Keycloak client
+            if (node.keycloakClient) {
+                node.keycloakClient.shutdown();
+                node.keycloakClient = null;
             }
         }
 
@@ -309,6 +693,9 @@ module.exports = function(RED) {
                 node.openapiGenerator.registerEndpoint(endpointNode);
             }
 
+            // Register Fastify route (will queue if server not yet started)
+            registerFastifyRoute(endpointNode);
+
             node.log(`Registered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
             updateStatus();
         };
@@ -327,6 +714,19 @@ module.exports = function(RED) {
             // Unregister from OpenAPI generator
             if (node.openapiGenerator) {
                 node.openapiGenerator.unregisterEndpoint(endpointNode.id);
+            }
+
+            // Remove from registered routes tracking
+            // Note: Fastify doesn't support removing routes at runtime, but we track
+            // for conflict detection. Routes are effectively removed on server restart.
+            const fullPath = getFullPath(endpointNode.path);
+            const routeKey = `${endpointNode.method.toUpperCase()}:${fullPath}`;
+            node.registeredRoutes.delete(routeKey);
+
+            // Remove from pending endpoints if present
+            const pendingIndex = node.pendingEndpoints.indexOf(endpointNode);
+            if (pendingIndex !== -1) {
+                node.pendingEndpoints.splice(pendingIndex, 1);
             }
 
             node.log(`Unregistered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
@@ -423,6 +823,9 @@ module.exports = function(RED) {
         // Initialize OpenAPI generator
         initializeOpenApiGenerator();
 
+        // Initialize Keycloak client for OAuth2 authentication
+        initializeKeycloakClient();
+
         // Start server if we have fastify dependencies
         // Use setImmediate to allow endpoints to register first
         setImmediate(() => {
@@ -464,11 +867,14 @@ module.exports = function(RED) {
         });
 
         node.on("close", async function(removed, done) {
-            // Stop the server
+            // Stop the server (this also clears registered routes and Keycloak client)
             await stopServer();
 
             // Clear registered endpoints
             node.endpoints.clear();
+
+            // Clear pending endpoints
+            node.pendingEndpoints = [];
 
             // Clear OpenAPI generator
             if (node.openapiGenerator) {

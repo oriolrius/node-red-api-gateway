@@ -424,4 +424,187 @@ describe("api-server Node", function () {
             });
         });
     });
+
+    describe("Route Registration", function () {
+        it("should have registeredRoutes map", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("registeredRoutes");
+                    n1.registeredRoutes.should.be.instanceof(Map);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should have pendingEndpoints array", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    n1.should.have.property("pendingEndpoints");
+                    n1.pendingEndpoints.should.be.instanceof(Array);
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should queue endpoints when server not started", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // Immediately check pending (before server starts)
+                    // Force serverStarted to false to simulate pre-start
+                    n1.serverStarted = false;
+                    n1.fastify = null;
+
+                    const mockEndpoint = {
+                        id: "ep1",
+                        path: "/users",
+                        method: "GET",
+                        requiredScopes: [],
+                        getEndpointInfo: function () {
+                            return {
+                                id: "ep1",
+                                name: "List Users",
+                                path: "/users",
+                                method: "GET",
+                                paramNames: []
+                            };
+                        }
+                    };
+
+                    n1.registerEndpoint(mockEndpoint);
+
+                    // Should be queued since server not started
+                    n1.pendingEndpoints.should.have.length(1);
+                    n1.pendingEndpoints[0].should.equal(mockEndpoint);
+
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should remove from pendingEndpoints on unregister", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // Force serverStarted to false
+                    n1.serverStarted = false;
+                    n1.fastify = null;
+
+                    const mockEndpoint = {
+                        id: "ep1",
+                        path: "/users",
+                        method: "GET",
+                        requiredScopes: [],
+                        getEndpointInfo: function () {
+                            return {
+                                id: "ep1",
+                                path: "/users",
+                                method: "GET",
+                                paramNames: []
+                            };
+                        }
+                    };
+
+                    n1.registerEndpoint(mockEndpoint);
+                    n1.pendingEndpoints.should.have.length(1);
+
+                    n1.unregisterEndpoint(mockEndpoint);
+                    n1.pendingEndpoints.should.have.length(0);
+
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should not have keycloak client when OAuth2 disabled", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // No config node, so no OAuth2
+                    (n1.keycloakClient === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
+
+    describe("Route Tracking", function () {
+        it("should track routes by method and path", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // Manually add route tracking
+                    n1.registeredRoutes.set("GET:/users", "ep1");
+                    n1.registeredRoutes.set("POST:/users", "ep2");
+                    n1.registeredRoutes.set("GET:/users/:id", "ep3");
+
+                    n1.registeredRoutes.size.should.equal(3);
+                    n1.registeredRoutes.get("GET:/users").should.equal("ep1");
+                    n1.registeredRoutes.get("POST:/users").should.equal("ep2");
+                    n1.registeredRoutes.get("GET:/users/:id").should.equal("ep3");
+
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should clear registeredRoutes on unregister", function (done) {
+            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            helper.load(apiServerNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                try {
+                    // Force serverStarted to false
+                    n1.serverStarted = false;
+                    n1.fastify = null;
+
+                    const mockEndpoint = {
+                        id: "ep1",
+                        path: "/users",
+                        method: "GET",
+                        requiredScopes: [],
+                        getEndpointInfo: function () {
+                            return {
+                                id: "ep1",
+                                path: "/users",
+                                method: "GET",
+                                paramNames: []
+                            };
+                        }
+                    };
+
+                    // Manually add route to simulate it was registered
+                    n1.registeredRoutes.set("GET:/users", "ep1");
+                    n1.endpoints.set("ep1", mockEndpoint);
+
+                    n1.unregisterEndpoint(mockEndpoint);
+
+                    n1.registeredRoutes.has("GET:/users").should.be.false();
+
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+    });
 });
