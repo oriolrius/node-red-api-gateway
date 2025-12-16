@@ -471,7 +471,10 @@ module.exports = function(RED) {
 
                 // Build Fastify options
                 const fastifyOptions = {
-                    ignoreTrailingSlash: true,
+                    // Use routerOptions for Fastify 6 compatibility
+                    routerOptions: {
+                        ignoreTrailingSlash: true
+                    },
                     requestIdHeader: 'x-request-id',
                     genReqId: (req) => {
                         // Use existing request ID or generate new one
@@ -480,14 +483,9 @@ module.exports = function(RED) {
                 };
 
                 // Configure logger for Fastify
-                // Fastify accepts either a boolean, a Pino instance, or Pino options
-                // We pass our Pino logger directly for native integration
-                if (logger && !logger._isFallback && !logger._isNoop) {
-                    // Pass the Pino logger instance directly
-                    fastifyOptions.logger = logger;
-                } else {
-                    fastifyOptions.logger = false;
-                }
+                // Fastify 5.x only accepts a boolean or Pino configuration object (not an instance)
+                // We disable Fastify's built-in logging and handle it ourselves in hooks
+                fastifyOptions.logger = false;
 
                 // Create Fastify instance
                 node.fastify = fastify(fastifyOptions);
@@ -583,20 +581,41 @@ module.exports = function(RED) {
                 // Register Swagger UI if enabled
                 if (node.swaggerUiEnabled) {
                     try {
+                        // @fastify/swagger-ui requires @fastify/swagger to be registered first
+                        const swagger = require('@fastify/swagger');
                         const swaggerUi = require('@fastify/swagger-ui');
+
+                        // Register @fastify/swagger with our custom specification
+                        await node.fastify.register(swagger, {
+                            mode: 'dynamic',
+                            openapi: {
+                                info: {
+                                    title: node.configNode?.openapiTitle || 'API Gateway',
+                                    description: node.configNode?.openapiDescription || '',
+                                    version: node.configNode?.apiVersion || '1.0.0'
+                                }
+                            }
+                        });
+
+                        // Register Swagger UI
                         await node.fastify.register(swaggerUi, {
                             routePrefix: node.swaggerUiPath,
                             uiConfig: {
                                 docExpansion: 'list',
                                 deepLinking: true,
                                 displayRequestDuration: true,
-                                filter: true
+                                filter: true,
+                                // Point to our custom OpenAPI spec endpoint
+                                url: node.openapiPath
                             },
-                            staticCSP: true,
-                            transformSpecificationClone: true
+                            staticCSP: true
                         });
                     } catch (err) {
-                        node.warn('Swagger UI not available. Install with: npm install @fastify/swagger-ui');
+                        if (err.code === 'MODULE_NOT_FOUND') {
+                            node.warn('Swagger UI not available. Install with: npm install @fastify/swagger @fastify/swagger-ui');
+                        } else {
+                            node.warn(`Swagger UI setup failed: ${err.message}`);
+                        }
                     }
                 }
 
@@ -621,9 +640,13 @@ module.exports = function(RED) {
                     });
                 }
 
+                // Register any pending endpoints BEFORE starting the server
+                // Fastify 5.x doesn't allow adding routes after listen()
+                node.serverStarted = true;  // Mark as started so registerFastifyRoute doesn't queue
+                registerPendingEndpoints();
+
                 // Start the server
                 await node.fastify.listen({ port: node.port, host: node.host });
-                node.serverStarted = true;
                 node.status({
                     fill: 'green',
                     shape: 'dot',
@@ -640,9 +663,6 @@ module.exports = function(RED) {
                 if (node.metricsEnabled) {
                     node.log(`Prometheus metrics available at ${node.metricsPath}`);
                 }
-
-                // Register any pending endpoints that were waiting for server to start
-                registerPendingEndpoints();
 
             } catch (err) {
                 node.error(`Failed to start server: ${err.message}`);

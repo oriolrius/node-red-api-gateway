@@ -1,14 +1,29 @@
-# @user/node-red-api-gateway
+# @oriolrius/node-red-api-gateway
 
-Node-RED nodes for API gateway functionality.
+A comprehensive Node-RED node package for building enterprise-grade REST APIs with built-in support for authentication, authorization, validation, caching, rate limiting, and OpenAPI documentation.
+
+## Features
+
+- **API Server**: Fastify-powered HTTP server with automatic OpenAPI spec generation
+- **Endpoint Definition**: Declarative API endpoint configuration with JSON Schema validation
+- **Authentication**: OAuth2/OpenID Connect via Keycloak integration
+- **Authorization**: Role/scope-based access control with OPA (Open Policy Agent) support
+- **Validation**: Request/response validation with JSON Schema
+- **Pagination**: Offset-based and cursor-based pagination
+- **Filtering & Sorting**: Configurable field filtering and sorting with SQL clause generation
+- **Rate Limiting**: Token bucket algorithm with per-IP, per-user, or custom key strategies
+- **Caching**: Response caching with ETag support and configurable TTL
+- **Error Handling**: RFC 7807 Problem Details format
+- **Metrics**: Prometheus metrics endpoint for monitoring
+- **Logging**: Structured JSON logging with Pino
 
 ## Installation
 
-### From npm (once published)
+### From npm
 
 ```bash
 cd ~/.node-red
-npm install @user/node-red-api-gateway
+npm install @oriolrius/node-red-api-gateway
 ```
 
 ### For Development
@@ -26,7 +41,254 @@ npm link
 
 # In your Node-RED user directory
 cd ~/.node-red
-npm link @user/node-red-api-gateway
+npm link @oriolrius/node-red-api-gateway
+```
+
+## Quick Start
+
+### 1. Basic API Setup
+
+1. Drag an **api-config** node onto the canvas and configure:
+   - API Version: `v1`
+   - Base Path: `/api`
+   - OpenAPI Title: `My API`
+
+2. Drag an **api-server** node and configure:
+   - Port: `3000`
+   - Config: Select your api-config node
+   - Enable Swagger UI: `true`
+
+3. Drag an **api-endpoint** node and configure:
+   - Path: `/hello`
+   - Method: `GET`
+   - Server: Select your api-server node
+
+4. Connect a **function** node to handle the request:
+
+```javascript
+msg.res.json({ message: "Hello, World!" });
+return null;
+```
+
+5. Deploy and access:
+   - API: `http://localhost:3000/api/v1/hello`
+   - Swagger UI: `http://localhost:3000/docs`
+   - OpenAPI Spec: `http://localhost:3000/openapi.json`
+
+### 2. Import Example Flows
+
+The package includes several example flows demonstrating different features:
+
+1. In Node-RED, click the menu (hamburger icon)
+2. Select **Import** > **Examples** > **@oriolrius/node-red-api-gateway**
+3. Choose an example:
+   - **Basic CRUD API** - Complete CRUD operations for a products API
+   - **OAuth2 Authenticated API** - Keycloak authentication with role-based access
+   - **OPA Protected API** - Policy-based access control with Open Policy Agent
+   - **Pagination & Filtering** - Advanced list operations with pagination and filtering
+
+## Nodes
+
+### api-config
+
+Configuration node for centralized settings shared across api-server and api-endpoint nodes.
+
+**Database Configuration:**
+- Database type (PostgreSQL, MSSQL, MySQL, etc.)
+- Connection pooling settings
+- Credentials (stored securely)
+
+**OAuth2/Keycloak Configuration:**
+- Keycloak URL and realm
+- Client ID and secret
+- JWT validation settings (issuer, audience, clock tolerance)
+
+**OPA Configuration:**
+- OPA server URL
+- Policy path
+- Cache TTL and timeout settings
+
+**API Settings:**
+- Version string and base path
+- OpenAPI metadata (title, description, contact, license)
+
+**Logging:**
+- Log level (debug, info, warn, error)
+- Output format (console, file)
+- Header redaction
+
+### api-server
+
+HTTP server node that hosts your API endpoints.
+
+**Configuration:**
+- Host and port
+- Reference to api-config node
+- OpenAPI specification endpoint (`/openapi.json`)
+- Swagger UI documentation (`/docs`)
+- Prometheus metrics endpoint (`/metrics`)
+
+**Features:**
+- Automatic route registration from api-endpoint nodes
+- Route conflict detection
+- Graceful shutdown
+
+### api-endpoint
+
+Individual API endpoint definition node.
+
+**Core Settings:**
+- HTTP method (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)
+- Path with parameters (e.g., `/users/:id`)
+- Success status code
+- Response content type
+
+**Validation:**
+- Body schema (JSON Schema)
+- Query parameter schema
+- Path parameter schema
+- Response schemas (for OpenAPI documentation)
+
+**Authorization:**
+- Required scopes/roles
+- Scope operator (AND/OR)
+
+**CRUD Operations:**
+- Operation type (list, get, create, update, delete)
+- Table name and primary key
+- Auto-generate SQL templates
+
+**Pagination:**
+- Style: offset-based or cursor-based
+- Default and maximum page size
+
+**Filtering & Sorting:**
+- Configurable filterable fields
+- Configurable sortable fields
+- Default sort field and direction
+
+**Transformation:**
+- Request transformation (JSONata expression)
+- Response transformation (JSONata expression)
+- Field mappings
+
+**Rate Limiting:**
+- Requests per time window
+- Key type (IP, user, API key, custom)
+
+**Caching:**
+- TTL (time to live)
+- Cache key strategy
+- Vary headers
+- ETag support
+
+**Error Handling:**
+- Error format (RFC 7807, generic, custom)
+- Stack trace inclusion (dev mode)
+- Custom error code mappings
+
+## Examples
+
+### Basic CRUD Endpoint
+
+```javascript
+// In your function node connected to an api-endpoint
+const products = [
+  { id: 1, name: "Widget", price: 29.99 },
+  { id: 2, name: "Gadget", price: 49.99 }
+];
+
+// List endpoint
+msg.res.json({
+  data: products,
+  total: products.length
+});
+return null;
+```
+
+### Request Validation
+
+Configure the api-endpoint with a body schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "price": { "type": "number", "minimum": 0 }
+  },
+  "required": ["name", "price"]
+}
+```
+
+Invalid requests automatically return 400 errors with validation details.
+
+### OAuth2 Protected Endpoint
+
+1. Configure api-config with Keycloak settings
+2. Set `requiredScopes` on api-endpoint (e.g., `admin, user:write`)
+3. Access user info in your function:
+
+```javascript
+const auth = msg.req.auth;
+if (auth.authenticated) {
+  console.log('User:', auth.preferredUsername);
+  console.log('Roles:', auth.roles);
+}
+```
+
+### Pagination
+
+Enable pagination on list endpoints:
+
+```javascript
+// Pagination context is populated by api-endpoint
+const { page, limit, offset } = msg.pagination || {};
+
+// Query database with pagination
+const results = await db.query(
+  `SELECT * FROM products LIMIT ${limit} OFFSET ${offset}`
+);
+const total = await db.query('SELECT COUNT(*) FROM products');
+
+// Use endpoint's helper to generate metadata
+const paginationMeta = msg.endpoint.generatePaginationMeta(
+  msg.pagination,
+  { total: total[0].count, results: results.length }
+);
+
+msg.res.json({
+  data: results,
+  pagination: paginationMeta
+});
+```
+
+### Rate Limiting
+
+Enable rate limiting on api-endpoint:
+- Requests: `100`
+- Window: `60000` (1 minute)
+- Key Type: `ip` (or `user` for per-user limits)
+
+Rate limit info is available in `msg.rateLimit`:
+
+```javascript
+console.log('Remaining requests:', msg.rateLimit.remaining);
+```
+
+### Response Caching
+
+Enable caching on api-endpoint:
+- TTL: `30000` (30 seconds)
+- Key Strategy: `full` (includes query string)
+- Vary Headers: `authorization` (for user-specific caching)
+
+The cache context is available in `msg.cache`:
+
+```javascript
+if (msg.cache.hit) {
+  console.log('Cache hit! Age:', msg.cache.age);
+}
 ```
 
 ## Development
@@ -45,11 +307,24 @@ npm install
 ### Running Tests
 
 ```bash
-# Run tests once
+# Run unit tests
 npm test
 
 # Run tests in watch mode
 npm run test:watch
+```
+
+### Running End-to-End Tests
+
+```bash
+# Start the Docker stack (Node-RED, Keycloak, OPA, SQL Server)
+npm run docker:e2e:up
+
+# Run e2e tests
+npm run test:e2e
+
+# Stop the Docker stack
+npm run docker:e2e:down
 ```
 
 ### Linting
@@ -62,157 +337,83 @@ npm run lint
 npm run lint:fix
 ```
 
-### Project Structure
+### Development Node-RED
+
+```bash
+# Launch a development Node-RED instance
+npm run dev
+```
+
+## Project Structure
 
 ```
 node-red-api-gateway/
-├── nodes/                 # Node-RED nodes
-│   ├── icons/            # Custom node icons (SVG preferred)
-│   ├── api-server.js     # API server node runtime
-│   ├── api-server.html   # API server node editor
-│   ├── api-endpoint.js   # API endpoint node runtime
-│   └── api-endpoint.html # API endpoint node editor
-├── tests/                 # All test files
-│   ├── unit/             # Unit tests (mocha + node-red-node-test-helper)
-│   │   ├── api-server_spec.js
-│   │   └── api-endpoint_spec.js
-│   ├── e2e/              # End-to-end tests (Docker Compose)
-│   │   └── docker-compose.yml
-│   └── launcher/         # Development Node-RED launcher
-│       └── launch.js
-├── examples/              # Example flows (appear in Node-RED import menu)
-├── package.json
-├── .eslintrc.json
-└── README.md
+├── nodes/                     # Node-RED nodes
+│   ├── api-config.js/html    # Configuration node
+│   ├── api-server.js/html    # HTTP server node
+│   ├── api-endpoint.js/html  # Endpoint definition node
+│   └── icons/                # Node icons
+├── lib/                       # Shared utility modules
+│   ├── path-utils.js         # Path manipulation
+│   ├── schema-validator.js   # JSON Schema validation
+│   ├── rate-limiter.js       # Token bucket rate limiting
+│   ├── response-cache.js     # Response caching
+│   ├── error-handler.js      # Error handling
+│   ├── pagination.js         # Pagination helpers
+│   ├── filtering-sorting.js  # Filter/sort parsing
+│   ├── crud-generator.js     # SQL generation
+│   ├── keycloak-client.js    # OAuth2/JWT validation
+│   ├── opa-client.js         # OPA integration
+│   ├── openapi-generator.js  # OpenAPI spec generation
+│   ├── openapi-parser.js     # OpenAPI import
+│   ├── logger.js             # Pino logging
+│   └── metrics-collector.js  # Prometheus metrics
+├── examples/                  # Example flows
+├── tests/                     # Test suites
+│   ├── unit/                 # Unit tests
+│   └── e2e/                  # End-to-end tests
+└── package.json
 ```
 
-### Creating a New Node
+## API Reference
 
-Each node requires two files:
+### Message Properties
 
-1. **JavaScript file** (`nodes/my-node.js`) - Runtime behavior
-2. **HTML file** (`nodes/my-node.html`) - Editor UI and help text
+When a request hits an api-endpoint, the following properties are available on `msg`:
 
-#### Basic Node Template
+| Property | Type | Description |
+|----------|------|-------------|
+| `msg.req` | Object | Request object (method, url, headers, body, params, query) |
+| `msg.req.auth` | Object | Authentication info (if OAuth2 enabled) |
+| `msg.res` | Object | Response helpers (json, send, status, set, end) |
+| `msg.endpoint` | Object | Endpoint configuration |
+| `msg.pagination` | Object | Parsed pagination params (if enabled) |
+| `msg.filtering` | Object | Parsed filters and WHERE clause (if enabled) |
+| `msg.sorting` | Object | Parsed sorts and ORDER BY clause (if enabled) |
+| `msg.crud` | Object | CRUD operation context (if configured) |
+| `msg.cache` | Object | Cache status (hit, key, age) |
+| `msg.rateLimit` | Object | Rate limit status (allowed, remaining, limit) |
 
-**my-node.js:**
-```javascript
-module.exports = function(RED) {
-    function MyNode(config) {
-        RED.nodes.createNode(this, config);
-        var node = this;
-
-        node.on('input', function(msg, send, done) {
-            // Node-RED 1.0+ compatibility
-            send = send || function() { node.send.apply(node, arguments); };
-
-            try {
-                // Process message
-                send(msg);
-                if (done) done();
-            } catch (err) {
-                if (done) done(err);
-                else node.error(err, msg);
-            }
-        });
-
-        node.on('close', function(removed, done) {
-            // Cleanup
-            if (done) done();
-        });
-    }
-
-    RED.nodes.registerType("my-node", MyNode);
-};
-```
-
-**my-node.html:**
-```html
-<script type="text/javascript">
-    RED.nodes.registerType('my-node', {
-        category: 'function',
-        color: '#a6bbcf',
-        defaults: {
-            name: { value: "" }
-        },
-        inputs: 1,
-        outputs: 1,
-        icon: "font-awesome/fa-cog",
-        label: function() {
-            return this.name || "my-node";
-        }
-    });
-</script>
-
-<script type="text/html" data-template-name="my-node">
-    <div class="form-row">
-        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
-        <input type="text" id="node-input-name" placeholder="Name">
-    </div>
-</script>
-
-<script type="text/html" data-help-name="my-node">
-    <p>Description of what this node does.</p>
-</script>
-```
-
-#### Register the Node
-
-Add the node to `package.json`:
-
-```json
-{
-    "node-red": {
-        "nodes": {
-            "my-node": "nodes/my-node.js"
-        }
-    }
-}
-```
-
-### Testing Nodes
-
-Create a test file in `tests/unit/my-node_spec.js`:
+### Response Helpers
 
 ```javascript
-const helper = require("node-red-node-test-helper");
-const myNode = require("../nodes/my-node.js");
+// Send JSON response
+msg.res.json({ data: "value" });
 
-helper.init(require.resolve("node-red"));
+// Set status code
+msg.res.status(201).json({ id: 1 });
 
-describe("my-node Node", function () {
-    beforeEach(function (done) {
-        helper.startServer(done);
-    });
+// Set headers
+msg.res.set('X-Custom-Header', 'value');
 
-    afterEach(function (done) {
-        helper.unload();
-        helper.stopServer(done);
-    });
-
-    it("should be loaded", function (done) {
-        const flow = [{ id: "n1", type: "my-node", name: "test" }];
-        helper.load(myNode, flow, function () {
-            const n1 = helper.getNode("n1");
-            n1.should.have.property("name", "test");
-            done();
-        });
-    });
-});
+// End without body
+msg.res.status(204).end();
 ```
-
-## Nodes
-
-### lower-case
-
-A simple example node that converts string payloads to lower case.
-
-**Inputs:**
-- `msg.payload` (string) - Text to convert
-
-**Outputs:**
-- `msg.payload` (string) - Converted text in lower case
 
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Please read our contributing guidelines and submit pull requests to the main repository.
