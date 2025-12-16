@@ -4,7 +4,7 @@ title: Implement API Server Route Registration
 status: Done
 assignee: []
 created_date: '2025-12-10 09:40'
-updated_date: '2025-12-16 11:33'
+updated_date: '2025-12-16 11:37'
 labels:
   - api-server
   - fastify
@@ -52,4 +52,8 @@ CRITICAL IMPLEMENTATION NOTES:
 Started work on 2025-12-16: Beginning implementation of dynamic route registration in api-server from connected api-endpoint nodes
 
 Completed on 2025-12-16: All acceptance criteria verified complete. Dynamic route registration fully implemented with conflict detection, redeploy support, and auth middleware chain. All 1301 unit tests passing including 7 new tests for route registration.
+
+Commit: c0f813c - feat(node): implement dynamic Fastify route registration for api-server
+
+Implementation completed on 2025-12-16. Features delivered: Dynamic Fastify route registration from api-endpoint nodes with automatic discovery, route conflict detection using pathsConflict utility, OAuth2/Keycloak JWT authentication middleware integration, request forwarding to Node-RED flows with proper msg.req and msg.res structure, pending endpoint queue for endpoints registered before server startup, automatic route re-registration on redeploy, and graceful route unregistration when endpoints are removed. Testing: 7 new tests added for route registration scenarios, total test suite: 1301 tests all passing. Commit: c0f813c
 <!-- SECTION:NOTES:END -->

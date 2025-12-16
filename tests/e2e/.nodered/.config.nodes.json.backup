@@ -442,7 +442,7 @@
                 "local": true,
                 "user": false,
                 "module": "@oriolrius/node-red-api-gateway",
-                "file": "/data/node_modules/@user/node-red-api-gateway/nodes/api-server.js"
+                "file": "/data/node_modules/@oriolrius/node-red-api-gateway/nodes/api-server.js"
             },
             "api-endpoint": {
                 "name": "api-endpoint",
@@ -453,7 +453,7 @@
                 "local": true,
                 "user": false,
                 "module": "@oriolrius/node-red-api-gateway",
-                "file": "/data/node_modules/@user/node-red-api-gateway/nodes/api-endpoint.js"
+                "file": "/data/node_modules/@oriolrius/node-red-api-gateway/nodes/api-endpoint.js"
             }
         }
     }

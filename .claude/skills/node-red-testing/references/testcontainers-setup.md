@@ -20,8 +20,6 @@ This guide covers two approaches:
 Create `docker-compose.test.yml` in your project root:
 
 ```yaml
-version: '3.8'
-
 services:
   node-red:
     image: nodered/node-red:latest

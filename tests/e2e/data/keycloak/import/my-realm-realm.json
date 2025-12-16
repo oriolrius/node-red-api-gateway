@@ -1,8 +1,8 @@
 {
-  "realm": "api-gateway",
+  "realm": "my-realm",
   "enabled": true,
-  "displayName": "API Gateway Realm",
-  "displayNameHtml": "<strong>API Gateway</strong>",
+  "displayName": "My Realm",
+  "displayNameHtml": "<strong>My Realm</strong>",
   "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
@@ -38,8 +38,8 @@
         "composite": false
       },
       {
-        "name": "editor",
-        "description": "Editor with read/write access",
+        "name": "user:write",
+        "description": "User with write access to user resources",
         "composite": true,
         "composites": {
           "realm": ["user"]
@@ -50,12 +50,12 @@
         "description": "Administrator with full access",
         "composite": true,
         "composites": {
-          "realm": ["editor", "user"]
+          "realm": ["user", "user:write"]
         }
       }
     ],
     "client": {
-      "api-gateway-client": [
+      "my-api-client": [
         {
           "name": "api:read",
           "description": "Read access to API resources"
@@ -77,12 +77,12 @@
   },
   "clients": [
     {
-      "clientId": "api-gateway-client",
-      "name": "API Gateway Client",
-      "description": "OAuth2 client for API Gateway authentication",
+      "clientId": "my-api-client",
+      "name": "My API Client",
+      "description": "OAuth2 client for API authentication",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "api-gateway-secret",
+      "secret": "my-client-secret",
       "publicClient": false,
       "bearerOnly": false,
       "consentRequired": false,
@@ -94,11 +94,13 @@
       "protocol": "openid-connect",
       "redirectUris": [
         "http://localhost:1880/*",
-        "http://localhost:3000/*"
+        "http://localhost:3000/*",
+        "http://localhost:3200/*"
       ],
       "webOrigins": [
         "http://localhost:1880",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "http://localhost:3200"
       ],
       "attributes": {
         "access.token.lifespan": "300",
@@ -120,8 +122,8 @@
       ]
     },
     {
-      "clientId": "api-gateway-bearer",
-      "name": "API Gateway Bearer-Only Client",
+      "clientId": "my-api-bearer",
+      "name": "My API Bearer-Only Client",
       "description": "Bearer-only client for API resource validation",
       "enabled": true,
       "publicClient": false,
@@ -135,12 +137,12 @@
   "clientScopes": [
     {
       "name": "api-scopes",
-      "description": "API Gateway scopes",
+      "description": "API scopes",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
         "display.on.consent.screen": "true",
-        "consent.screen.text": "Access to API Gateway resources"
+        "consent.screen.text": "Access to API resources"
       },
       "protocolMappers": [
         {
@@ -149,9 +151,23 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "api-gateway-client",
+            "included.client.audience": "my-api-client",
             "id.token.claim": "false",
             "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String"
           }
         },
         {
@@ -166,7 +182,44 @@
             "access.token.claim": "true",
             "claim.name": "resource_access.${client_id}.roles",
             "jsonType.label": "String",
-            "usermodel.clientRoleMapping.clientId": "api-gateway-client"
+            "usermodel.clientRoleMapping.clientId": "my-api-client"
+          }
+        },
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "preferred_username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "username",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
           }
         }
       ]
@@ -189,7 +242,7 @@
       ],
       "realmRoles": ["user"],
       "clientRoles": {
-        "api-gateway-client": ["api:read"]
+        "my-api-client": ["api:read"]
       }
     },
     {
@@ -206,9 +259,9 @@
           "temporary": false
         }
       ],
-      "realmRoles": ["editor"],
+      "realmRoles": ["user", "user:write"],
       "clientRoles": {
-        "api-gateway-client": ["api:read", "api:write"]
+        "my-api-client": ["api:read", "api:write"]
       }
     },
     {
@@ -227,7 +280,7 @@
       ],
       "realmRoles": ["admin"],
       "clientRoles": {
-        "api-gateway-client": ["api:read", "api:write", "api:delete", "api:admin"]
+        "my-api-client": ["api:read", "api:write", "api:delete", "api:admin"]
       }
     },
     {
@@ -237,10 +290,10 @@
       "email": "service@example.com",
       "firstName": "Service",
       "lastName": "Account",
-      "serviceAccountClientId": "api-gateway-client",
+      "serviceAccountClientId": "my-api-client",
       "realmRoles": ["user"],
       "clientRoles": {
-        "api-gateway-client": ["api:read", "api:write"]
+        "my-api-client": ["api:read", "api:write"]
       }
     }
   ]

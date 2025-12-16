@@ -34,6 +34,7 @@ services:
       - "8181:8181"   # OPA
       - "1433:1433"   # SQL Server (optional)
       - "1880:1880"   # Node-RED (optional)
+      - "3200:3200"   # API GW port
     healthcheck:
       test: ["CMD", "true"]
       interval: 30s
@@ -42,9 +43,9 @@ services:
 
   # Keycloak Identity Provider
   # Admin Console: http://localhost:8080
-  # Realm: api-gateway (auto-imported)
+  # Realm: my-realm (auto-imported)
   keycloak:
-    image: quay.io/keycloak/keycloak:26-latest
+    image: quay.io/keycloak/keycloak:26.4.7
     container_name: api-gateway-keycloak
     network_mode: "container:api-gateway-network"
     depends_on:
@@ -61,7 +62,7 @@ services:
       # H2 database persistence
       - ./data/keycloak/h2:/opt/keycloak/data/h2
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\":\"UP\"'"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -89,7 +90,7 @@ services:
       # Policy files directory (read-only)
       - ./policies:/policies:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8181/health"]
+      test: ["CMD", "/opa", "version"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -152,7 +153,7 @@ services:
       - TZ=UTC
       # Keycloak configuration (available via localhost in shared network)
       - KEYCLOAK_URL=http://localhost:8080
-      - KEYCLOAK_REALM=api-gateway
+      - KEYCLOAK_REALM=my-realm
       # OPA configuration
       - OPA_URL=http://localhost:8181
       # SQL Server configuration (if using sqlserver profile)

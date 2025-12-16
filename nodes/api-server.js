@@ -231,10 +231,16 @@ module.exports = function(RED) {
                 const payload = validationResult.payload;
                 const scopes = payload.scope ? payload.scope.split(' ') : [];
 
-                // Also extract realm and resource roles as scopes
+                // Extract roles from various possible locations in the token
+                // 1. Standard Keycloak realm_access.roles
                 if (payload.realm_access?.roles) {
                     scopes.push(...payload.realm_access.roles);
                 }
+                // 2. Custom claim 'roles' (from custom protocol mapper)
+                if (Array.isArray(payload.roles)) {
+                    scopes.push(...payload.roles);
+                }
+                // 3. Resource access roles (client-specific)
                 if (payload.resource_access) {
                     for (const [resource, access] of Object.entries(payload.resource_access)) {
                         if (access.roles) {
@@ -243,20 +249,23 @@ module.exports = function(RED) {
                     }
                 }
 
+                // Determine roles array for auth context
+                const roles = payload.realm_access?.roles || payload.roles || [];
+
                 request.auth = {
                     authenticated: true,
                     sub: payload.sub,
                     preferredUsername: payload.preferred_username,
                     email: payload.email,
                     scopes: scopes,
-                    roles: payload.realm_access?.roles || [],
+                    roles: roles,
                     token: token,
                     payload: payload
                 };
 
                 // Record metrics for token validation
                 if (node.metricsCollector) {
-                    node.metricsCollector.recordKeycloakValidation(true, 0);
+                    node.metricsCollector.recordKeycloakValidation({ success: true, duration: 0 });
                 }
             };
         }

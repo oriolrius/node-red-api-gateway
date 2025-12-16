@@ -433,6 +433,17 @@
         "local": true,
         "user": false,
         "nodes": {
+            "api-config": {
+                "name": "api-config",
+                "types": [
+                    "api-config"
+                ],
+                "enabled": true,
+                "local": true,
+                "user": false,
+                "module": "@oriolrius/node-red-api-gateway",
+                "file": "/data/node_modules/@oriolrius/node-red-api-gateway/nodes/api-config.js"
+            },
             "api-server": {
                 "name": "api-server",
                 "types": [
