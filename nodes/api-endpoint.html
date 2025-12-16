@@ -5,7 +5,7 @@
         color: '#87CEEB',
         defaults: {
             name: { value: "" },
-            server: { value: "", type: "api-server" },
+            server: { value: "" },
             path: { value: "/", required: true },
             method: { value: "GET", required: true },
             validationEnabled: { value: true },
@@ -81,6 +81,25 @@
         oneditprepare: function() {
             var node = this;
             var E = window.ApiEndpointEditor;
+
+            // Populate server dropdown with available api-server nodes
+            var $serverSelect = $('#node-input-server');
+            $serverSelect.find('option:not(:first)').remove();
+            RED.nodes.eachConfig(function(config) {
+                if (config.type === 'api-server') {
+                    var label = config.name || ('API server:' + (config.port || 3000));
+                    var selected = (node.server === config.id) ? ' selected' : '';
+                    $serverSelect.append('<option value="' + config.id + '"' + selected + '>' + label + '</option>');
+                }
+            });
+            // Also check regular nodes (api-server is not a config node)
+            RED.nodes.eachNode(function(n) {
+                if (n.type === 'api-server') {
+                    var label = n.name || ('API server:' + (n.port || 3000));
+                    var selected = (node.server === n.id) ? ' selected' : '';
+                    $serverSelect.append('<option value="' + n.id + '"' + selected + '>' + label + '</option>');
+                }
+            });
 
             // Update param display
             function updateParamDisplay() {
@@ -409,7 +428,9 @@
     </div>
     <div class="form-row">
         <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
-        <input type="text" id="node-input-server">
+        <select id="node-input-server" style="width: 70%;">
+            <option value="">-- Select API Server --</option>
+        </select>
     </div>
     <div class="form-row">
         <label for="node-input-method"><i class="fa fa-exchange"></i> Method</label>
