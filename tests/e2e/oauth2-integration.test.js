@@ -213,7 +213,7 @@ function assert(condition, message) {
 // ============================================================================
 
 /**
- * Check that flows.json exists and contains expected OAuth2 configuration
+ * Check that flows.json exists and matches the expected OAuth2 example flow
  */
 function checkFlowsConfiguration() {
     console.log('Checking test configuration...\n');
@@ -223,37 +223,49 @@ function checkFlowsConfiguration() {
     const flowsPath = path.join(projectRoot, 'tests/e2e/flows.json');
     const examplePath = path.join(projectRoot, 'examples/oauth2-authenticated-api.json');
 
+    // Check if example file exists first
+    if (!fs.existsSync(examplePath)) {
+        console.error('  [FAIL] Example flow not found: examples/oauth2-authenticated-api.json\n');
+        console.error('  The OAuth2 example flow is required for these tests.');
+        process.exit(1);
+    }
+
     // Check if flows.json exists
     if (!fs.existsSync(flowsPath)) {
         console.error('  [FAIL] tests/e2e/flows.json not found\n');
         console.error('  Please copy the OAuth2 example flow:');
-        console.error(`    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json\n`);
+        console.error('    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json\n');
         process.exit(1);
     }
 
-    // Read and validate flows.json contains OAuth2 config
+    // Read both files and compare
     try {
         const flowsContent = fs.readFileSync(flowsPath, 'utf8');
-        const flows = JSON.parse(flowsContent);
+        const exampleContent = fs.readFileSync(examplePath, 'utf8');
 
-        // Check for api-server node
-        const apiServerNode = flows.find(n => n.type === 'api-server');
-        if (!apiServerNode) {
-            throw new Error('No api-server node found in flows.json');
+        // Parse both to validate JSON and normalize for comparison
+        const flows = JSON.parse(flowsContent);
+        const example = JSON.parse(exampleContent);
+
+        // Compare the JSON content (normalized)
+        const flowsNormalized = JSON.stringify(flows);
+        const exampleNormalized = JSON.stringify(example);
+
+        if (flowsNormalized !== exampleNormalized) {
+            console.error('  [FAIL] tests/e2e/flows.json does not match the OAuth2 example flow\n');
+            console.error('  The integration tests require the exact OAuth2 example flow.');
+            console.error('  Please update flows.json:');
+            console.error('    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json\n');
+            console.error('  Then restart the Docker stack to reload the flow:');
+            console.error('    npm run docker:e2e:down && npm run docker:e2e:up\n');
+            process.exit(1);
         }
 
-        // Check for api-config node with OAuth2/Keycloak configuration
-        const apiConfigNode = flows.find(n => n.type === 'api-config');
-        const hasOAuth2 = apiConfigNode && (
-            apiConfigNode.oauth2Enabled === true ||
-            (apiConfigNode.keycloakUrl && apiConfigNode.keycloakRealm)
-        );
+        console.log('  [OK] flows.json matches oauth2-authenticated-api.json example');
 
-        if (!hasOAuth2) {
-            console.warn('  [WARN] flows.json may not have OAuth2 configured');
-            console.warn('  Expected: api-config with oauth2Enabled=true and Keycloak settings\n');
-        } else {
-            console.log('  [OK] flows.json found with OAuth2 configuration');
+        // Show configuration details
+        const apiConfigNode = flows.find(n => n.type === 'api-config');
+        if (apiConfigNode && apiConfigNode.keycloakUrl) {
             console.log(`       Keycloak: ${apiConfigNode.keycloakUrl}/realms/${apiConfigNode.keycloakRealm}`);
         }
 
@@ -263,16 +275,11 @@ function checkFlowsConfiguration() {
 
     } catch (error) {
         if (error instanceof SyntaxError) {
-            console.error('  [FAIL] flows.json is not valid JSON:', error.message);
+            console.error('  [FAIL] Invalid JSON:', error.message);
         } else {
-            console.error('  [FAIL] Error reading flows.json:', error.message);
+            console.error('  [FAIL] Error reading files:', error.message);
         }
         process.exit(1);
-    }
-
-    // Check if example file exists (for user reference)
-    if (fs.existsSync(examplePath)) {
-        console.log('  [OK] Example flow available at examples/oauth2-authenticated-api.json');
     }
 
     console.log('');
