@@ -4,15 +4,58 @@
  * OAuth2 Integration Tests for Node-RED API Gateway
  *
  * These tests verify the OAuth2/Keycloak authentication flow
- * for the API endpoints defined in flows.json.
+ * for the API endpoints defined in the oauth2-authenticated-api example flow.
  *
- * REQUIREMENTS:
- * - Docker stack must be running: docker compose --profile nodered up -d
- * - Keycloak realm 'my-realm' must be configured
- * - Node-RED must have loaded the flows.json
+ * ============================================================================
+ * SETUP INSTRUCTIONS
+ * ============================================================================
  *
- * Run separately from unit tests:
- *   npm run test:integration
+ * 1. Copy the OAuth2 example flow to the e2e test directory:
+ *
+ *    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json
+ *
+ * 2. Start the Docker stack (Keycloak, OPA, Node-RED):
+ *
+ *    npm run docker:e2e:up
+ *    # or: cd tests/e2e && docker compose up -d
+ *
+ * 3. Wait for all services to be healthy (about 30-60 seconds):
+ *
+ *    docker compose -f tests/e2e/docker-compose.yml ps
+ *
+ * 4. Run the integration tests:
+ *
+ *    npm run test:integration
+ *
+ * ============================================================================
+ * WHAT THIS TESTS
+ * ============================================================================
+ *
+ * - Public endpoints accessible without authentication
+ * - Protected endpoints return 401 without valid token
+ * - User role can access user-level endpoints
+ * - Admin role can access admin-level endpoints
+ * - Role-based access control (RBAC) properly enforced
+ * - Composite scope requirements (admin + user:write)
+ * - Request validation (query params, body)
+ * - OpenAPI/Swagger documentation endpoints
+ *
+ * ============================================================================
+ * TEST USERS (from Keycloak realm)
+ * ============================================================================
+ *
+ * | Username  | Password       | Roles              |
+ * |-----------|----------------|--------------------|
+ * | testuser  | testpassword   | user               |
+ * | editor    | editorpassword | user, user:write   |
+ * | admin     | adminpassword  | admin (composite)  |
+ *
+ * ============================================================================
+ * CLEANUP
+ * ============================================================================
+ *
+ *    npm run docker:e2e:down
+ *    # or: cd tests/e2e && docker compose down -v
  *
  * Exit codes:
  * - 0: All tests passed
@@ -21,6 +64,8 @@
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration
 const CONFIG = {
@@ -164,6 +209,76 @@ function assert(condition, message) {
 }
 
 // ============================================================================
+// Pre-flight Checks
+// ============================================================================
+
+/**
+ * Check that flows.json exists and contains expected OAuth2 configuration
+ */
+function checkFlowsConfiguration() {
+    console.log('Checking test configuration...\n');
+
+    // Determine project root (tests are run from project root)
+    const projectRoot = process.cwd();
+    const flowsPath = path.join(projectRoot, 'tests/e2e/flows.json');
+    const examplePath = path.join(projectRoot, 'examples/oauth2-authenticated-api.json');
+
+    // Check if flows.json exists
+    if (!fs.existsSync(flowsPath)) {
+        console.error('  [FAIL] tests/e2e/flows.json not found\n');
+        console.error('  Please copy the OAuth2 example flow:');
+        console.error(`    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json\n`);
+        process.exit(1);
+    }
+
+    // Read and validate flows.json contains OAuth2 config
+    try {
+        const flowsContent = fs.readFileSync(flowsPath, 'utf8');
+        const flows = JSON.parse(flowsContent);
+
+        // Check for api-server node
+        const apiServerNode = flows.find(n => n.type === 'api-server');
+        if (!apiServerNode) {
+            throw new Error('No api-server node found in flows.json');
+        }
+
+        // Check for api-config node with OAuth2/Keycloak configuration
+        const apiConfigNode = flows.find(n => n.type === 'api-config');
+        const hasOAuth2 = apiConfigNode && (
+            apiConfigNode.oauth2Enabled === true ||
+            (apiConfigNode.keycloakUrl && apiConfigNode.keycloakRealm)
+        );
+
+        if (!hasOAuth2) {
+            console.warn('  [WARN] flows.json may not have OAuth2 configured');
+            console.warn('  Expected: api-config with oauth2Enabled=true and Keycloak settings\n');
+        } else {
+            console.log('  [OK] flows.json found with OAuth2 configuration');
+            console.log(`       Keycloak: ${apiConfigNode.keycloakUrl}/realms/${apiConfigNode.keycloakRealm}`);
+        }
+
+        // Check for expected endpoints
+        const endpoints = flows.filter(n => n.type === 'api-endpoint');
+        console.log(`  [OK] Found ${endpoints.length} API endpoint(s)`);
+
+    } catch (error) {
+        if (error instanceof SyntaxError) {
+            console.error('  [FAIL] flows.json is not valid JSON:', error.message);
+        } else {
+            console.error('  [FAIL] Error reading flows.json:', error.message);
+        }
+        process.exit(1);
+    }
+
+    // Check if example file exists (for user reference)
+    if (fs.existsSync(examplePath)) {
+        console.log('  [OK] Example flow available at examples/oauth2-authenticated-api.json');
+    }
+
+    console.log('');
+}
+
+// ============================================================================
 // Service Health Checks
 // ============================================================================
 
@@ -183,7 +298,8 @@ async function checkServicesReady() {
     } catch (error) {
         console.error('  [FAIL] Keycloak is not available:', error.message);
         console.error('\n  Make sure the docker stack is running:');
-        console.error('    cd tests/e2e && docker compose --profile nodered up -d\n');
+        console.error('    npm run docker:e2e:up');
+        console.error('    # or: cd tests/e2e && docker compose up -d\n');
         process.exit(1);
     }
 
@@ -200,7 +316,8 @@ async function checkServicesReady() {
     } catch (error) {
         console.error('  [FAIL] API Server is not available:', error.message);
         console.error('\n  Make sure the docker stack is running:');
-        console.error('    cd tests/e2e && docker compose --profile nodered up -d\n');
+        console.error('    npm run docker:e2e:up');
+        console.error('    # or: cd tests/e2e && docker compose up -d\n');
         process.exit(1);
     }
 
@@ -556,6 +673,9 @@ async function runTests() {
     console.log('='.repeat(60));
     console.log('OAuth2 Integration Tests for Node-RED API Gateway');
     console.log('='.repeat(60) + '\n');
+
+    // Pre-flight checks
+    checkFlowsConfiguration();
 
     // Check services are ready
     await checkServicesReady();
