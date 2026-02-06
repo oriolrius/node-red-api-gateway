@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('fs');
 const { OpenApiGenerator } = require('../lib/openapi-generator');
 const { OpenApiParser } = require('../lib/openapi-parser');
 const {
@@ -580,6 +581,39 @@ module.exports = function(RED) {
                     }
                 };
 
+                // Add TLS/HTTPS support if enabled in config
+                let tlsEnabled = false;
+                if (node.configNode?.tlsEnabled && node.configNode?.tlsCertPath && node.configNode?.tlsKeyPath) {
+                    try {
+                        fastifyOptions.https = {
+                            key: fs.readFileSync(node.configNode.tlsKeyPath),
+                            cert: fs.readFileSync(node.configNode.tlsCertPath)
+                        };
+                        // Add CA certificate if provided (for client certificate validation)
+                        if (node.configNode.tlsCaPath) {
+                            fastifyOptions.https.ca = fs.readFileSync(node.configNode.tlsCaPath);
+                        }
+                        // Set minimum TLS version if configured
+                        if (node.configNode.tlsMinVersion) {
+                            fastifyOptions.https.minVersion = node.configNode.tlsMinVersion;
+                        }
+                        // Configure certificate rejection based on config
+                        if (node.configNode.tlsRejectUnauthorized === false) {
+                            fastifyOptions.https.rejectUnauthorized = false;
+                        }
+                        tlsEnabled = true;
+                        node.log(`TLS enabled with certificate from ${node.configNode.tlsCertPath}`);
+                    } catch (err) {
+                        node.error(`Failed to load TLS certificates: ${err.message}`);
+                        node.status({
+                            fill: 'red',
+                            shape: 'ring',
+                            text: 'TLS cert error'
+                        });
+                        return;
+                    }
+                }
+
                 // Configure logger for Fastify
                 // Fastify 5.x only accepts a boolean or Pino configuration object (not an instance)
                 // We disable Fastify's built-in logging and handle it ourselves in hooks
@@ -747,13 +781,14 @@ module.exports = function(RED) {
 
                 // Start the server
                 await node.fastify.listen({ port: node.port, host: node.host });
+                const protocol = tlsEnabled ? 'https' : 'http';
                 node.status({
                     fill: 'green',
                     shape: 'dot',
-                    text: `listening on ${node.host}:${node.port}`
+                    text: `${protocol}://${node.host}:${node.port}`
                 });
 
-                node.log(`API Server started on ${node.host}:${node.port}`);
+                node.log(`API Server started on ${protocol}://${node.host}:${node.port}`);
                 if (node.openapiEnabled) {
                     node.log(`OpenAPI spec available at ${node.openapiPath}`);
                 }
@@ -925,11 +960,12 @@ module.exports = function(RED) {
          */
         function updateStatus() {
             const endpointCount = node.endpoints.size;
+            const protocol = (node.configNode?.tlsEnabled && node.configNode?.tlsCertPath && node.configNode?.tlsKeyPath) ? 'https' : 'http';
             if (node.serverStarted) {
                 node.status({
                     fill: 'green',
                     shape: 'dot',
-                    text: `${node.host}:${node.port} (${endpointCount} endpoints)`
+                    text: `${protocol}://${node.host}:${node.port} (${endpointCount} endpoints)`
                 });
             } else {
                 node.status({

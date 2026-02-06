@@ -34,7 +34,8 @@ services:
       - "8181:8181"   # OPA
       - "1433:1433"   # SQL Server (optional)
       - "1880:1880"   # Node-RED (optional)
-      - "3200:3200"   # API GW port
+      - "3200:3200"   # API GW port (HTTP)
+      - "3443:3443"   # API GW port (HTTPS/TLS)
     healthcheck:
       test: ["CMD", "true"]
       interval: 30s
@@ -148,6 +149,8 @@ services:
       - ./.nodered:/data
       # Mount E2E test flows
       - ./flows.json:/data/flows.json:ro
+      # Mount TLS certificates for HTTPS testing (read-only)
+      - ./certs:/data/certs:ro
     environment:
       - NODE_RED_ENABLE_SAFE_MODE=false
       - TZ=UTC

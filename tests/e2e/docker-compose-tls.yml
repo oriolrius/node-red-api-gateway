@@ -1,0 +1,52 @@
+# Minimal Docker Compose for TLS/OpenAPI E2E Tests
+#
+# This is a stripped-down stack that only runs Node-RED for TLS testing.
+# It does NOT include Keycloak or OPA since they are not needed for TLS tests.
+#
+# Usage:
+#   docker compose -f docker-compose-tls.yml up -d
+#   docker compose -f docker-compose-tls.yml down -v
+
+services:
+  # Base container that creates the shared network namespace
+  network-base:
+    image: alpine:latest
+    container_name: api-gateway-tls-network
+    command: sleep infinity
+    restart: unless-stopped
+    ports:
+      - "1880:1880"   # Node-RED
+      - "3443:3443"   # API GW HTTPS port
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Node-RED for TLS Testing
+  node-red:
+    image: nodered/node-red:latest
+    container_name: api-gateway-tls-nodered
+    network_mode: "container:api-gateway-tls-network"
+    depends_on:
+      network-base:
+        condition: service_healthy
+    volumes:
+      # Mount the node package for testing (read-only)
+      - ../../:/data/node_modules/@oriolrius/node-red-api-gateway:ro
+      # Mount Node-RED user directory configuration
+      - ./.nodered:/data
+      # Mount E2E test flows
+      - ./flows.json:/data/flows.json:ro
+      # Mount TLS certificates for HTTPS testing (read-only)
+      - ./certs:/data/certs:ro
+    environment:
+      - NODE_RED_ENABLE_SAFE_MODE=false
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:1880/ || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: "no"
