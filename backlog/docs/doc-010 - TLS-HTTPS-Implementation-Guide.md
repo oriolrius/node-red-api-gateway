@@ -212,10 +212,10 @@ npm run test:openapi-tls
 
 This command is fully self-contained and will:
 1. Generate certificates using bundled mkcert (if not present)
-2. Copy the TLS test flow to flows.json
-3. Start a minimal Docker stack (Node-RED only, no Keycloak/OPA)
-4. Wait for services to be ready
-5. Run all TLS/OpenAPI tests
+2. Copy the TLS test flow to `.nodered/flows.json`
+3. Start the unified Docker stack with `--profile nodered`
+4. Wait for Node-RED to be ready (doesn't wait for Keycloak/OPA)
+5. Run all 9 TLS/OpenAPI tests
 6. Tear down the Docker stack
 
 ### Test Coverage

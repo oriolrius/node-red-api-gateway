@@ -4,7 +4,7 @@ title: E2E Tests for OpenAPI with TLS/HTTPS
 status: Done
 assignee: []
 created_date: '2026-02-06 11:15'
-updated_date: '2026-02-06 11:16'
+updated_date: '2026-02-06 12:04'
 labels: []
 dependencies: []
 ---
@@ -55,4 +55,37 @@ Files Modified:
 - tests/e2e/docker-compose.yml - Added port 3443 and certs volume mount"
 
 Commit: b5abdde - feat(test): add TLS/HTTPS e2e tests for OpenAPI
+
+Completed 2026-02-06: Full TLS/HTTPS support implementation delivered. Key implementation details:
+
+Core Features:
+- TLS/HTTPS support added to api-server.js (Fastify https options with key, cert, ca, minVersion)
+- Certificate files read from api-config paths (tlsCertPath, tlsKeyPath, tlsCaPath)
+- Server status displays protocol (http/https) in Node-RED UI
+- Bundled mkcert v1.4.4 binary in contrib/ for certificate generation (no external install required)
+
+Test Infrastructure:
+- Created openapi-tls.test.js with 9 comprehensive tests (all passing)
+- Tests are fully self-contained with auto setup/teardown of Docker, certificates, and flows
+- Setup script (setup-certs.sh) auto-generates certificates when running tests
+- Minimal Docker stack (docker-compose-tls.yml) - no Keycloak/OPA dependency
+- Node-RED startup significantly faster due to removed external service dependencies
+- Tests use .nodered/flows.json for flow deployment
+
+Validation Coverage:
+- HTTPS connection with correct CA certificate
+- Connection failure with wrong CA (enforces validation)
+- OpenAPI spec served over HTTPS
+- OpenAPI spec contains HTTPS server URL
+- Swagger UI accessible over HTTPS
+- Functional endpoints work over HTTPS (echo, metrics)
+
+Docker & Deployment:
+- Unified Docker infrastructure (merged docker-compose files)
+- TLS configuration properly integrated into main docker-compose.yml (port 3443, certs volume)
+- Environment variable support: SKIP_DOCKER_SETUP=1 and SKIP_DOCKER_TEARDOWN=1
+
+Test Results:
+- All e2e tests passing: 4 general OpenAPI tests + 9 TLS-specific tests
+- Key commits: feat(node): add TLS/HTTPS support | test(e2e): add OpenAPI TLS integration test suite | refactor(test): merge docker-compose-tls into unified e2e infrastructure | fix(test): align e2e test runner with unified Docker infrastructure
 <!-- SECTION:NOTES:END -->
