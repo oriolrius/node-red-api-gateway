@@ -101,16 +101,16 @@ The Node-RED API Gateway supports TLS/HTTPS for secure API endpoints. This docum
 │                                    │                                        │
 │                                    ▼                                        │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ 2. DOCKER STACK (docker-compose-tls.yml)                              │  │
+│  │ 2. DOCKER STACK (docker-compose-tls.yml) - Isolated ports             │  │
 │  │                                                                        │  │
 │  │    ┌──────────────────┐      ┌──────────────────────────────────┐    │  │
 │  │    │  network-base    │      │  node-red                         │    │  │
 │  │    │  (alpine)        │◄────►│  Port 1880: Node-RED Editor       │    │  │
 │  │    │                  │      │  Port 3443: API Gateway (HTTPS)   │    │  │
-│  │    │  Ports:          │      │                                    │    │  │
-│  │    │  - 1880:1880     │      │  Volumes:                          │    │  │
-│  │    │  - 3443:3443     │      │  - ./certs:/data/certs:ro          │    │  │
-│  │    └──────────────────┘      │  - ./flows.json:/data/flows.json   │    │  │
+│  │    │  Ports (host):   │      │                                    │    │  │
+│  │    │  - 1881:1880     │      │  Volumes:                          │    │  │
+│  │    │  - 3444:3443     │      │  - ./certs:/data/certs:ro          │    │  │
+│  │    └──────────────────┘      │  - ./flows-tls.json:/data/flows    │    │  │
 │  │                              └──────────────────────────────────┘    │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 │                                    │                                        │
@@ -118,7 +118,7 @@ The Node-RED API Gateway supports TLS/HTTPS for secure API endpoints. This docum
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │ 3. TEST PHASE                                                         │  │
 │  │                                                                        │  │
-│  │    Test Client ──── HTTPS + CA Cert ────► API Gateway :3443           │  │
+│  │    Test Client ──── HTTPS + CA Cert ────► API Gateway :3444           │  │
 │  │         │                                       │                      │  │
 │  │         │  Validates:                           │  Serves:             │  │
 │  │         │  • Correct CA works                   │  • /api/v1/health    │  │
@@ -265,9 +265,10 @@ This command is fully self-contained and will:
 
 ### Tests Fail to Connect
 
-1. Ensure port 3443 is not in use: `lsof -i :3443`
-2. Check Docker containers are running: `docker ps`
+1. Ensure TLS test ports are not in use: `lsof -i :3444` and `lsof -i :1881`
+2. Check Docker containers are running: `docker ps | grep api-gateway-tls`
 3. Verify certificates are mounted in container: check docker-compose-tls.yml volumes
+4. Note: TLS tests use ports 1881/3444 to avoid conflicts with main e2e stack (1880/3443)
 
 ## Related Files
 

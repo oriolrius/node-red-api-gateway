@@ -30,16 +30,19 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 // Configuration
+// NOTE: Uses different ports than the main e2e stack to avoid conflicts:
+//   - Node-RED: 1881 (main stack uses 1880)
+//   - API GW HTTPS: 3444 (main stack uses 3443)
 const CONFIG = {
-    apiBaseUrl: 'https://localhost:3443',
-    nodeRedUrl: 'http://localhost:1880',
+    apiBaseUrl: 'https://localhost:3444',
+    nodeRedUrl: 'http://localhost:1881',
     requestTimeout: 10000,
     certsDir: path.join(__dirname, 'certs'),
     setupScript: path.join(__dirname, 'setup-certs.sh'),
     mkcertBin: path.join(__dirname, '..', '..', 'contrib', 'mkcert'),
     dockerComposeFile: path.join(__dirname, 'docker-compose-tls.yml'),
     tlsFlowSource: path.join(__dirname, 'openapi-tls-test-flow.json'),
-    flowsTarget: path.join(__dirname, 'flows.json'),
+    flowsTarget: path.join(__dirname, 'flows-tls.json'),  // Separate from main flows.json
     startupTimeout: 120000,  // 2 minutes max for services to start
     startupPollInterval: 2000,  // Check every 2 seconds
     skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',

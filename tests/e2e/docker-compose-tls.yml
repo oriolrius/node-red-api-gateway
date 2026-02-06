@@ -3,6 +3,10 @@
 # This is a stripped-down stack that only runs Node-RED for TLS testing.
 # It does NOT include Keycloak or OPA since they are not needed for TLS tests.
 #
+# IMPORTANT: Uses different ports than docker-compose.yml to avoid conflicts:
+#   - Node-RED: 1881 (instead of 1880)
+#   - API GW HTTPS: 3444 (instead of 3443)
+#
 # Usage:
 #   docker compose -f docker-compose-tls.yml up -d
 #   docker compose -f docker-compose-tls.yml down -v
@@ -15,8 +19,8 @@ services:
     command: sleep infinity
     restart: unless-stopped
     ports:
-      - "1880:1880"   # Node-RED
-      - "3443:3443"   # API GW HTTPS port
+      - "1881:1880"   # Node-RED (mapped to 1881 to avoid conflict)
+      - "3444:3443"   # API GW HTTPS port (mapped to 3444 to avoid conflict)
     healthcheck:
       test: ["CMD", "true"]
       interval: 5s
@@ -35,9 +39,9 @@ services:
       # Mount the node package for testing (read-only)
       - ../../:/data/node_modules/@oriolrius/node-red-api-gateway:ro
       # Mount Node-RED user directory configuration
-      - ./.nodered:/data
+      - ./.nodered-tls:/data
       # Mount E2E test flows
-      - ./flows.json:/data/flows.json:ro
+      - ./flows-tls.json:/data/flows.json:ro
       # Mount TLS certificates for HTTPS testing (read-only)
       - ./certs:/data/certs:ro
     environment:
