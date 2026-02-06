@@ -129,6 +129,11 @@ services:
 
   # Node-RED for E2E Testing (Optional - use --profile nodered)
   # Editor: http://localhost:1880
+  # API Gateway: http://localhost:3200 (HTTP) or https://localhost:3443 (HTTPS/TLS)
+  #
+  # Note: Node-RED only depends on network-base, not Keycloak/OPA.
+  # Tests that need OAuth2/OPA will wait for those services in their test code.
+  # This allows TLS-only tests to start faster without waiting for Keycloak.
   node-red:
     image: nodered/node-red:latest
     container_name: api-gateway-nodered
@@ -137,10 +142,6 @@ services:
       - nodered
     depends_on:
       network-base:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-      opa:
         condition: service_healthy
     volumes:
       # Mount the node package for testing (read-only)

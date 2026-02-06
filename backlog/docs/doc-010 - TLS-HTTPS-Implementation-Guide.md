@@ -86,6 +86,8 @@ The Node-RED API Gateway supports TLS/HTTPS for secure API endpoints. This docum
 
 ### E2E Test Architecture
 
+All e2e tests use a unified Docker infrastructure (`docker-compose.yml`).
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        openapi-tls.test.js (Self-Contained)                  │
@@ -101,16 +103,16 @@ The Node-RED API Gateway supports TLS/HTTPS for secure API endpoints. This docum
 │                                    │                                        │
 │                                    ▼                                        │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │ 2. DOCKER STACK (docker-compose-tls.yml) - Isolated ports             │  │
+│  │ 2. DOCKER STACK (docker-compose.yml --profile nodered)                │  │
 │  │                                                                        │  │
 │  │    ┌──────────────────┐      ┌──────────────────────────────────┐    │  │
 │  │    │  network-base    │      │  node-red                         │    │  │
 │  │    │  (alpine)        │◄────►│  Port 1880: Node-RED Editor       │    │  │
 │  │    │                  │      │  Port 3443: API Gateway (HTTPS)   │    │  │
-│  │    │  Ports (host):   │      │                                    │    │  │
-│  │    │  - 1881:1880     │      │  Volumes:                          │    │  │
-│  │    │  - 3444:3443     │      │  - ./certs:/data/certs:ro          │    │  │
-│  │    └──────────────────┘      │  - ./flows-tls.json:/data/flows    │    │  │
+│  │    │  Ports:          │      │                                    │    │  │
+│  │    │  - 1880:1880     │      │  Volumes:                          │    │  │
+│  │    │  - 3443:3443     │      │  - ./certs:/data/certs:ro          │    │  │
+│  │    └──────────────────┘      │  - ./flows.json:/data/flows.json   │    │  │
 │  │                              └──────────────────────────────────┘    │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 │                                    │                                        │
@@ -118,7 +120,7 @@ The Node-RED API Gateway supports TLS/HTTPS for secure API endpoints. This docum
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │ 3. TEST PHASE                                                         │  │
 │  │                                                                        │  │
-│  │    Test Client ──── HTTPS + CA Cert ────► API Gateway :3444           │  │
+│  │    Test Client ──── HTTPS + CA Cert ────► API Gateway :3443           │  │
 │  │         │                                       │                      │  │
 │  │         │  Validates:                           │  Serves:             │  │
 │  │         │  • Correct CA works                   │  • /api/v1/health    │  │
@@ -243,7 +245,7 @@ This command is fully self-contained and will:
 |------|---------|
 | `tests/e2e/openapi-tls.test.js` | Main test suite (self-contained) |
 | `tests/e2e/openapi-tls-test-flow.json` | Node-RED flow with TLS enabled |
-| `tests/e2e/docker-compose-tls.yml` | Minimal Docker stack for TLS tests |
+| `tests/e2e/docker-compose.yml` | Unified Docker stack for all e2e tests |
 | `tests/e2e/setup-certs.sh` | Certificate generation script |
 
 ## Troubleshooting
@@ -265,10 +267,9 @@ This command is fully self-contained and will:
 
 ### Tests Fail to Connect
 
-1. Ensure TLS test ports are not in use: `lsof -i :3444` and `lsof -i :1881`
-2. Check Docker containers are running: `docker ps | grep api-gateway-tls`
-3. Verify certificates are mounted in container: check docker-compose-tls.yml volumes
-4. Note: TLS tests use ports 1881/3444 to avoid conflicts with main e2e stack (1880/3443)
+1. Ensure ports are not in use: `lsof -i :3443` and `lsof -i :1880`
+2. Check Docker containers are running: `docker ps | grep api-gateway`
+3. Verify certificates are mounted in container: check docker-compose.yml volumes
 
 ## Related Files
 

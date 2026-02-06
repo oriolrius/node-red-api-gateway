@@ -5,11 +5,14 @@
  *
  * This is a fully self-contained e2e test that:
  * 1. Generates TLS certificates using bundled mkcert
- * 2. Copies the TLS test flow to the test directory
- * 3. Starts the Docker stack with Node-RED
+ * 2. Copies the TLS test flow to flows.json
+ * 3. Starts the unified Docker stack with Node-RED (--profile nodered)
  * 4. Waits for services to be ready
  * 5. Runs all TLS/OpenAPI tests
  * 6. Tears down the Docker stack
+ *
+ * Uses the same infrastructure as other e2e tests (docker-compose.yml).
+ * Node-RED does not wait for Keycloak/OPA, allowing TLS tests to start quickly.
  *
  * Usage:
  *    npm run test:openapi-tls
@@ -30,19 +33,18 @@ const path = require('path');
 const { execSync, spawn } = require('child_process');
 
 // Configuration
-// NOTE: Uses different ports than the main e2e stack to avoid conflicts:
-//   - Node-RED: 1881 (main stack uses 1880)
-//   - API GW HTTPS: 3444 (main stack uses 3443)
+// Uses the unified e2e infrastructure (docker-compose.yml with --profile nodered)
 const CONFIG = {
-    apiBaseUrl: 'https://localhost:3444',
-    nodeRedUrl: 'http://localhost:1881',
+    apiBaseUrl: 'https://localhost:3443',
+    nodeRedUrl: 'http://localhost:1880',
     requestTimeout: 10000,
     certsDir: path.join(__dirname, 'certs'),
     setupScript: path.join(__dirname, 'setup-certs.sh'),
     mkcertBin: path.join(__dirname, '..', '..', 'contrib', 'mkcert'),
-    dockerComposeFile: path.join(__dirname, 'docker-compose-tls.yml'),
+    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    dockerComposeProfile: 'nodered',
     tlsFlowSource: path.join(__dirname, 'openapi-tls-test-flow.json'),
-    flowsTarget: path.join(__dirname, 'flows-tls.json'),  // Separate from main flows.json
+    flowsTarget: path.join(__dirname, 'flows.json'),
     startupTimeout: 120000,  // 2 minutes max for services to start
     startupPollInterval: 2000,  // Check every 2 seconds
     skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',
@@ -143,7 +145,7 @@ function startDockerStack() {
     try {
         // First, ensure any existing stack is stopped
         try {
-            execSync(`docker compose -f "${CONFIG.dockerComposeFile}" down -v`, {
+            execSync(`docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`, {
                 stdio: 'pipe',
                 cwd: __dirname
             });
@@ -151,8 +153,8 @@ function startDockerStack() {
             // Ignore errors if stack wasn't running
         }
 
-        // Start the minimal TLS test stack
-        execSync(`docker compose -f "${CONFIG.dockerComposeFile}" up -d`, {
+        // Start the e2e test stack with nodered profile
+        execSync(`docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} up -d`, {
             stdio: 'inherit',
             cwd: __dirname
         });
@@ -172,7 +174,7 @@ function stopDockerStack() {
     console.log('\nStopping Docker stack...');
 
     try {
-        execSync(`docker compose -f "${CONFIG.dockerComposeFile}" down -v`, {
+        execSync(`docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`, {
             stdio: 'inherit',
             cwd: __dirname
         });
