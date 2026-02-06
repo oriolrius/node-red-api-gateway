@@ -146,10 +146,8 @@ services:
     volumes:
       # Mount the node package for testing (read-only)
       - ../../:/data/node_modules/@oriolrius/node-red-api-gateway:ro
-      # Mount Node-RED user directory configuration
+      # Mount Node-RED user directory configuration (includes flows.json)
       - ./.nodered:/data
-      # Mount E2E test flows
-      - ./flows.json:/data/flows.json:ro
       # Mount TLS certificates for HTTPS testing (read-only)
       - ./certs:/data/certs:ro
     environment:

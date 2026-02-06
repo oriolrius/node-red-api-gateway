@@ -44,7 +44,7 @@ const CONFIG = {
     dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
     dockerComposeProfile: 'nodered',
     tlsFlowSource: path.join(__dirname, 'openapi-tls-test-flow.json'),
-    flowsTarget: path.join(__dirname, 'flows.json'),
+    flowsTarget: path.join(__dirname, '.nodered', 'flows.json'),  // Inside .nodered directory
     startupTimeout: 120000,  // 2 minutes max for services to start
     startupPollInterval: 2000,  // Check every 2 seconds
     skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',

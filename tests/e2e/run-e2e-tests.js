@@ -24,8 +24,9 @@ const execAsync = promisify(exec);
 // Configuration
 const CONFIG = {
     dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    dockerComposeProfile: 'nodered',  // Profile to start Node-RED
     nodeRedUrl: 'http://localhost:1880',
-    containerName: 'node-red-e2e-test',
+    containerName: 'api-gateway-nodered',  // Must match container_name in docker-compose.yml
     startupTimeout: 120000,  // 2 minutes max for startup
     healthCheckInterval: 2000,
     maxHealthCheckAttempts: 60,
@@ -126,7 +127,7 @@ function verifyDockerAvailable() {
  * Execute docker compose command
  */
 async function dockerCompose(command, options = {}) {
-    const cmd = `docker compose -f "${CONFIG.dockerComposeFile}" ${command}`;
+    const cmd = `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} ${command}`;
 
     if (!options.silent) {
         console.log(`  $ ${cmd}`);
