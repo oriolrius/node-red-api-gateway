@@ -3055,7 +3055,8 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should filter out invalid field names", function (done) {
+        it("should accept any non-empty field names", function (done) {
+            // With SQL Server bracket escaping, all non-empty field names are valid
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3066,7 +3067,8 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    n1.filterableFields.should.deepEqual(["name", "valid_field"]);
+                    // All non-empty fields are now accepted (SQL Server escaping handles special chars)
+                    n1.filterableFields.should.deepEqual(["name", "123invalid", "valid_field", "@invalid"]);
                     done();
                 } catch (err) {
                     done(err);
@@ -3514,7 +3516,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should generate WHERE clause for eq operator", function (done) {
+        it("should generate WHERE clause for eq operator with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3526,7 +3528,8 @@ describe("api-endpoint Node", function () {
                     const result = n1.generateWhereClause([
                         { field: "status", operator: "eq", value: "active" }
                     ]);
-                    result.clause.should.equal("WHERE status = @filter_status_0");
+                    // SQL Server uses bracket notation [fieldName]
+                    result.clause.should.equal("WHERE [status] = @filter_status_0");
                     result.params.filter_status_0.should.equal("active");
                     done();
                 } catch (err) {
@@ -3535,7 +3538,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should generate WHERE clause for multiple filters", function (done) {
+        it("should generate WHERE clause for multiple filters with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3548,7 +3551,8 @@ describe("api-endpoint Node", function () {
                         { field: "status", operator: "eq", value: "active" },
                         { field: "age", operator: "gte", value: "18" }
                     ]);
-                    result.clause.should.equal("WHERE status = @filter_status_0 AND age >= @filter_age_1");
+                    // SQL Server uses bracket notation [fieldName]
+                    result.clause.should.equal("WHERE [status] = @filter_status_0 AND [age] >= @filter_age_1");
                     result.params.filter_status_0.should.equal("active");
                     result.params.filter_age_1.should.equal("18");
                     done();
@@ -3558,7 +3562,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should generate WHERE clause for IN operator", function (done) {
+        it("should generate WHERE clause for IN operator with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3570,7 +3574,8 @@ describe("api-endpoint Node", function () {
                     const result = n1.generateWhereClause([
                         { field: "status", operator: "in", value: ["active", "pending"] }
                     ]);
-                    result.clause.should.equal("WHERE status IN (@filter_status_0_0, @filter_status_0_1)");
+                    // SQL Server uses bracket notation [fieldName]
+                    result.clause.should.equal("WHERE [status] IN (@filter_status_0_0, @filter_status_0_1)");
                     result.params.filter_status_0_0.should.equal("active");
                     result.params.filter_status_0_1.should.equal("pending");
                     done();
@@ -3580,7 +3585,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should support all operators", function (done) {
+        it("should support all operators with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3594,7 +3599,8 @@ describe("api-endpoint Node", function () {
                         const result = n1.generateWhereClause([
                             { field: "test", operator: op, value: "val" }
                         ]);
-                        result.clause.should.startWith("WHERE test");
+                        // SQL Server uses bracket notation [fieldName]
+                        result.clause.should.startWith("WHERE [test]");
                     });
                     done();
                 } catch (err) {
@@ -3623,7 +3629,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should generate ORDER BY clause", function (done) {
+        it("should generate ORDER BY clause with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3635,7 +3641,8 @@ describe("api-endpoint Node", function () {
                     const result = n1.generateOrderByClause([
                         { field: "name", direction: "asc" }
                     ]);
-                    result.should.equal("ORDER BY name ASC");
+                    // SQL Server uses bracket notation [fieldName]
+                    result.should.equal("ORDER BY [name] ASC");
                     done();
                 } catch (err) {
                     done(err);
@@ -3643,7 +3650,7 @@ describe("api-endpoint Node", function () {
             });
         });
 
-        it("should generate ORDER BY with multiple fields", function (done) {
+        it("should generate ORDER BY with multiple fields and bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
                 type: "api-endpoint",
@@ -3656,7 +3663,8 @@ describe("api-endpoint Node", function () {
                         { field: "status", direction: "asc" },
                         { field: "created_at", direction: "desc" }
                     ]);
-                    result.should.equal("ORDER BY status ASC, created_at DESC");
+                    // SQL Server uses bracket notation [fieldName]
+                    result.should.equal("ORDER BY [status] ASC, [created_at] DESC");
                     done();
                 } catch (err) {
                     done(err);
@@ -3791,7 +3799,8 @@ describe("api-endpoint Node", function () {
                         msg.sorting.sorts.should.have.length(1);
                         msg.sorting.sorts[0].should.have.property("field", "name");
                         msg.sorting.sorts[0].should.have.property("direction", "desc");
-                        msg.sorting.should.have.property("orderByClause", "ORDER BY name DESC");
+                        // SQL Server uses bracket notation [fieldName]
+                        msg.sorting.should.have.property("orderByClause", "ORDER BY [name] DESC");
                         done();
                     } catch (err) {
                         done(err);

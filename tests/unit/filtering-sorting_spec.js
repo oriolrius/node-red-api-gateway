@@ -26,8 +26,10 @@ describe("Filtering and Sorting", function() {
             parseFieldList(" name , email ").should.deepEqual(["name", "email"]);
         });
 
-        it("should filter invalid field names", function() {
-            parseFieldList("name,123invalid,email,with-dash").should.deepEqual(["name", "email"]);
+        it("should accept any non-empty field names", function() {
+            // Field validation is relaxed - all non-empty fields are accepted
+            // SQL Server bracket escaping handles special characters
+            parseFieldList("name,123invalid,email,with-dash").should.deepEqual(["name", "123invalid", "email", "with-dash"]);
         });
 
         it("should handle array input", function() {
@@ -47,9 +49,11 @@ describe("Filtering and Sorting", function() {
             validateFieldName("field123", []).valid.should.be.true();
         });
 
-        it("should reject invalid field names", function() {
-            validateFieldName("123invalid", []).valid.should.be.false();
-            validateFieldName("with-dash", []).valid.should.be.false();
+        it("should reject empty or null field names only", function() {
+            // With relaxed validation, any non-empty field name is valid
+            // SQL Server bracket escaping handles special characters
+            validateFieldName("123invalid", []).valid.should.be.true();
+            validateFieldName("with-dash", []).valid.should.be.true();
             validateFieldName("", []).valid.should.be.false();
             validateFieldName(null, []).valid.should.be.false();
         });
@@ -198,15 +202,16 @@ describe("Filtering and Sorting", function() {
             result.params.should.deepEqual({});
         });
 
-        it("should generate equality condition", function() {
+        it("should generate equality condition with bracket escaping", function() {
             const result = generateWhereClause([
                 { field: "name", operator: "eq", value: "John" }
             ]);
-            result.clause.should.containEql("name = @filter_name_0");
+            // SQL Server uses bracket notation [fieldName] for safe column names
+            result.clause.should.containEql("[name] = @filter_name_0");
             result.params.filter_name_0.should.equal("John");
         });
 
-        it("should generate comparison conditions", function() {
+        it("should generate comparison conditions with bracket escaping", function() {
             const operators = {
                 "gt": ">",
                 "gte": ">=",
@@ -219,22 +224,23 @@ describe("Filtering and Sorting", function() {
                 const result = generateWhereClause([
                     { field: "age", operator: op, value: 18 }
                 ]);
-                result.clause.should.containEql(`age ${sql}`);
+                // SQL Server uses bracket notation [fieldName]
+                result.clause.should.containEql(`[age] ${sql}`);
             }
         });
 
-        it("should generate LIKE condition", function() {
+        it("should generate LIKE condition with bracket escaping", function() {
             const result = generateWhereClause([
                 { field: "name", operator: "like", value: "%John%" }
             ]);
-            result.clause.should.containEql("name LIKE");
+            result.clause.should.containEql("[name] LIKE");
         });
 
-        it("should generate IN condition", function() {
+        it("should generate IN condition with bracket escaping", function() {
             const result = generateWhereClause([
                 { field: "status", operator: "in", value: ["active", "pending"] }
             ]);
-            result.clause.should.containEql("status IN");
+            result.clause.should.containEql("[status] IN");
             result.clause.should.containEql("filter_status_0_0");
             result.clause.should.containEql("filter_status_0_1");
         });
@@ -263,19 +269,21 @@ describe("Filtering and Sorting", function() {
             generateOrderByClause(null).should.equal("");
         });
 
-        it("should generate single sort", function() {
+        it("should generate single sort with bracket escaping", function() {
             const result = generateOrderByClause([
                 { field: "name", direction: "asc" }
             ]);
-            result.should.equal("ORDER BY name ASC");
+            // SQL Server uses bracket notation [fieldName]
+            result.should.equal("ORDER BY [name] ASC");
         });
 
-        it("should generate multiple sorts", function() {
+        it("should generate multiple sorts with bracket escaping", function() {
             const result = generateOrderByClause([
                 { field: "name", direction: "asc" },
                 { field: "createdAt", direction: "desc" }
             ]);
-            result.should.equal("ORDER BY name ASC, createdAt DESC");
+            // SQL Server uses bracket notation [fieldName]
+            result.should.equal("ORDER BY [name] ASC, [createdAt] DESC");
         });
     });
 });
