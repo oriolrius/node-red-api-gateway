@@ -2084,8 +2084,9 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "SELECT * FROM users");
+                    result.should.have.property("sql", "SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
                     result.should.have.property("operation", "list");
+                    result.should.have.property("supportsPagination", true);
                     done();
                 } catch (err) {
                     done(err);
@@ -2267,7 +2268,8 @@ describe("api-endpoint Node", function () {
                 n2.on("input", function (msg) {
                     try {
                         msg.crud.should.have.property("sql");
-                        msg.crud.sql.should.have.property("sql", "SELECT * FROM users");
+                        msg.crud.sql.should.have.property("sql", "SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                        msg.crud.sql.should.have.property("supportsPagination", true);
                         done();
                     } catch (err) {
                         done(err);

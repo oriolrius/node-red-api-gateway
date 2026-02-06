@@ -150,11 +150,13 @@
 
     /**
      * Validate a field name
+     * Now accepts any non-empty string to support SQL Server fields with special characters
      * @param {string} fieldName - Field name to validate
      * @returns {boolean}
      */
     ApiEndpointEditor.isValidFieldName = function(fieldName) {
-        return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(fieldName);
+        // Accept any non-empty field name to support special characters like %, ñ, etc.
+        return typeof fieldName === 'string' && fieldName.trim().length > 0;
     };
 
     /**
@@ -166,7 +168,7 @@
         if (!fieldStr) return [];
         return fieldStr.split(',')
             .map(function(f) { return f.trim(); })
-            .filter(function(f) { return f && ApiEndpointEditor.isValidFieldName(f); });
+            .filter(function(f) { return f.length > 0; });
     };
 
     /**
@@ -374,6 +376,17 @@
     };
 
     /**
+     * Escape HTML special characters to prevent XSS
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    ApiEndpointEditor.escapeHtml = function(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+
+    /**
      * Render badge elements for a list of items
      * @param {string} displaySelector - Container element selector
      * @param {string[]} items - Items to display
@@ -383,7 +396,8 @@
         var $display = $(displaySelector);
         $display.empty();
         items.forEach(function(item) {
-            $display.append('<span class="' + badgeClass + '">' + item + '</span> ');
+            var escaped = ApiEndpointEditor.escapeHtml(item);
+            $display.append('<span class="' + badgeClass + '">' + escaped + '</span> ');
         });
     };
 
@@ -397,7 +411,8 @@
         var $display = $(displaySelector);
         $display.empty();
         scopes.forEach(function(scope, index) {
-            $display.append('<span class="scope-badge">' + scope + '</span>');
+            var escaped = ApiEndpointEditor.escapeHtml(scope);
+            $display.append('<span class="scope-badge">' + escaped + '</span>');
             if (index < scopes.length - 1) {
                 $display.append(' <span style="color: #666;">' + operator + '</span> ');
             }
@@ -413,7 +428,9 @@
         var $display = $(displaySelector);
         $display.empty();
         mappings.forEach(function(mapping) {
-            $display.append('<span class="mapping-badge">' + mapping.oldName + ' → ' + mapping.newName + '</span> ');
+            var escapedOld = ApiEndpointEditor.escapeHtml(mapping.oldName);
+            var escapedNew = ApiEndpointEditor.escapeHtml(mapping.newName);
+            $display.append('<span class="mapping-badge">' + escapedOld + ' → ' + escapedNew + '</span> ');
         });
     };
 

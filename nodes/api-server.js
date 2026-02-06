@@ -59,6 +59,10 @@ module.exports = function(RED) {
         node.registeredRoutes = new Map();  // path+method -> endpointId
         node.pendingEndpoints = [];  // Endpoints waiting for server to start
 
+        // Server restart management
+        node.restartTimer = null;  // Debounce timer for restart
+        node.restartPending = false;  // Flag to indicate restart is scheduled
+
         // Keycloak client for OAuth2 authentication
         node.keycloakClient = null;
 
@@ -393,9 +397,10 @@ module.exports = function(RED) {
         /**
          * Register a single Fastify route for an endpoint
          * @param {Object} endpointNode - The api-endpoint node
+         * @param {boolean} isRestart - True if this is being called during a server restart
          * @returns {boolean} True if route was registered successfully
          */
-        function registerFastifyRoute(endpointNode) {
+        function registerFastifyRoute(endpointNode, isRestart = false) {
             if (!node.fastify || !node.serverStarted) {
                 // Queue for later registration
                 if (!node.pendingEndpoints.includes(endpointNode)) {
@@ -412,6 +417,13 @@ module.exports = function(RED) {
             if (conflict.conflict) {
                 node.warn(`Route conflict: ${endpointNode.method} ${fullPath} conflicts with endpoint ${conflict.existingEndpointId}`);
                 return false;
+            }
+
+            // Check if route is already registered (skip if already tracked)
+            const routeKey = `${endpointNode.method.toUpperCase()}:${fullPath}`;
+            if (node.registeredRoutes.has(routeKey)) {
+                // Route already registered, no action needed
+                return true;
             }
 
             try {
@@ -434,12 +446,18 @@ module.exports = function(RED) {
                 node.fastify.route(routeOptions);
 
                 // Track registered route
-                const routeKey = `${endpointNode.method.toUpperCase()}:${fullPath}`;
                 node.registeredRoutes.set(routeKey, endpointNode.id);
 
                 node.log(`Registered Fastify route: ${endpointNode.method} ${fullPath}`);
                 return true;
             } catch (err) {
+                // Fastify 5.x throws an error when adding routes after listen()
+                // Schedule a server restart to register the new route
+                if (!isRestart && err.message && err.message.includes('after')) {
+                    node.log(`Route registration failed (server already listening), scheduling restart: ${endpointNode.method} ${fullPath}`);
+                    scheduleRestart(`new endpoint added: ${endpointNode.method} ${fullPath}`);
+                    return false;
+                }
                 node.error(`Failed to register route ${endpointNode.method} ${fullPath}: ${err.message}`);
                 return false;
             }
@@ -454,6 +472,77 @@ module.exports = function(RED) {
 
             for (const endpointNode of pending) {
                 registerFastifyRoute(endpointNode);
+            }
+        }
+
+        /**
+         * Schedule a server restart (debounced to handle multiple endpoint changes)
+         * @param {string} reason - Reason for the restart (for logging)
+         */
+        function scheduleRestart(reason) {
+            if (node.restartPending) {
+                // Restart already scheduled, no need to schedule another
+                return;
+            }
+
+            node.restartPending = true;
+
+            // Clear any existing timer
+            if (node.restartTimer) {
+                clearTimeout(node.restartTimer);
+            }
+
+            // Debounce restart by 100ms to batch multiple endpoint registrations
+            node.restartTimer = setTimeout(async () => {
+                node.restartTimer = null;
+                node.restartPending = false;
+
+                node.log(`Restarting Fastify server: ${reason}`);
+                await restartServer();
+            }, 100);
+        }
+
+        /**
+         * Restart the Fastify server to register new routes
+         * Fastify 5.x doesn't allow adding routes after listen(), so we need to restart
+         */
+        async function restartServer() {
+            if (!node.serverStarted) {
+                return;
+            }
+
+            try {
+                // Store current endpoints before stopping
+                const currentEndpoints = Array.from(node.endpoints.values());
+
+                node.log(`Restarting server with ${currentEndpoints.length} endpoints...`);
+
+                // Close the current server
+                if (node.fastify) {
+                    await node.fastify.close();
+                    node.fastify = null;
+                }
+
+                // Clear registered routes (will be re-registered)
+                node.registeredRoutes.clear();
+
+                // Mark server as not started so startServer() will proceed
+                node.serverStarted = false;
+
+                // Queue all current endpoints for re-registration
+                node.pendingEndpoints = currentEndpoints.slice();
+
+                // Start the server again (this will register all pending endpoints)
+                await startServer();
+
+                node.log('Server restart complete');
+            } catch (err) {
+                node.error(`Failed to restart server: ${err.message}`);
+                node.status({
+                    fill: 'red',
+                    shape: 'ring',
+                    text: 'restart failed'
+                });
             }
         }
 
@@ -898,6 +987,13 @@ module.exports = function(RED) {
         });
 
         node.on("close", async function(removed, done) {
+            // Clear any pending restart timer
+            if (node.restartTimer) {
+                clearTimeout(node.restartTimer);
+                node.restartTimer = null;
+            }
+            node.restartPending = false;
+
             // Stop the server (this also clears registered routes and Keycloak client)
             await stopServer();
 

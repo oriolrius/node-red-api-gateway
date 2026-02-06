@@ -69,6 +69,13 @@ if (fs.existsSync(testFlowsPath)) {
     console.log("Provisioned test flows from flows.json");
 }
 
+// Copy credentials file if it exists
+const sourceCredsPath = path.join(__dirname, "flows_cred.json");
+if (fs.existsSync(sourceCredsPath)) {
+    fs.copyFileSync(sourceCredsPath, path.join(tempDir, "flows_cred.json"));
+    console.log("Provisioned credentials from flows_cred.json");
+}
+
 // Express app setup
 const app = express();
 const server = http.createServer(app);
@@ -84,6 +91,9 @@ const settings = {
     flowFile: "flows.json",
     flowFilePretty: true,
     uiPort: PORT,
+
+    // Fixed credential secret for persistent credentials across sessions
+    credentialSecret: "node-red-api-gateway-dev-secret",
 
     // Point coreNodesDir to our temp location so Node-RED doesn't walk up to /home
     coreNodesDir: coreNodesDir,
@@ -177,6 +187,29 @@ async function shutdown() {
 
     server.close(() => {
         console.log("HTTP server closed");
+
+        // Sync flows.json back to source before cleanup
+        const tempFlowsPath = path.join(tempDir, "flows.json");
+        if (fs.existsSync(tempFlowsPath)) {
+            try {
+                fs.copyFileSync(tempFlowsPath, testFlowsPath);
+                console.log("Flows synced back to source: " + testFlowsPath);
+            } catch (err) {
+                console.error("Error syncing flows back to source:", err.message);
+            }
+        }
+
+        // Sync credentials file back to source (if exists)
+        const tempCredsPath = path.join(tempDir, "flows_cred.json");
+        const sourceCredsPath = path.join(__dirname, "flows_cred.json");
+        if (fs.existsSync(tempCredsPath)) {
+            try {
+                fs.copyFileSync(tempCredsPath, sourceCredsPath);
+                console.log("Credentials synced back to source: " + sourceCredsPath);
+            } catch (err) {
+                console.error("Error syncing credentials back to source:", err.message);
+            }
+        }
 
         // Clean up temporary directory
         try {

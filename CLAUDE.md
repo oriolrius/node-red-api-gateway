@@ -28,6 +28,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) f
 ### Scope (optional)
 
 The scope provides additional context. For this project, common scopes include:
+
 - `node` - Node-RED node changes
 - `skill` - Claude skill changes
 - `test` - Test infrastructure

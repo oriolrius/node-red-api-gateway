@@ -39,3 +39,6 @@ tests/e2e/.nodered/.config.*.json
 tests/e2e/.nodered/.config.*.json.backup
 tests/e2e/.nodered/flows.json
 tests/e2e/.nodered/.flows.json.backup
+
+# Development launcher credentials (contains secrets)
+tests/launcher/flows_cred.json

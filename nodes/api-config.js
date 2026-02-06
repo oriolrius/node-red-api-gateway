@@ -18,6 +18,19 @@ const {
     generateRequestId
 } = require('../lib/logger');
 
+// SQL Server support (lazy-loaded)
+let mssql = null;
+function getMssql() {
+    if (!mssql) {
+        try {
+            mssql = require('mssql');
+        } catch (err) {
+            throw new Error('mssql package not installed. Run: npm install mssql');
+        }
+    }
+    return mssql;
+}
+
 module.exports = function(RED) {
     function ApiConfigNode(config) {
         RED.nodes.createNode(this, config);
@@ -108,6 +121,8 @@ module.exports = function(RED) {
 
         // Initialize connection pool manager if database is configured
         node.connectionPool = null;
+        node.mssqlPool = null;  // Native mssql ConnectionPool for SQL Server
+
         if (config.dbType && config.dbType !== 'none') {
             node.connectionPool = new ConnectionPoolManager('database', {
                 minConnections: config.dbPoolMin || 0,
@@ -115,6 +130,52 @@ module.exports = function(RED) {
                 idleTimeout: config.dbPoolIdleTimeout || 30000,
                 acquireTimeout: config.dbPoolAcquireTimeout || 15000
             });
+
+            // Initialize SQL Server connection pool if dbType is mssql
+            if (config.dbType === 'mssql') {
+                const sql = getMssql();
+                const mssqlConfig = {
+                    server: config.dbHost || 'localhost',
+                    port: parseInt(config.dbPort, 10) || 1433,
+                    database: config.dbName || '',
+                    user: node.credentials?.dbUser || '',
+                    password: node.credentials?.dbPassword || '',
+                    options: {
+                        encrypt: config.dbEncrypt !== false,
+                        trustServerCertificate: config.dbTrustServerCertificate === true,
+                        enableArithAbort: true
+                    },
+                    pool: {
+                        min: config.dbPoolMin || 0,
+                        max: config.dbPoolMax || 10,
+                        idleTimeoutMillis: config.dbPoolIdleTimeout || 30000,
+                        acquireTimeoutMillis: config.dbPoolAcquireTimeout || 15000
+                    }
+                };
+
+                node.mssqlPool = new sql.ConnectionPool(mssqlConfig);
+
+                // Connect to SQL Server
+                node.mssqlPool.connect().then(() => {
+                    node.log(`Connected to SQL Server: ${config.dbHost}/${config.dbName}`);
+                    if (node.connectionManagers.database) {
+                        node.connectionManagers.database.connected();
+                    }
+                }).catch(err => {
+                    node.error(`Failed to connect to SQL Server: ${err.message}`);
+                    if (node.connectionManagers.database) {
+                        node.connectionManagers.database.error(err, false);
+                    }
+                });
+
+                // Handle pool errors
+                node.mssqlPool.on('error', err => {
+                    node.error(`SQL Server pool error: ${err.message}`);
+                    if (node.connectionManagers.database) {
+                        node.connectionManagers.database.error(err, false);
+                    }
+                });
+            }
         }
 
         // OAuth2/Keycloak configuration
@@ -433,6 +494,147 @@ module.exports = function(RED) {
         };
 
         /**
+         * Check if SQL Server is configured and connected
+         * @returns {boolean}
+         */
+        node.isSqlServerReady = function() {
+            return node.dbType === 'mssql' && node.mssqlPool && node.mssqlPool.connected;
+        };
+
+        /**
+         * Execute a SQL query with parameters
+         * @param {string} query - SQL query string
+         * @param {Object} [params] - Query parameters (name: value pairs)
+         * @returns {Promise<Object>} Query result with recordset and rowsAffected
+         */
+        node.executeQuery = async function(query, params = {}) {
+            if (!node.mssqlPool) {
+                throw new Error('SQL Server not configured');
+            }
+            if (!node.mssqlPool.connected) {
+                throw new Error('SQL Server not connected');
+            }
+
+            const sql = getMssql();
+            const request = node.mssqlPool.request();
+
+            // Add parameters to the request
+            for (const [name, value] of Object.entries(params)) {
+                if (value === null || value === undefined) {
+                    request.input(name, sql.NVarChar, null);
+                } else if (typeof value === 'number') {
+                    if (Number.isInteger(value)) {
+                        request.input(name, sql.Int, value);
+                    } else {
+                        request.input(name, sql.Decimal(18, 4), value);
+                    }
+                } else if (typeof value === 'boolean') {
+                    request.input(name, sql.Bit, value);
+                } else if (value instanceof Date) {
+                    request.input(name, sql.DateTime, value);
+                } else {
+                    request.input(name, sql.NVarChar, String(value));
+                }
+            }
+
+            const result = await request.query(query);
+            return {
+                recordset: result.recordset || [],
+                recordsets: result.recordsets || [],
+                rowsAffected: result.rowsAffected || [],
+                output: result.output || {}
+            };
+        };
+
+        /**
+         * Execute a CRUD operation based on generated SQL
+         * @param {string} operation - CRUD operation (list, get, create, update, delete)
+         * @param {Object} sqlTemplate - SQL template from crud-generator
+         * @param {Object} context - Request context with params, body, query, filtering, sorting
+         * @returns {Promise<Object>} Operation result
+         */
+        node.executeCrudOperation = async function(operation, sqlTemplate, context = {}) {
+            if (!sqlTemplate || !sqlTemplate.sql) {
+                throw new Error('Invalid SQL template');
+            }
+
+            const params = {};
+            const { body = {}, params: urlParams = {}, query = {}, filtering = null, sorting = null } = context;
+
+            // Build base SQL - may need to inject WHERE clause for filtering
+            let sql = sqlTemplate.sql;
+
+            // Build parameters based on operation
+            switch (operation) {
+                case 'list':
+                    // Pagination params with defaults (required for SQL Server OFFSET/FETCH)
+                    params.limit = parseInt(query.limit, 10) || 10;
+                    params.offset = parseInt(query.offset, 10) || 0;
+
+                    // Handle filtering - inject WHERE clause before ORDER BY
+                    if (filtering && filtering.whereClause && filtering.whereClause.clause) {
+                        // Add filter params
+                        for (const [key, value] of Object.entries(filtering.whereClause.params || {})) {
+                            params[key] = value;
+                        }
+
+                        // Inject WHERE clause into SQL (before ORDER BY)
+                        const orderByIndex = sql.indexOf('ORDER BY');
+                        if (orderByIndex > -1) {
+                            sql = sql.slice(0, orderByIndex) + filtering.whereClause.clause + ' ' + sql.slice(orderByIndex);
+                        } else {
+                            sql = sql + ' ' + filtering.whereClause.clause;
+                        }
+                    }
+
+                    // Handle custom sorting if provided
+                    if (sorting && sorting.orderByClause) {
+                        // Replace existing ORDER BY with custom sorting
+                        const orderByMatch = sql.match(/ORDER BY [^O]+(?=OFFSET|$)/i);
+                        if (orderByMatch) {
+                            sql = sql.replace(orderByMatch[0], sorting.orderByClause + ' ');
+                        }
+                    }
+                    break;
+
+                case 'get':
+                    // Get by primary key
+                    if (urlParams.id) params.id = urlParams.id;
+                    break;
+
+                case 'create':
+                    // Insert body fields
+                    for (const [key, value] of Object.entries(body)) {
+                        params[key] = value;
+                    }
+                    break;
+
+                case 'update':
+                    // Update by primary key with body fields
+                    if (urlParams.id) params.id = urlParams.id;
+                    for (const [key, value] of Object.entries(body)) {
+                        params[key] = value;
+                    }
+                    break;
+
+                case 'delete':
+                    // Delete by primary key
+                    if (urlParams.id) params.id = urlParams.id;
+                    break;
+            }
+
+            // Execute the query
+            const result = await node.executeQuery(sql, params);
+
+            return {
+                operation,
+                data: result.recordset,
+                rowsAffected: result.rowsAffected[0] || 0,
+                success: true
+            };
+        };
+
+        /**
          * Get the shared logger instance
          * @returns {Object|null} Pino logger instance or null if logging disabled
          */
@@ -504,6 +706,17 @@ module.exports = function(RED) {
             if (node.healthCheckManager) {
                 node.healthCheckManager.shutdown();
                 node.healthCheckManager = null;
+            }
+
+            // Close SQL Server connection pool
+            if (node.mssqlPool) {
+                try {
+                    await node.mssqlPool.close();
+                    node.log('SQL Server connection pool closed');
+                } catch (err) {
+                    node.error('Error closing SQL Server pool: ' + err.message);
+                }
+                node.mssqlPool = null;
             }
 
             // Shutdown connection pool (graceful with drain timeout)

@@ -91,11 +91,14 @@ describe("CRUD Generator", function() {
 
     describe("generateCrudSql", function() {
         describe("list operation", function() {
-            it("should generate SELECT * query", function() {
+            it("should generate SELECT * query with pagination", function() {
                 const result = generateCrudSql("list", "users", "id");
-                result.sql.should.equal("SELECT * FROM users");
+                result.sql.should.equal("SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
                 result.operation.should.equal("list");
                 result.tableName.should.equal("users");
+                result.supportsPagination.should.be.true();
+                result.paramMapping.offset.should.equal("query.offset");
+                result.paramMapping.limit.should.equal("query.limit");
             });
         });
 

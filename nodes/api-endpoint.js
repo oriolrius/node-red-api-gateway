@@ -1341,6 +1341,171 @@ module.exports = function(RED) {
                     }
                 }
 
+                // Auto-execute SQL if configured (autoGenerateSql=true, useFlowOutput=false)
+                if (node.autoGenerateSql && !node.useFlowOutput && node.crudOperation !== 'none' && msg.crud?.sql) {
+                    const configNode = node.serverNode?.configNode;
+
+                    if (configNode && configNode.isSqlServerReady && configNode.isSqlServerReady()) {
+                        try {
+                            const context = {
+                                body: msg.req?.body || {},
+                                params: msg.req?.params || {},
+                                query: msg.req?.query || {},
+                                filtering: msg.filtering || null,
+                                sorting: msg.sorting || null
+                            };
+
+                            if (requestLogger) {
+                                requestLogger.debug({
+                                    event: 'crud_sql_execute',
+                                    operation: node.crudOperation,
+                                    table: node.tableName,
+                                    sql: msg.crud.sql.sql,
+                                    hasFiltering: !!msg.filtering,
+                                    hasSorting: !!msg.sorting
+                                }, `Executing CRUD SQL: ${node.crudOperation} on ${node.tableName}`);
+                            }
+
+                            const result = await configNode.executeCrudOperation(
+                                node.crudOperation,
+                                msg.crud.sql,
+                                context
+                            );
+
+                            // Format response based on operation
+                            let responseData;
+                            let statusCode = parseInt(node.successStatusCode, 10) || 200;
+
+                            switch (node.crudOperation) {
+                                case 'list':
+                                    responseData = {
+                                        data: result.data,
+                                        total: result.data.length,
+                                        limit: context.query.limit ? parseInt(context.query.limit, 10) : 10,
+                                        offset: context.query.offset ? parseInt(context.query.offset, 10) : 0
+                                    };
+                                    break;
+
+                                case 'get':
+                                    if (result.data.length === 0) {
+                                        statusCode = 404;
+                                        responseData = {
+                                            type: 'https://api.example.com/errors/not-found',
+                                            title: 'Not Found',
+                                            status: 404,
+                                            detail: `${node.tableName} not found`
+                                        };
+                                    } else {
+                                        responseData = result.data[0];
+                                    }
+                                    break;
+
+                                case 'create':
+                                    statusCode = 201;
+                                    responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
+                                    break;
+
+                                case 'update':
+                                    if (result.rowsAffected === 0) {
+                                        statusCode = 404;
+                                        responseData = {
+                                            type: 'https://api.example.com/errors/not-found',
+                                            title: 'Not Found',
+                                            status: 404,
+                                            detail: `${node.tableName} not found`
+                                        };
+                                    } else {
+                                        responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
+                                    }
+                                    break;
+
+                                case 'delete':
+                                    if (result.rowsAffected === 0) {
+                                        statusCode = 404;
+                                        responseData = {
+                                            type: 'https://api.example.com/errors/not-found',
+                                            title: 'Not Found',
+                                            status: 404,
+                                            detail: `${node.tableName} not found`
+                                        };
+                                    } else {
+                                        statusCode = 204;
+                                        responseData = null;
+                                    }
+                                    break;
+
+                                default:
+                                    responseData = result.data;
+                            }
+
+                            // Send response directly
+                            if (msg.res && typeof msg.res.status === 'function') {
+                                if (statusCode === 204) {
+                                    msg.res.status(204).end();
+                                } else {
+                                    msg.res.status(statusCode).json(responseData);
+                                }
+
+                                if (requestLogger && requestTimer) {
+                                    const duration = requestTimer.elapsed();
+                                    requestLogger.info({
+                                        event: 'crud_sql_complete',
+                                        operation: node.crudOperation,
+                                        duration: duration,
+                                        durationMs: `${duration}ms`,
+                                        statusCode: statusCode,
+                                        rowsAffected: result.rowsAffected
+                                    }, `CRUD operation completed in ${duration}ms`);
+                                }
+
+                                if (done) {
+                                    done();
+                                }
+                                return;
+                            }
+                        } catch (sqlErr) {
+                            if (requestLogger) {
+                                requestLogger.error({
+                                    event: 'crud_sql_error',
+                                    operation: node.crudOperation,
+                                    error: sqlErr.message,
+                                    stack: sqlErr.stack
+                                }, `CRUD SQL error: ${sqlErr.message}`);
+                            }
+
+                            // Send error response
+                            if (msg.res && typeof msg.res.status === 'function') {
+                                msg.res.status(500).json({
+                                    type: 'https://api.example.com/errors/database-error',
+                                    title: 'Database Error',
+                                    status: 500,
+                                    detail: sqlErr.message
+                                });
+
+                                if (done) {
+                                    done();
+                                }
+                                return;
+                            }
+                        }
+                    } else if (!node.useFlowOutput) {
+                        // Database not ready but useFlowOutput is false - return error
+                        if (msg.res && typeof msg.res.status === 'function') {
+                            msg.res.status(503).json({
+                                type: 'https://api.example.com/errors/service-unavailable',
+                                title: 'Service Unavailable',
+                                status: 503,
+                                detail: 'Database connection not available'
+                            });
+
+                            if (done) {
+                                done();
+                            }
+                            return;
+                        }
+                    }
+                }
+
                 // Log request completion
                 if (requestLogger && requestTimer) {
                     const duration = requestTimer.elapsed();
