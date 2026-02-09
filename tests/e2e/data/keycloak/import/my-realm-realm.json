@@ -132,6 +132,31 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect"
+    },
+    {
+      "clientId": "my-admin-service",
+      "name": "Admin Service Account",
+      "description": "Service account with admin privileges for machine-to-machine auth",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "admin-service-secret",
+      "publicClient": false,
+      "bearerOnly": false,
+      "consentRequired": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "email",
+        "api-scopes"
+      ]
     }
   ],
   "clientScopes": [
@@ -294,6 +319,19 @@
       "realmRoles": ["user"],
       "clientRoles": {
         "my-api-client": ["api:read", "api:write"]
+      }
+    },
+    {
+      "username": "service-account-my-admin-service",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin-service@example.com",
+      "firstName": "Admin",
+      "lastName": "Service",
+      "serviceAccountClientId": "my-admin-service",
+      "realmRoles": ["admin"],
+      "clientRoles": {
+        "my-api-client": ["api:read", "api:write", "api:delete", "api:admin"]
       }
     }
   ]

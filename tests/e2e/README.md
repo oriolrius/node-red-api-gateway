@@ -347,6 +347,50 @@ docker inspect api-gateway-keycloak | grep -A5 NetworkMode
 docker inspect api-gateway-opa | grep -A5 NetworkMode
 ```
 
+## Running E2E Tests
+
+### Available Test Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run test:e2e` | Run basic E2E tests (node registration, functionality) |
+| `npm run test:integration` | OAuth2 password grant flow tests |
+| `npm run test:client-credentials` | OAuth2 client credentials flow tests |
+| `npm run test:opa` | OPA policy integration tests |
+| `npm run test:openapi-tls` | TLS/HTTPS endpoint tests |
+
+### OAuth2 Client Credentials Flow Tests
+
+Tests for machine-to-machine authentication using the OAuth2 Client Credentials grant.
+
+**Service Accounts:**
+
+| Client ID | Secret | Roles |
+|-----------|--------|-------|
+| my-api-client | my-client-secret | user, api:read, api:write |
+| my-admin-service | admin-service-secret | admin, api:admin |
+
+**Run tests:**
+
+```bash
+# Start the stack
+npm run docker:e2e:up
+
+# Wait for services to be healthy
+docker compose -f tests/e2e/docker-compose.yml ps
+
+# Run client credentials tests
+npm run test:client-credentials
+```
+
+**What's tested:**
+- Token acquisition via client credentials grant
+- Service account claims in JWT tokens
+- Role-based access control for service accounts
+- Invalid credentials rejection (wrong client ID/secret)
+- Token expiration validation
+- Protected endpoint access with service account tokens
+
 ## Related Documentation
 
 - [doc-003: SQL Server Docker Setup](../../backlog/docs/doc-003%20-%20HOWTO-Run-SQL-Server-2022-in-Docker-with-Host-Bindings-(No-Volumes).md)
