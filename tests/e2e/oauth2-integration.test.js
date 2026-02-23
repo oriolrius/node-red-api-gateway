@@ -14,18 +14,13 @@
  *
  *    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json
  *
- * 2. Start the Docker stack (Keycloak, OPA, Node-RED):
- *
- *    npm run docker:e2e:up
- *    # or: cd tests/e2e && docker compose up -d
- *
- * 3. Wait for all services to be healthy (about 30-60 seconds):
- *
- *    docker compose -f tests/e2e/docker-compose.yml ps
- *
- * 4. Run the integration tests:
+ * 2. Run the integration tests (Docker stack starts automatically if needed):
  *
  *    npm run test:integration
+ *
+ * Environment variables:
+ *    SKIP_DOCKER_SETUP=1    - Don't start Docker (use existing stack)
+ *    SKIP_DOCKER_TEARDOWN=1 - Keep Docker running after tests
  *
  * ============================================================================
  * WHAT THIS TESTS
@@ -66,6 +61,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Configuration
 const CONFIG = {
@@ -79,8 +75,18 @@ const CONFIG = {
         testuser: { password: 'testpassword', roles: ['user'] },
         editor: { password: 'editorpassword', roles: ['user', 'user:write'] },
         admin: { password: 'adminpassword', roles: ['admin'] }
-    }
+    },
+    // Docker configuration
+    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    dockerComposeProfile: 'nodered',
+    startupTimeout: 120000,  // 2 minutes max for services to start
+    startupPollInterval: 3000,  // Check every 3 seconds
+    skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',
+    skipDockerTeardown: process.env.SKIP_DOCKER_TEARDOWN === '1'
 };
+
+// Track if we started Docker (so we know whether to tear down)
+let dockerStartedByUs = false;
 
 // Test results tracking
 const results = {
@@ -209,6 +215,181 @@ function assert(condition, message) {
 }
 
 // ============================================================================
+// Docker Infrastructure
+// ============================================================================
+
+/**
+ * Check if a service is available
+ */
+async function isServiceAvailable(url, timeout = 3000) {
+    try {
+        const response = await httpRequest({ url, timeout });
+        return response.status === 200;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Copy flows.json to .nodered directory for Docker mount
+ */
+function copyFlowsToNodeRed() {
+    const sourcePath = path.join(__dirname, 'flows.json');
+    const targetPath = path.join(__dirname, '.nodered', 'flows.json');
+
+    try {
+        if (!fs.existsSync(sourcePath)) {
+            console.error(`  [FAIL] Source flows.json not found: ${sourcePath}`);
+            return false;
+        }
+
+        fs.copyFileSync(sourcePath, targetPath);
+        console.log('  [OK] Copied flows.json to .nodered/');
+        return true;
+    } catch (error) {
+        console.error(`  [FAIL] Failed to copy flows.json: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Start Docker stack
+ */
+function startDockerStack() {
+    console.log('  Starting Docker stack...');
+
+    // Copy flows to Node-RED data directory before starting
+    if (!copyFlowsToNodeRed()) {
+        return false;
+    }
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} up -d`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack started');
+        return true;
+    } catch (error) {
+        console.error(`  [FAIL] Failed to start Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Stop Docker stack
+ */
+function stopDockerStack() {
+    console.log('\nStopping Docker stack...');
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack stopped');
+        return true;
+    } catch (error) {
+        console.error(`  [WARN] Failed to stop Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Wait for all services to be ready
+ */
+async function waitForServices() {
+    console.log('  Waiting for services to be ready...');
+
+    const startTime = Date.now();
+    let keycloakReady = false;
+    let apiServerReady = false;
+
+    while (Date.now() - startTime < CONFIG.startupTimeout) {
+        // Check Keycloak
+        if (!keycloakReady) {
+            try {
+                const response = await httpRequest({
+                    url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    keycloakReady = true;
+                    console.log('  [OK] Keycloak is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        // Check API Server
+        if (!apiServerReady) {
+            try {
+                const response = await httpRequest({
+                    url: `${CONFIG.apiBaseUrl}/api/v1/public/health`,
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    apiServerReady = true;
+                    console.log('  [OK] API Server is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        if (keycloakReady && apiServerReady) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            console.log(`  [OK] All services ready (took ${elapsed}s)\n`);
+            return true;
+        }
+
+        // Progress indicator
+        process.stdout.write('.');
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, CONFIG.startupPollInterval));
+    }
+
+    console.log('');
+    console.error(`  [FAIL] Services did not become ready within ${CONFIG.startupTimeout / 1000}s`);
+    console.error(`    Keycloak: ${keycloakReady ? 'ready' : 'not ready'}`);
+    console.error(`    API Server: ${apiServerReady ? 'ready' : 'not ready'}`);
+    return false;
+}
+
+/**
+ * Ensure Docker infrastructure is running
+ */
+async function ensureInfrastructure() {
+    // Check if services are already running
+    const keycloakAvailable = await isServiceAvailable(
+        `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`
+    );
+    const apiAvailable = await isServiceAvailable(`${CONFIG.apiBaseUrl}/api/v1/public/health`);
+
+    if (keycloakAvailable && apiAvailable) {
+        console.log('  [OK] Services are already running\n');
+        return true;
+    }
+
+    if (CONFIG.skipDockerSetup) {
+        console.error('  [FAIL] Services not running and SKIP_DOCKER_SETUP=1\n');
+        return false;
+    }
+
+    console.log('  Services not running, starting Docker stack...\n');
+
+    if (!startDockerStack()) {
+        return false;
+    }
+
+    dockerStartedByUs = true;
+
+    return await waitForServices();
+}
+
+// ============================================================================
 // Pre-flight Checks
 // ============================================================================
 
@@ -292,43 +473,17 @@ function checkFlowsConfiguration() {
 async function checkServicesReady() {
     console.log('Checking services availability...\n');
 
-    // Check Keycloak
-    try {
-        const response = await httpRequest({
-            url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
-            timeout: 5000
-        });
-        if (response.status !== 200) {
-            throw new Error(`Keycloak returned HTTP ${response.status}`);
-        }
-        console.log('  [OK] Keycloak is ready');
-    } catch (error) {
-        console.error('  [FAIL] Keycloak is not available:', error.message);
-        console.error('\n  Make sure the docker stack is running:');
+    const ready = await ensureInfrastructure();
+
+    if (!ready) {
+        console.error('\n  Make sure Docker is installed and running.');
+        console.error('  You can also start the stack manually:');
         console.error('    npm run docker:e2e:up');
-        console.error('    # or: cd tests/e2e && docker compose up -d\n');
+        console.error('    # or: cd tests/e2e && docker compose --profile nodered up -d\n');
         process.exit(1);
     }
 
-    // Check API Server
-    try {
-        const response = await httpRequest({
-            url: `${CONFIG.apiBaseUrl}/api/v1/public/health`,
-            timeout: 5000
-        });
-        if (response.status !== 200) {
-            throw new Error(`API server returned HTTP ${response.status}`);
-        }
-        console.log('  [OK] API Server is ready');
-    } catch (error) {
-        console.error('  [FAIL] API Server is not available:', error.message);
-        console.error('\n  Make sure the docker stack is running:');
-        console.error('    npm run docker:e2e:up');
-        console.error('    # or: cd tests/e2e && docker compose up -d\n');
-        process.exit(1);
-    }
-
-    console.log('\nAll services are ready.\n');
+    console.log('All services are ready.\n');
 }
 
 // ============================================================================
@@ -676,49 +831,67 @@ function printSummary() {
     console.log('='.repeat(60));
 }
 
+/**
+ * Cleanup function for Docker teardown
+ */
+function cleanup() {
+    if (dockerStartedByUs && !CONFIG.skipDockerTeardown) {
+        stopDockerStack();
+    } else if (dockerStartedByUs && CONFIG.skipDockerTeardown) {
+        console.log('\nDocker teardown skipped (SKIP_DOCKER_TEARDOWN=1)');
+        console.log('To stop the stack manually: npm run docker:e2e:down\n');
+    }
+}
+
 async function runTests() {
     console.log('='.repeat(60));
     console.log('OAuth2 Integration Tests for Node-RED API Gateway');
     console.log('='.repeat(60) + '\n');
 
-    // Pre-flight checks
-    checkFlowsConfiguration();
+    try {
+        // Pre-flight checks
+        checkFlowsConfiguration();
 
-    // Check services are ready
-    await checkServicesReady();
+        // Check services are ready (starts Docker if needed)
+        await checkServicesReady();
 
-    console.log('Running tests...\n');
-    console.log('-'.repeat(60) + '\n');
+        console.log('Running tests...\n');
+        console.log('-'.repeat(60) + '\n');
 
-    // Public endpoint tests
-    await testPublicEndpoint();
+        // Public endpoint tests
+        await testPublicEndpoint();
 
-    // Authentication tests
-    await testProtectedEndpointNoAuth();
-    await testProtectedEndpointInvalidToken();
+        // Authentication tests
+        await testProtectedEndpointNoAuth();
+        await testProtectedEndpointInvalidToken();
 
-    // Authorization tests - user role
-    await testUserEndpointWithValidToken();
-    await testUserCannotAccessAdminEndpoint();
+        // Authorization tests - user role
+        await testUserEndpointWithValidToken();
+        await testUserCannotAccessAdminEndpoint();
 
-    // Authorization tests - admin role
-    await testAdminCanAccessAdminEndpoint();
-    await testAdminCanAccessUserEndpoint();
+        // Authorization tests - admin role
+        await testAdminCanAccessAdminEndpoint();
+        await testAdminCanAccessUserEndpoint();
 
-    // Composite scope tests (admin AND user:write)
-    await testCreateUserRequiresBothScopes();
-    await testEditorCannotCreateUsers();
+        // Composite scope tests (admin AND user:write)
+        await testCreateUserRequiresBothScopes();
+        await testEditorCannotCreateUsers();
 
-    // Validation tests
-    await testQueryParameterValidation();
-    await testRequestBodyValidation();
+        // Validation tests
+        await testQueryParameterValidation();
+        await testRequestBodyValidation();
 
-    // Documentation tests
-    await testOpenAPIEndpoint();
-    await testSwaggerUIEndpoint();
+        // Documentation tests
+        await testOpenAPIEndpoint();
+        await testSwaggerUIEndpoint();
 
-    // Print summary
-    printSummary();
+        // Print summary
+        printSummary();
+
+    } finally {
+        // Cleanup Docker if we started it
+        cleanup();
+    }
 
     // Exit with appropriate code
     if (results.failed === 0) {
@@ -733,5 +906,6 @@ async function runTests() {
 // Run tests
 runTests().catch(error => {
     console.error('Unhandled error:', error);
+    cleanup();
     process.exit(1);
 });

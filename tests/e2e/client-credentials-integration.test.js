@@ -15,19 +15,14 @@
  *
  *    cp examples/oauth2-authenticated-api.json tests/e2e/flows.json
  *
- * 2. Start the Docker stack (Keycloak, OPA, Node-RED):
- *
- *    npm run docker:e2e:up
- *    # or: cd tests/e2e && docker compose up -d
- *
- * 3. Wait for all services to be healthy (about 30-60 seconds):
- *
- *    docker compose -f tests/e2e/docker-compose.yml ps
- *
- * 4. Run the integration tests:
+ * 2. Run the integration tests (Docker stack starts automatically if needed):
  *
  *    npm run test:client-credentials
  *    # or: node tests/e2e/client-credentials-integration.test.js
+ *
+ * Environment variables:
+ *    SKIP_DOCKER_SETUP=1    - Don't start Docker (use existing stack)
+ *    SKIP_DOCKER_TEARDOWN=1 - Keep Docker running after tests
  *
  * ============================================================================
  * WHAT THIS TESTS
@@ -63,6 +58,9 @@
 
 const http = require('http');
 const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 
 // Configuration
 const CONFIG = {
@@ -86,8 +84,18 @@ const CONFIG = {
             expectedRoles: ['admin'],
             expectedClientRoles: ['api:read', 'api:write', 'api:delete', 'api:admin']
         }
-    }
+    },
+    // Docker configuration
+    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    dockerComposeProfile: 'nodered',
+    startupTimeout: 120000,  // 2 minutes max for services to start
+    startupPollInterval: 3000,  // Check every 3 seconds
+    skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',
+    skipDockerTeardown: process.env.SKIP_DOCKER_TEARDOWN === '1'
 };
+
+// Track if we started Docker (so we know whether to tear down)
+let dockerStartedByUs = false;
 
 // Test results tracking
 const results = {
@@ -233,45 +241,210 @@ function assert(condition, message) {
 }
 
 // ============================================================================
-// Service Availability Checks
+// Docker Infrastructure
 // ============================================================================
 
-async function checkKeycloakAvailable() {
-    console.log('Checking Keycloak availability...');
+/**
+ * Check if a service is available
+ */
+async function isServiceAvailable(url, timeout = 3000) {
     try {
-        const response = await httpRequest({
-            url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
-            timeout: 5000
-        });
-        if (response.status === 200) {
-            console.log('  [OK] Keycloak is available\n');
-            return true;
-        }
-        console.log(`  [FAIL] Keycloak returned status ${response.status}\n`);
-        return false;
-    } catch (error) {
-        console.log(`  [FAIL] Keycloak unavailable: ${error.message}\n`);
+        const response = await httpRequest({ url, timeout });
+        return response.status === 200;
+    } catch {
         return false;
     }
 }
 
-async function checkApiServerAvailable() {
-    console.log('Checking API Server availability...');
+/**
+ * Copy flows.json to .nodered directory for Docker mount
+ */
+function copyFlowsToNodeRed() {
+    const sourcePath = path.join(__dirname, 'flows.json');
+    const targetPath = path.join(__dirname, '.nodered', 'flows.json');
+
     try {
-        const response = await httpRequest({
-            url: `${CONFIG.apiBaseUrl}/api/v1/public/health`,
-            timeout: 5000
-        });
-        if (response.status === 200) {
-            console.log('  [OK] API Server is available\n');
-            return true;
+        if (!fs.existsSync(sourcePath)) {
+            console.error(`  [FAIL] Source flows.json not found: ${sourcePath}`);
+            return false;
         }
-        console.log(`  [FAIL] API Server returned status ${response.status}\n`);
-        return false;
+
+        fs.copyFileSync(sourcePath, targetPath);
+        console.log('  [OK] Copied flows.json to .nodered/');
+        return true;
     } catch (error) {
-        console.log(`  [FAIL] API Server unavailable: ${error.message}\n`);
+        console.error(`  [FAIL] Failed to copy flows.json: ${error.message}`);
         return false;
     }
+}
+
+/**
+ * Start Docker stack
+ */
+function startDockerStack() {
+    console.log('  Starting Docker stack...');
+
+    // Copy flows to Node-RED data directory before starting
+    if (!copyFlowsToNodeRed()) {
+        return false;
+    }
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} up -d`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack started');
+        return true;
+    } catch (error) {
+        console.error(`  [FAIL] Failed to start Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Stop Docker stack
+ */
+function stopDockerStack() {
+    console.log('\nStopping Docker stack...');
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack stopped');
+        return true;
+    } catch (error) {
+        console.error(`  [WARN] Failed to stop Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Wait for all services to be ready
+ */
+async function waitForServices() {
+    console.log('  Waiting for services to be ready...');
+
+    const startTime = Date.now();
+    let keycloakReady = false;
+    let apiServerReady = false;
+
+    while (Date.now() - startTime < CONFIG.startupTimeout) {
+        // Check Keycloak
+        if (!keycloakReady) {
+            try {
+                const response = await httpRequest({
+                    url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    keycloakReady = true;
+                    console.log('  [OK] Keycloak is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        // Check API Server
+        if (!apiServerReady) {
+            try {
+                const response = await httpRequest({
+                    url: `${CONFIG.apiBaseUrl}/api/v1/public/health`,
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    apiServerReady = true;
+                    console.log('  [OK] API Server is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        if (keycloakReady && apiServerReady) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            console.log(`  [OK] All services ready (took ${elapsed}s)\n`);
+            return true;
+        }
+
+        // Progress indicator
+        process.stdout.write('.');
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, CONFIG.startupPollInterval));
+    }
+
+    console.log('');
+    console.error(`  [FAIL] Services did not become ready within ${CONFIG.startupTimeout / 1000}s`);
+    console.error(`    Keycloak: ${keycloakReady ? 'ready' : 'not ready'}`);
+    console.error(`    API Server: ${apiServerReady ? 'ready' : 'not ready'}`);
+    return false;
+}
+
+/**
+ * Ensure Docker infrastructure is running
+ */
+async function ensureInfrastructure() {
+    // Check if services are already running
+    const keycloakAvailable = await isServiceAvailable(
+        `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`
+    );
+    const apiAvailable = await isServiceAvailable(`${CONFIG.apiBaseUrl}/api/v1/public/health`);
+
+    if (keycloakAvailable && apiAvailable) {
+        console.log('  [OK] Services are already running\n');
+        return true;
+    }
+
+    if (CONFIG.skipDockerSetup) {
+        console.error('  [FAIL] Services not running and SKIP_DOCKER_SETUP=1\n');
+        return false;
+    }
+
+    console.log('  Services not running, starting Docker stack...\n');
+
+    if (!startDockerStack()) {
+        return false;
+    }
+
+    dockerStartedByUs = true;
+
+    return await waitForServices();
+}
+
+/**
+ * Cleanup function for Docker teardown
+ */
+function cleanup() {
+    if (dockerStartedByUs && !CONFIG.skipDockerTeardown) {
+        stopDockerStack();
+    } else if (dockerStartedByUs && CONFIG.skipDockerTeardown) {
+        console.log('\nDocker teardown skipped (SKIP_DOCKER_TEARDOWN=1)');
+        console.log('To stop the stack manually: npm run docker:e2e:down\n');
+    }
+}
+
+// ============================================================================
+// Service Availability Checks
+// ============================================================================
+
+async function checkServicesReady() {
+    console.log('Checking services availability...\n');
+
+    const ready = await ensureInfrastructure();
+
+    if (!ready) {
+        console.error('\n  Make sure Docker is installed and running.');
+        console.error('  You can also start the stack manually:');
+        console.error('    npm run docker:e2e:up');
+        console.error('    # or: cd tests/e2e && docker compose --profile nodered up -d\n');
+        process.exit(1);
+    }
+
+    console.log('All services are ready.\n');
 }
 
 // ============================================================================
@@ -597,71 +770,69 @@ async function runTests() {
     console.log('='.repeat(70));
     console.log();
 
-    // Check service availability
-    const keycloakAvailable = await checkKeycloakAvailable();
-    const apiAvailable = await checkApiServerAvailable();
+    try {
+        // Check service availability (starts Docker if needed)
+        await checkServicesReady();
 
-    if (!keycloakAvailable || !apiAvailable) {
-        console.log('ERROR: Required services not available. Ensure Docker stack is running:');
-        console.log('  npm run docker:e2e:up');
+        console.log('-'.repeat(70));
+        console.log('TOKEN ACQUISITION TESTS');
+        console.log('-'.repeat(70));
         console.log();
-        process.exit(1);
-    }
 
-    console.log('-'.repeat(70));
-    console.log('TOKEN ACQUISITION TESTS');
-    console.log('-'.repeat(70));
-    console.log();
+        await testClientCredentialsTokenAcquisition();
+        await testTokenContainsServiceAccountClaims();
+        await testTokenContainsRoles();
+        await testServiceAccountScopes();
 
-    await testClientCredentialsTokenAcquisition();
-    await testTokenContainsServiceAccountClaims();
-    await testTokenContainsRoles();
-    await testServiceAccountScopes();
-
-    console.log('-'.repeat(70));
-    console.log('INVALID CREDENTIALS TESTS');
-    console.log('-'.repeat(70));
-    console.log();
-
-    await testInvalidClientIdRejected();
-    await testInvalidClientSecretRejected();
-    await testEmptyCredentialsRejected();
-
-    console.log('-'.repeat(70));
-    console.log('PROTECTED ENDPOINT ACCESS TESTS');
-    console.log('-'.repeat(70));
-    console.log();
-
-    await testServiceAccountAccessUserEndpoint();
-    await testUserServiceCannotAccessAdminEndpoint();
-    await testAdminServiceCanAccessAdminEndpoint();
-    await testAdminServiceCanAccessUserEndpoint();
-
-    console.log('-'.repeat(70));
-    console.log('TOKEN EXPIRATION TESTS');
-    console.log('-'.repeat(70));
-    console.log();
-
-    await testTokenExpirationIsReasonable();
-    await testExpiredTokenRejected();
-
-    // Print summary
-    console.log('='.repeat(70));
-    console.log('TEST SUMMARY');
-    console.log('='.repeat(70));
-    console.log();
-    console.log(`  Passed:  ${results.passed}`);
-    console.log(`  Failed:  ${results.failed}`);
-    console.log(`  Skipped: ${results.skipped}`);
-    console.log(`  Total:   ${results.tests.length}`);
-    console.log();
-
-    if (results.failed > 0) {
-        console.log('FAILED TESTS:');
-        results.tests
-            .filter(t => !t.passed && !t.skipped)
-            .forEach(t => console.log(`  - ${t.name}: ${t.details}`));
+        console.log('-'.repeat(70));
+        console.log('INVALID CREDENTIALS TESTS');
+        console.log('-'.repeat(70));
         console.log();
+
+        await testInvalidClientIdRejected();
+        await testInvalidClientSecretRejected();
+        await testEmptyCredentialsRejected();
+
+        console.log('-'.repeat(70));
+        console.log('PROTECTED ENDPOINT ACCESS TESTS');
+        console.log('-'.repeat(70));
+        console.log();
+
+        await testServiceAccountAccessUserEndpoint();
+        await testUserServiceCannotAccessAdminEndpoint();
+        await testAdminServiceCanAccessAdminEndpoint();
+        await testAdminServiceCanAccessUserEndpoint();
+
+        console.log('-'.repeat(70));
+        console.log('TOKEN EXPIRATION TESTS');
+        console.log('-'.repeat(70));
+        console.log();
+
+        await testTokenExpirationIsReasonable();
+        await testExpiredTokenRejected();
+
+        // Print summary
+        console.log('='.repeat(70));
+        console.log('TEST SUMMARY');
+        console.log('='.repeat(70));
+        console.log();
+        console.log(`  Passed:  ${results.passed}`);
+        console.log(`  Failed:  ${results.failed}`);
+        console.log(`  Skipped: ${results.skipped}`);
+        console.log(`  Total:   ${results.tests.length}`);
+        console.log();
+
+        if (results.failed > 0) {
+            console.log('FAILED TESTS:');
+            results.tests
+                .filter(t => !t.passed && !t.skipped)
+                .forEach(t => console.log(`  - ${t.name}: ${t.details}`));
+            console.log();
+        }
+
+    } finally {
+        // Cleanup Docker if we started it
+        cleanup();
     }
 
     process.exit(results.failed > 0 ? 1 : 0);
@@ -670,5 +841,6 @@ async function runTests() {
 // Run tests
 runTests().catch(error => {
     console.error('Test runner error:', error);
+    cleanup();
     process.exit(1);
 });

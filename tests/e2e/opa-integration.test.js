@@ -10,22 +10,19 @@
  * SETUP INSTRUCTIONS
  * ============================================================================
  *
- * 1. Copy the OPA example flow to the e2e test directory:
- *
- *    cp examples/opa-protected-api.json tests/e2e/flows.json
- *
- * 2. Start the Docker stack (Keycloak, OPA, Node-RED):
- *
- *    npm run docker:e2e:up
- *    # or: cd tests/e2e && docker compose --profile nodered up -d
- *
- * 3. Wait for all services to be healthy (about 30-60 seconds):
- *
- *    docker compose -f tests/e2e/docker-compose.yml ps
- *
- * 4. Run the OPA integration tests:
+ * Run the OPA integration tests (Docker stack starts automatically if needed):
  *
  *    npm run test:opa
+ *
+ * The test will automatically:
+ * - Copy examples/opa-protected-api.json to tests/e2e/flows.json if needed
+ * - Start the Docker stack (Keycloak, OPA, Node-RED)
+ * - Run all tests
+ * - Stop the Docker stack
+ *
+ * Environment variables:
+ *    SKIP_DOCKER_SETUP=1    - Don't start Docker (use existing stack)
+ *    SKIP_DOCKER_TEARDOWN=1 - Keep Docker running after tests
  *
  * ============================================================================
  * WHAT THIS TESTS
@@ -65,6 +62,7 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Configuration
 const CONFIG = {
@@ -78,8 +76,22 @@ const CONFIG = {
         testuser: { password: 'testpassword', roles: ['user'] },
         editor: { password: 'editorpassword', roles: ['user', 'user:write'] },
         admin: { password: 'adminpassword', roles: ['admin'] }
-    }
+    },
+    // Docker configuration
+    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
+    dockerComposeProfile: 'nodered',
+    startupTimeout: 120000,  // 2 minutes max for services to start
+    startupPollInterval: 3000,  // Check every 3 seconds
+    skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',
+    skipDockerTeardown: process.env.SKIP_DOCKER_TEARDOWN === '1',
+    // Flow configuration - OPA tests require the OPA example flow
+    exampleFlowPath: path.join(__dirname, '..', '..', 'examples', 'opa-protected-api.json'),
+    flowsPath: path.join(__dirname, 'flows.json'),
+    nodeRedFlowsPath: path.join(__dirname, '.nodered', 'flows.json')
 };
+
+// Track if we started Docker (so we know whether to tear down)
+let dockerStartedByUs = false;
 
 // Test results tracking
 const results = {
@@ -208,135 +220,261 @@ function assert(condition, message) {
 }
 
 // ============================================================================
-// Pre-flight Checks
+// Docker Infrastructure
 // ============================================================================
 
 /**
- * Check that flows.json exists and matches the expected OPA example flow
+ * Check if a service is available
  */
-function checkFlowsConfiguration() {
-    console.log('Checking test configuration...\n');
+async function isServiceAvailable(url, timeout = 3000) {
+    try {
+        const response = await httpRequest({ url, timeout });
+        return response.status === 200;
+    } catch {
+        return false;
+    }
+}
 
-    const projectRoot = process.cwd();
-    const flowsPath = path.join(projectRoot, 'tests/e2e/flows.json');
-    const examplePath = path.join(projectRoot, 'examples/opa-protected-api.json');
+/**
+ * Copy OPA example flow to flows.json and .nodered/flows.json
+ */
+function setupFlows() {
+    console.log('Setting up OPA test flows...\n');
 
-    if (!fs.existsSync(examplePath)) {
+    // Check if example exists
+    if (!fs.existsSync(CONFIG.exampleFlowPath)) {
         console.error('  [FAIL] Example flow not found: examples/opa-protected-api.json\n');
         console.error('  The OPA example flow is required for these tests.');
-        process.exit(1);
-    }
-
-    if (!fs.existsSync(flowsPath)) {
-        console.error('  [FAIL] tests/e2e/flows.json not found\n');
-        console.error('  Please copy the OPA example flow:');
-        console.error('    cp examples/opa-protected-api.json tests/e2e/flows.json\n');
-        process.exit(1);
+        return false;
     }
 
     try {
-        const flowsContent = fs.readFileSync(flowsPath, 'utf8');
-        const exampleContent = fs.readFileSync(examplePath, 'utf8');
-
-        const flows = JSON.parse(flowsContent);
+        const exampleContent = fs.readFileSync(CONFIG.exampleFlowPath, 'utf8');
         const example = JSON.parse(exampleContent);
 
-        const flowsNormalized = JSON.stringify(flows);
-        const exampleNormalized = JSON.stringify(example);
-
-        if (flowsNormalized !== exampleNormalized) {
-            console.error('  [FAIL] tests/e2e/flows.json does not match the OPA example flow\n');
-            console.error('  The OPA integration tests require the exact OPA example flow.');
-            console.error('  Please update flows.json:');
-            console.error('    cp examples/opa-protected-api.json tests/e2e/flows.json\n');
-            console.error('  Then restart the Docker stack to reload the flow:');
-            console.error('    npm run docker:e2e:down && npm run docker:e2e:up\n');
-            process.exit(1);
+        // Check if flows.json needs updating
+        let needsUpdate = true;
+        if (fs.existsSync(CONFIG.flowsPath)) {
+            const flowsContent = fs.readFileSync(CONFIG.flowsPath, 'utf8');
+            const flows = JSON.parse(flowsContent);
+            if (JSON.stringify(flows) === JSON.stringify(example)) {
+                needsUpdate = false;
+            }
         }
 
-        console.log('  [OK] flows.json matches opa-protected-api.json example');
+        if (needsUpdate) {
+            fs.writeFileSync(CONFIG.flowsPath, exampleContent);
+            console.log('  [OK] Copied opa-protected-api.json to flows.json');
+        } else {
+            console.log('  [OK] flows.json already matches OPA example');
+        }
 
-        const apiConfigNode = flows.find(n => n.type === 'api-config');
+        // Always copy to .nodered/flows.json for Docker
+        fs.writeFileSync(CONFIG.nodeRedFlowsPath, exampleContent);
+        console.log('  [OK] Copied flows to .nodered/flows.json');
+
+        // Show configuration details
+        const apiConfigNode = example.find(n => n.type === 'api-config');
         if (apiConfigNode && apiConfigNode.opaEnabled) {
             console.log(`       OPA: ${apiConfigNode.opaUrl}${apiConfigNode.opaPolicyPath}`);
         }
 
-        const endpoints = flows.filter(n => n.type === 'api-endpoint');
+        const endpoints = example.filter(n => n.type === 'api-endpoint');
         console.log(`  [OK] Found ${endpoints.length} API endpoint(s)`);
+        console.log('');
 
+        return true;
     } catch (error) {
-        if (error instanceof SyntaxError) {
-            console.error('  [FAIL] Invalid JSON:', error.message);
-        } else {
-            console.error('  [FAIL] Error reading files:', error.message);
+        console.error(`  [FAIL] Error setting up flows: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Start Docker stack
+ */
+function startDockerStack() {
+    console.log('  Starting Docker stack...');
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} up -d`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack started');
+        return true;
+    } catch (error) {
+        console.error(`  [FAIL] Failed to start Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Stop Docker stack
+ */
+function stopDockerStack() {
+    console.log('\nStopping Docker stack...');
+
+    try {
+        execSync(
+            `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`,
+            { stdio: 'inherit', cwd: __dirname }
+        );
+        console.log('  [OK] Docker stack stopped');
+        return true;
+    } catch (error) {
+        console.error(`  [WARN] Failed to stop Docker stack: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Wait for all services to be ready
+ */
+async function waitForServices() {
+    console.log('  Waiting for services to be ready...');
+
+    const startTime = Date.now();
+    let keycloakReady = false;
+    let opaReady = false;
+    let apiServerReady = false;
+
+    while (Date.now() - startTime < CONFIG.startupTimeout) {
+        // Check Keycloak
+        if (!keycloakReady) {
+            try {
+                const response = await httpRequest({
+                    url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    keycloakReady = true;
+                    console.log('  [OK] Keycloak is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
         }
-        process.exit(1);
+
+        // Check OPA
+        if (!opaReady) {
+            try {
+                const response = await httpRequest({
+                    url: 'http://localhost:8181/health',
+                    timeout: 3000
+                });
+                if (response.status === 200) {
+                    opaReady = true;
+                    console.log('  [OK] OPA is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        // Check API Server
+        if (!apiServerReady) {
+            try {
+                // OPA flow uses /api/v1/documents endpoint
+                const response = await httpRequest({
+                    url: `${CONFIG.apiBaseUrl}/api/v1/documents`,
+                    timeout: 3000
+                });
+                // Expect 401 without token - that's fine, API is responding
+                if (response.status === 401 || response.status === 200) {
+                    apiServerReady = true;
+                    console.log('  [OK] API Server is ready');
+                }
+            } catch {
+                // Not ready yet
+            }
+        }
+
+        if (keycloakReady && opaReady && apiServerReady) {
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
+            console.log(`  [OK] All services ready (took ${elapsed}s)\n`);
+            return true;
+        }
+
+        // Progress indicator
+        process.stdout.write('.');
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, CONFIG.startupPollInterval));
     }
 
     console.log('');
+    console.error(`  [FAIL] Services did not become ready within ${CONFIG.startupTimeout / 1000}s`);
+    console.error(`    Keycloak: ${keycloakReady ? 'ready' : 'not ready'}`);
+    console.error(`    OPA: ${opaReady ? 'ready' : 'not ready'}`);
+    console.error(`    API Server: ${apiServerReady ? 'ready' : 'not ready'}`);
+    return false;
+}
+
+/**
+ * Ensure Docker infrastructure is running
+ */
+async function ensureInfrastructure() {
+    // Check if services are already running
+    const keycloakAvailable = await isServiceAvailable(
+        `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`
+    );
+    const opaAvailable = await isServiceAvailable('http://localhost:8181/health');
+
+    if (keycloakAvailable && opaAvailable) {
+        console.log('  [OK] Services are already running\n');
+        return true;
+    }
+
+    if (CONFIG.skipDockerSetup) {
+        console.error('  [FAIL] Services not running and SKIP_DOCKER_SETUP=1\n');
+        return false;
+    }
+
+    console.log('  Services not running, starting Docker stack...\n');
+
+    if (!startDockerStack()) {
+        return false;
+    }
+
+    dockerStartedByUs = true;
+
+    return await waitForServices();
+}
+
+/**
+ * Cleanup function for Docker teardown
+ */
+function cleanup() {
+    if (dockerStartedByUs && !CONFIG.skipDockerTeardown) {
+        stopDockerStack();
+    } else if (dockerStartedByUs && CONFIG.skipDockerTeardown) {
+        console.log('\nDocker teardown skipped (SKIP_DOCKER_TEARDOWN=1)');
+        console.log('To stop the stack manually: npm run docker:e2e:down\n');
+    }
 }
 
 // ============================================================================
-// Service Health Checks
+// Pre-flight Checks
 // ============================================================================
 
+/**
+ * Check services are ready (starts Docker if needed)
+ */
 async function checkServicesReady() {
     console.log('Checking services availability...\n');
 
-    // Check Keycloak
-    try {
-        const response = await httpRequest({
-            url: `${CONFIG.keycloakUrl}/realms/${CONFIG.keycloakRealm}/.well-known/openid-configuration`,
-            timeout: 5000
-        });
-        if (response.status !== 200) {
-            throw new Error(`Keycloak returned HTTP ${response.status}`);
-        }
-        console.log('  [OK] Keycloak is ready');
-    } catch (error) {
-        console.error('  [FAIL] Keycloak is not available:', error.message);
-        console.error('\n  Make sure the docker stack is running:');
+    const ready = await ensureInfrastructure();
+
+    if (!ready) {
+        console.error('\n  Make sure Docker is installed and running.');
+        console.error('  You can also start the stack manually:');
         console.error('    npm run docker:e2e:up');
         console.error('    # or: cd tests/e2e && docker compose --profile nodered up -d\n');
         process.exit(1);
     }
 
-    // Check OPA
-    try {
-        const response = await httpRequest({
-            url: 'http://localhost:8181/health',
-            timeout: 5000
-        });
-        if (response.status !== 200) {
-            throw new Error(`OPA returned HTTP ${response.status}`);
-        }
-        console.log('  [OK] OPA is ready');
-    } catch (error) {
-        console.error('  [FAIL] OPA is not available:', error.message);
-        console.error('\n  Make sure the docker stack is running:');
-        console.error('    npm run docker:e2e:up\n');
-        process.exit(1);
-    }
-
-    // Check API Server
-    try {
-        const response = await httpRequest({
-            url: `${CONFIG.apiBaseUrl}/api/v1/documents`,
-            timeout: 5000
-        });
-        // Expect 401 without token - that's fine, API is responding
-        if (response.status !== 401 && response.status !== 200) {
-            throw new Error(`API server returned HTTP ${response.status}`);
-        }
-        console.log('  [OK] API Server is ready');
-    } catch (error) {
-        console.error('  [FAIL] API Server is not available:', error.message);
-        console.error('\n  Make sure the docker stack is running:');
-        console.error('    npm run docker:e2e:up\n');
-        process.exit(1);
-    }
-
-    console.log('\nAll services are ready.\n');
+    console.log('All services are ready.\n');
 }
 
 // ============================================================================
@@ -697,40 +835,48 @@ async function runTests() {
     console.log('OPA Integration Tests for Node-RED API Gateway');
     console.log('='.repeat(60) + '\n');
 
-    // Pre-flight checks
-    checkFlowsConfiguration();
+    try {
+        // Setup flows (copies OPA example flow)
+        if (!setupFlows()) {
+            process.exit(1);
+        }
 
-    // Check services are ready
-    await checkServicesReady();
+        // Check services are ready (starts Docker if needed)
+        await checkServicesReady();
 
-    console.log('Running tests...\n');
-    console.log('-'.repeat(60) + '\n');
+        console.log('Running tests...\n');
+        console.log('-'.repeat(60) + '\n');
 
-    // Document listing tests
-    await testListDocuments();
-    await testAdminSeesAllDocuments();
+        // Document listing tests
+        await testListDocuments();
+        await testAdminSeesAllDocuments();
 
-    // Document access tests - policy based
-    await testGetPublicDocument();
-    await testGetConfidentialDocumentDenied();
-    await testAdminCanAccessConfidential();
+        // Document access tests - policy based
+        await testGetPublicDocument();
+        await testGetConfidentialDocumentDenied();
+        await testAdminCanAccessConfidential();
 
-    // Document creation tests - clearance based
-    await testCreateInternalDocument();
-    await testCreateRestrictedDocumentDenied();
-    await testAdminCanCreateRestricted();
+        // Document creation tests - clearance based
+        await testCreateInternalDocument();
+        await testCreateRestrictedDocumentDenied();
+        await testAdminCanCreateRestricted();
 
-    // Document deletion tests - admin only
-    await testDeleteDocumentDenied();
-    await testAdminCanDelete();
+        // Document deletion tests - admin only
+        await testDeleteDocumentDenied();
+        await testAdminCanDelete();
 
-    // Misc tests
-    await testGetNonExistentDocument();
-    await testFilterByClassification();
-    await testOpenAPIEndpoint();
+        // Misc tests
+        await testGetNonExistentDocument();
+        await testFilterByClassification();
+        await testOpenAPIEndpoint();
 
-    // Print summary
-    printSummary();
+        // Print summary
+        printSummary();
+
+    } finally {
+        // Cleanup Docker if we started it
+        cleanup();
+    }
 
     // Exit with appropriate code
     if (results.failed === 0) {
@@ -745,5 +891,6 @@ async function runTests() {
 // Run tests
 runTests().catch(error => {
     console.error('\nTest runner error:', error.message);
+    cleanup();
     process.exit(1);
 });

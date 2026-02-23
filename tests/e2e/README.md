@@ -23,6 +23,7 @@ This stack uses a **shared container network namespace** architecture:
 ```
 
 **Benefits:**
+
 - Services communicate via `localhost:PORT` (no Docker networking complexity)
 - Complete isolation from host (ports only exposed from base container)
 - Mirrors single-machine deployment for realistic testing
@@ -64,12 +65,12 @@ docker compose --profile sqlserver --profile nodered up -d
 
 ## Service URLs
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| Keycloak Admin | http://localhost:8080 | admin / admin |
-| OPA | http://localhost:8181 | - |
-| SQL Server | localhost:1433 | sa / DevPassword123! |
-| Node-RED | http://localhost:1880 | - |
+| Service        | URL                   | Credentials          |
+| -------------- | --------------------- | -------------------- |
+| Keycloak Admin | http://localhost:8080 | admin / admin        |
+| OPA            | http://localhost:8181 | -                    |
+| SQL Server     | localhost:1433        | sa / DevPassword123! |
+| Node-RED       | http://localhost:1880 | -                    |
 
 ## Keycloak Configuration
 
@@ -78,6 +79,7 @@ docker compose --profile sqlserver --profile nodered up -d
 The stack auto-imports a realm with:
 
 **Clients:**
+
 - `api-gateway-client` - OAuth2 client for authentication
   - Client Secret: `api-gateway-secret`
   - Direct Access Grants enabled (for testing)
@@ -85,11 +87,12 @@ The stack auto-imports a realm with:
 - `api-gateway-bearer` - Bearer-only client for API validation
 
 **Users:**
-| Username | Password | Roles | Permissions |
-|----------|----------|-------|-------------|
-| testuser | testpassword | user | api:read |
-| editor | editorpassword | editor | api:read, api:write |
-| admin | adminpassword | admin | api:read, api:write, api:delete, api:admin |
+
+| Username | Password       | Roles  | Permissions                                |
+| -------- | -------------- | ------ | ------------------------------------------ |
+| testuser | testpassword   | user   | api:read                                   |
+| editor   | editorpassword | editor | api:read, api:write                        |
+| admin    | adminpassword  | admin  | api:read, api:write, api:delete, api:admin |
 
 ### Get Access Token
 
@@ -171,13 +174,13 @@ curl -X POST http://localhost:8181/v1/data/authz/allow \
 
 ### Policy Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Health check |
-| `GET /v1/policies` | List loaded policies |
-| `POST /v1/data/authz/allow` | Check authorization |
-| `POST /v1/data/authz/decision_reason` | Get denial reason |
-| `POST /v1/data/authz/user_info` | Extract user info from token |
+| Endpoint                                | Description                  |
+| --------------------------------------- | ---------------------------- |
+| `GET /health`                         | Health check                 |
+| `GET /v1/policies`                    | List loaded policies         |
+| `POST /v1/data/authz/allow`           | Check authorization          |
+| `POST /v1/data/authz/decision_reason` | Get denial reason            |
+| `POST /v1/data/authz/user_info`       | Extract user info from token |
 
 ## SQL Server Setup (Optional)
 
@@ -305,11 +308,13 @@ tests/e2e/
 ### Keycloak Not Starting
 
 Check logs:
+
 ```bash
 docker compose logs keycloak
 ```
 
 Common issues:
+
 - Realm JSON syntax error - validate with `jq . data/keycloak/import/*.json`
 - Port 8080 in use - check with `lsof -i :8080`
 
@@ -351,13 +356,13 @@ docker inspect api-gateway-opa | grep -A5 NetworkMode
 
 ### Available Test Scripts
 
-| Script | Description |
-|--------|-------------|
-| `npm run test:e2e` | Run basic E2E tests (node registration, functionality) |
-| `npm run test:integration` | OAuth2 password grant flow tests |
-| `npm run test:client-credentials` | OAuth2 client credentials flow tests |
-| `npm run test:opa` | OPA policy integration tests |
-| `npm run test:openapi-tls` | TLS/HTTPS endpoint tests |
+| Script                              | Description                                            |
+| ----------------------------------- | ------------------------------------------------------ |
+| `npm run test:e2e`                | Run basic E2E tests (node registration, functionality) |
+| `npm run test:integration`        | OAuth2 password grant flow tests                       |
+| `npm run test:client-credentials` | OAuth2 client credentials flow tests                   |
+| `npm run test:opa`                | OPA policy integration tests                           |
+| `npm run test:openapi-tls`        | TLS/HTTPS endpoint tests                               |
 
 ### OAuth2 Client Credentials Flow Tests
 
@@ -365,10 +370,10 @@ Tests for machine-to-machine authentication using the OAuth2 Client Credentials 
 
 **Service Accounts:**
 
-| Client ID | Secret | Roles |
-|-----------|--------|-------|
-| my-api-client | my-client-secret | user, api:read, api:write |
-| my-admin-service | admin-service-secret | admin, api:admin |
+| Client ID        | Secret               | Roles                     |
+| ---------------- | -------------------- | ------------------------- |
+| my-api-client    | my-client-secret     | user, api:read, api:write |
+| my-admin-service | admin-service-secret | admin, api:admin          |
 
 **Run tests:**
 
@@ -384,6 +389,7 @@ npm run test:client-credentials
 ```
 
 **What's tested:**
+
 - Token acquisition via client credentials grant
 - Service account claims in JWT tokens
 - Role-based access control for service accounts
