@@ -603,17 +603,36 @@ module.exports = function(RED) {
                     break;
 
                 case 'create':
-                    // Insert body fields
-                    for (const [key, value] of Object.entries(body)) {
-                        params[key] = value;
+                    // Insert body fields - build actual INSERT SQL from template
+                    {
+                        const columns = Object.keys(body);
+                        const placeholders = columns.map(c => `@${c}`);
+                        // Replace @columns and @values placeholders with actual values
+                        sql = sql.replace('@columns', columns.join(', '));
+                        sql = sql.replace('@values', placeholders.join(', '));
+                        // Add OUTPUT clause to return inserted row (SQL Server)
+                        sql = sql.replace(') VALUES', ') OUTPUT INSERTED.* VALUES');
+                        for (const [key, value] of Object.entries(body)) {
+                            params[key] = value;
+                        }
                     }
                     break;
 
                 case 'update':
-                    // Update by primary key with body fields
-                    if (urlParams.id) params.id = urlParams.id;
-                    for (const [key, value] of Object.entries(body)) {
-                        params[key] = value;
+                    // Update by primary key with body fields - build actual UPDATE SQL
+                    {
+                        if (urlParams.id) params.id = urlParams.id;
+                        const assignments = Object.keys(body).map(c => `${c} = @${c}`);
+                        // Replace @assignments placeholder with actual SET clause
+                        sql = sql.replace('@assignments', assignments.join(', '));
+                        // Add OUTPUT clause to return updated row (SQL Server)
+                        const whereIndex = sql.indexOf('WHERE');
+                        if (whereIndex > -1) {
+                            sql = sql.slice(0, whereIndex) + 'OUTPUT INSERTED.* ' + sql.slice(whereIndex);
+                        }
+                        for (const [key, value] of Object.entries(body)) {
+                            params[key] = value;
+                        }
                     }
                     break;
 

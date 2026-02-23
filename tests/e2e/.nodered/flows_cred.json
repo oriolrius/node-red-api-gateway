@@ -1,0 +1,7 @@
+{
+    "full-stack-api-config": {
+        "dbUser": "sa",
+        "dbPassword": "DevPassword123!",
+        "keycloakClientSecret": "my-client-secret"
+    }
+}
