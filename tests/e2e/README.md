@@ -363,6 +363,7 @@ docker inspect api-gateway-opa | grep -A5 NetworkMode
 | `npm run test:client-credentials` | OAuth2 client credentials flow tests                   |
 | `npm run test:opa`                | OPA policy integration tests                           |
 | `npm run test:openapi-tls`        | TLS/HTTPS endpoint tests                               |
+| `npm run test:full-stack`         | Full stack: TLS + OAuth2 + OPA + SQL Server (15 tests) |
 
 ### OAuth2 Client Credentials Flow Tests
 
@@ -396,6 +397,53 @@ npm run test:client-credentials
 - Invalid credentials rejection (wrong client ID/secret)
 - Token expiration validation
 - Protected endpoint access with service account tokens
+
+### Full Stack Integration Tests
+
+Comprehensive test validating all security and data layers working together over HTTPS.
+
+**Layers Tested:**
+
+```
+Request → TLS (HTTPS) → OAuth2 (JWT) → OPA (Policy) → SQL Server (CRUD)
+```
+
+**Run tests:**
+
+```bash
+# Automatically starts Docker stack with nodered + sqlserver profiles
+npm run test:full-stack
+
+# Keep stack running after tests (for debugging)
+SKIP_DOCKER_TEARDOWN=1 npm run test:full-stack
+
+# Use existing running stack
+SKIP_DOCKER_SETUP=1 npm run test:full-stack
+```
+
+**Test Cases (15 tests):**
+
+| Layer      | Tests | Description                                    |
+| ---------- | ----- | ---------------------------------------------- |
+| TLS        | 2     | HTTPS with valid CA, reject invalid CA         |
+| OAuth2     | 3     | Token acquisition, invalid credentials         |
+| OPA        | 4     | Role-based access (user read, admin write)     |
+| SQL Server | 6     | CRUD operations, pagination, data verification |
+
+**Service Accounts Used:**
+
+| Client ID          | Role  | Permissions                          |
+| ------------------ | ----- | ------------------------------------ |
+| `my-api-client`    | user  | api:read, api:write                  |
+| `my-admin-service` | admin | api:read, api:write, api:delete      |
+
+**Example Flow:**
+
+The test uses `examples/full-stack-api.json` which configures:
+- TLS on port 3443 with mkcert certificates
+- OAuth2 validation against Keycloak
+- OPA authorization at `/v1/data/api/authz`
+- SQL Server CRUD on `testdb.products` table
 
 ## Related Documentation
 
