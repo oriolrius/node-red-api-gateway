@@ -1,7 +1,7 @@
 # Docker Compose Development Stack for Node-RED API Gateway
 #
 # Architecture: Shared Container Network Namespace
-# All services share a single network namespace via network_mode: "container:network-base"
+# All services share a single network namespace via network_mode: "container:network_base"
 # This allows services to communicate via localhost:PORT within the isolated stack.
 #
 # Usage:
@@ -23,11 +23,13 @@
 services:
   # Base container that creates the shared network namespace
   # All other services join this namespace via network_mode
-  network-base:
+  network_base:
     image: alpine:latest
     container_name: api-gateway-network
     command: sleep infinity
     restart: unless-stopped
+    profiles:
+      - all
     # Only expose ports from the base container
     ports:
       - "8080:8080"   # Keycloak
@@ -35,7 +37,7 @@ services:
       - "1433:1433"   # SQL Server (optional)
       - "1880:1880"   # Node-RED (optional)
       - "3200:3200"   # API GW port (HTTP)
-      - "3443:3443"   # API GW port (HTTPS/TLS)
+      - "443:3443"    # API GW port (HTTPS/TLS)
     healthcheck:
       test: ["CMD", "true"]
       interval: 30s
@@ -49,8 +51,11 @@ services:
     image: quay.io/keycloak/keycloak:26.4.7
     container_name: api-gateway-keycloak
     network_mode: "container:api-gateway-network"
+    profiles:
+      - keycloak
+      - all
     depends_on:
-      network-base:
+      network_base:
         condition: service_healthy
     env_file:
       - ./config/keycloak.env
@@ -77,8 +82,11 @@ services:
     image: openpolicyagent/opa:latest
     container_name: api-gateway-opa
     network_mode: "container:api-gateway-network"
+    profiles:
+      - opa
+      - all
     depends_on:
-      network-base:
+      network_base:
         condition: service_healthy
     command:
       - "run"
@@ -107,8 +115,9 @@ services:
     network_mode: "container:api-gateway-network"
     profiles:
       - sqlserver
+      - all
     depends_on:
-      network-base:
+      network_base:
         condition: service_healthy
     env_file:
       - ./config/sqlserver.env
@@ -131,17 +140,15 @@ services:
   # Editor: http://localhost:1880
   # API Gateway: http://localhost:3200 (HTTP) or https://localhost:3443 (HTTPS/TLS)
   #
-  # Note: Node-RED only depends on network-base, not Keycloak/OPA.
+  # Note: Node-RED only depends on network_base, not Keycloak/OPA.
   # Tests that need OAuth2/OPA will wait for those services in their test code.
   # This allows TLS-only tests to start faster without waiting for Keycloak.
   node-red:
     image: nodered/node-red:latest
     container_name: api-gateway-nodered
     network_mode: "container:api-gateway-network"
-    profiles:
-      - nodered
     depends_on:
-      network-base:
+      network_base:
         condition: service_healthy
     volumes:
       # Mount the node package for testing (read-only)
@@ -168,3 +175,5 @@ services:
       retries: 12
       start_period: 30s
     restart: "no"
+    profiles:
+      - all
