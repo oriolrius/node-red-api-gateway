@@ -8,7 +8,7 @@
     },
     {
         "id": "openapi-tls-config",
-        "type": "api-config",
+        "type": "apigw-config",
         "z": "",
         "name": "TLS Test API Config",
         "dbType": "none",
@@ -64,7 +64,7 @@
     },
     {
         "id": "openapi-tls-server",
-        "type": "api-server",
+        "type": "apigw-server",
         "z": "openapi-tls-flow",
         "name": "TLS Test API Server",
         "port": "3443",
@@ -82,7 +82,7 @@
     },
     {
         "id": "health-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "openapi-tls-flow",
         "name": "Health Check",
         "server": "openapi-tls-server",
@@ -156,7 +156,7 @@
     },
     {
         "id": "echo-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "openapi-tls-flow",
         "name": "Echo Request",
         "server": "openapi-tls-server",

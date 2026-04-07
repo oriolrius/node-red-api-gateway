@@ -1,10 +1,10 @@
 <script type="text/javascript">
-    RED.nodes.registerType('api-server', {
+    RED.nodes.registerType('apigw-server', {
         category: 'API Gateway',
         color: '#87CEEB',
         defaults: {
             name: { value: "" },
-            config: { value: "", type: "api-config" },
+            config: { value: "", type: "apigw-config" },
             port: { value: 3000, validate: RED.validators.number() },
             host: { value: "0.0.0.0" },
             // OpenAPI configuration
@@ -32,9 +32,9 @@
             // Toggle OpenAPI settings visibility
             $("#node-input-openapiEnabled").on("change", function() {
                 if ($(this).is(":checked")) {
-                    $(".openapi-config-row").show();
+                    $(".openapigw-config-row").show();
                 } else {
-                    $(".openapi-config-row").hide();
+                    $(".openapigw-config-row").hide();
                 }
             }).trigger("change");
 
@@ -297,7 +297,7 @@
                     // Create node configuration
                     var nodeConfig = {
                         id: RED.nodes.id(),
-                        type: "api-endpoint",
+                        type: "apigw-endpoint",
                         z: RED.workspaces.active(),
                         name: endpoint.name,
                         server: serverConfig,
@@ -392,7 +392,7 @@
     });
 </script>
 
-<script type="text/html" data-template-name="api-server">
+<script type="text/html" data-template-name="apigw-server">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -434,19 +434,19 @@
         <input type="checkbox" id="node-input-openapiEnabled" style="width: auto; margin-left: 5px;">
     </div>
 
-    <div class="form-row openapi-config-row">
+    <div class="form-row openapigw-config-row">
         <label for="node-input-openapiPath"><i class="fa fa-link"></i> Spec Path</label>
         <input type="text" id="node-input-openapiPath" placeholder="/openapi.json">
     </div>
 
-    <div class="form-row openapi-config-row">
+    <div class="form-row openapigw-config-row">
         <label for="node-input-swaggerUiEnabled">
             <i class="fa fa-book"></i> Enable Swagger UI
         </label>
         <input type="checkbox" id="node-input-swaggerUiEnabled" style="width: auto; margin-left: 5px;">
     </div>
 
-    <div class="form-row openapi-config-row swagger-ui-path-row">
+    <div class="form-row openapigw-config-row swagger-ui-path-row">
         <label for="node-input-swaggerUiPath"><i class="fa fa-file-text-o"></i> Docs Path</label>
         <input type="text" id="node-input-swaggerUiPath" placeholder="/docs">
     </div>
@@ -578,7 +578,7 @@
     </style>
 </script>
 
-<script type="text/html" data-help-name="api-server">
+<script type="text/html" data-help-name="apigw-server">
     <p>API Server node that serves OpenAPI documentation and acts as the central registration point for API endpoints.</p>
 
     <h3>Overview</h3>

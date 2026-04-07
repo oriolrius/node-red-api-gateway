@@ -344,6 +344,20 @@ npm run lint:fix
 npm run dev
 ```
 
+## Scripts
+
+Utility scripts are located in the `scripts/` directory. See [scripts/README.md](scripts/README.md) for details.
+
+### Certificate Management
+
+Download SSL certificates from Nginx Proxy Manager for e2e tests:
+
+```bash
+./scripts/download-apigw-cert.sh
+```
+
+This script uses [npm-cli](https://github.com/oriolrius/npm-cli) via `uvx` to download certificates and only updates files if they differ.
+
 ## Project Structure
 
 ```
@@ -369,6 +383,7 @@ node-red-api-gateway/
 │   ├── logger.js             # Pino logging
 │   └── metrics-collector.js  # Prometheus metrics
 ├── examples/                  # Example flows
+├── scripts/                   # Utility scripts (see scripts/README.md)
 ├── tests/                     # Test suites
 │   ├── unit/                 # Unit tests
 │   └── e2e/                  # End-to-end tests

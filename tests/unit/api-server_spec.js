@@ -17,7 +17,7 @@ describe("api-server Node", function () {
 
     describe("Node Loading", function () {
         it("should be loaded with default values", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test name" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test name" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -38,7 +38,7 @@ describe("api-server Node", function () {
         it("should be loaded with custom configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-server",
+                type: "apigw-server",
                 name: "custom server",
                 port: 8080,
                 host: "127.0.0.1",
@@ -65,7 +65,7 @@ describe("api-server Node", function () {
 
     describe("OpenAPI Generator", function () {
         it("should have OpenAPI generator initialized", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -79,7 +79,7 @@ describe("api-server Node", function () {
         });
 
         it("should have getOpenApiSpec method", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -96,7 +96,7 @@ describe("api-server Node", function () {
         });
 
         it("should have getOpenApiJSON method", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -112,7 +112,7 @@ describe("api-server Node", function () {
         });
 
         it("should have getOpenApiYAML method", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -129,7 +129,7 @@ describe("api-server Node", function () {
 
     describe("Endpoint Registration", function () {
         it("should have registerEndpoint method", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -143,7 +143,7 @@ describe("api-server Node", function () {
         });
 
         it("should have unregisterEndpoint method", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -157,7 +157,7 @@ describe("api-server Node", function () {
         });
 
         it("should track endpoint count", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -193,7 +193,7 @@ describe("api-server Node", function () {
         });
 
         it("should include registered endpoints in OpenAPI spec", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -228,7 +228,7 @@ describe("api-server Node", function () {
         });
 
         it("should return endpoints info", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -267,7 +267,7 @@ describe("api-server Node", function () {
             const flow = [
                 {
                     id: "c1",
-                    type: "api-config",
+                    type: "apigw-config",
                     name: "Test Config",
                     apiVersion: "v1",
                     apiBasePath: "/api",
@@ -277,7 +277,7 @@ describe("api-server Node", function () {
                 },
                 {
                     id: "n1",
-                    type: "api-server",
+                    type: "apigw-server",
                     name: "test",
                     config: "c1"
                 }
@@ -303,7 +303,7 @@ describe("api-server Node", function () {
             const flow = [
                 {
                     id: "c1",
-                    type: "api-config",
+                    type: "apigw-config",
                     name: "Test Config",
                     apiVersion: "v1",
                     apiBasePath: "/api",
@@ -311,7 +311,7 @@ describe("api-server Node", function () {
                 },
                 {
                     id: "n1",
-                    type: "api-server",
+                    type: "apigw-server",
                     name: "test",
                     config: "c1"
                 }
@@ -349,7 +349,7 @@ describe("api-server Node", function () {
     describe("Message Handling", function () {
         it("should pass through payload unchanged", function (done) {
             const flow = [
-                { id: "n1", type: "api-server", name: "test", wires: [["n2"]] },
+                { id: "n1", type: "apigw-server", name: "test", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiServerNode, flow, function () {
@@ -371,7 +371,7 @@ describe("api-server Node", function () {
             const flow = [
                 {
                     id: "n1",
-                    type: "api-server",
+                    type: "apigw-server",
                     name: "test",
                     port: 8080,
                     host: "localhost",
@@ -401,7 +401,7 @@ describe("api-server Node", function () {
 
     describe("Cleanup", function () {
         it("should clear endpoints when cleared manually", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -427,7 +427,7 @@ describe("api-server Node", function () {
 
     describe("Route Registration", function () {
         it("should have registeredRoutes map", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -441,7 +441,7 @@ describe("api-server Node", function () {
         });
 
         it("should have pendingEndpoints array", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -455,7 +455,7 @@ describe("api-server Node", function () {
         });
 
         it("should queue endpoints when server not started", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -494,7 +494,7 @@ describe("api-server Node", function () {
         });
 
         it("should remove from pendingEndpoints on unregister", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -531,7 +531,7 @@ describe("api-server Node", function () {
         });
 
         it("should not have keycloak client when OAuth2 disabled", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -547,7 +547,7 @@ describe("api-server Node", function () {
 
     describe("Route Tracking", function () {
         it("should track routes by method and path", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -569,7 +569,7 @@ describe("api-server Node", function () {
         });
 
         it("should clear registeredRoutes on unregister", function (done) {
-            const flow = [{ id: "n1", type: "api-server", name: "test" }];
+            const flow = [{ id: "n1", type: "apigw-server", name: "test" }];
             helper.load(apiServerNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {

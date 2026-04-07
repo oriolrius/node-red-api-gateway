@@ -16,7 +16,7 @@ describe("api-endpoint Node", function () {
 
     describe("Node Loading", function () {
         it("should be loaded with default values", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", name: "test name" }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", name: "test name" }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -35,7 +35,7 @@ describe("api-endpoint Node", function () {
         it("should be loaded with custom path and method", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 name: "users endpoint",
                 path: "/users/:id",
                 method: "POST"
@@ -56,7 +56,7 @@ describe("api-endpoint Node", function () {
         it("should normalize path without leading slash", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -73,7 +73,7 @@ describe("api-endpoint Node", function () {
         it("should normalize method to uppercase", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 method: "post"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -90,7 +90,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid method to GET", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 method: "INVALID"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -109,7 +109,7 @@ describe("api-endpoint Node", function () {
         it("should extract single parameter from path", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -126,7 +126,7 @@ describe("api-endpoint Node", function () {
         it("should extract multiple parameters from path", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:userId/posts/:postId"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -143,7 +143,7 @@ describe("api-endpoint Node", function () {
         it("should extract params from request path using extractRequestParams", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -162,7 +162,7 @@ describe("api-endpoint Node", function () {
         it("should return no match for non-matching paths", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -182,7 +182,7 @@ describe("api-endpoint Node", function () {
         it("should return endpoint information", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 name: "Get User",
                 path: "/users/:id",
                 method: "GET"
@@ -207,7 +207,7 @@ describe("api-endpoint Node", function () {
     describe("Message Handling", function () {
         it("should add endpoint metadata to output message", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -230,7 +230,7 @@ describe("api-endpoint Node", function () {
 
         it("should extract params from msg.req.path", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -251,7 +251,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add params if path does not match", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -271,7 +271,7 @@ describe("api-endpoint Node", function () {
 
         it("should pass through payload unchanged", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", method: "POST", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", method: "POST", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -295,7 +295,7 @@ describe("api-endpoint Node", function () {
         it("should store server reference when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 server: "s1"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -312,7 +312,7 @@ describe("api-endpoint Node", function () {
         it("should work without server reference", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -334,7 +334,7 @@ describe("api-endpoint Node", function () {
             it(`should support ${method} method`, function (done) {
                 const flow = [{
                     id: "n1",
-                    type: "api-endpoint",
+                    type: "apigw-endpoint",
                     method: method
                 }];
                 helper.load(apiEndpointNode, flow, function () {
@@ -354,7 +354,7 @@ describe("api-endpoint Node", function () {
         it("should handle deeply nested paths", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/api/v1/users/:userId/posts/:postId/comments/:commentId"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -378,7 +378,7 @@ describe("api-endpoint Node", function () {
         it("should handle paths with underscored parameters", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:user_id/orders/:order_id"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -395,7 +395,7 @@ describe("api-endpoint Node", function () {
         it("should handle path with trailing slash in request", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -416,7 +416,7 @@ describe("api-endpoint Node", function () {
         it("should warn on invalid path configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:123invalid"
             }];
 
@@ -439,7 +439,7 @@ describe("api-endpoint Node", function () {
         it("should enable validation by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -456,7 +456,7 @@ describe("api-endpoint Node", function () {
         it("should allow disabling validation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 validationEnabled: false
             }];
@@ -479,7 +479,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 bodySchema: bodySchema
             }];
@@ -506,7 +506,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 querySchema: querySchema
             }];
@@ -530,7 +530,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 paramsSchema: paramsSchema
             }];
@@ -550,7 +550,7 @@ describe("api-endpoint Node", function () {
             const bodySchema = JSON.stringify({ type: "object" });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 validationEnabled: false,
                 bodySchema: bodySchema
@@ -570,7 +570,7 @@ describe("api-endpoint Node", function () {
             const bodySchema = JSON.stringify({ type: "object" });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 bodySchema: bodySchema
             }];
@@ -602,7 +602,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 method: "POST",
                 bodySchema: bodySchema
@@ -629,7 +629,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 method: "POST",
                 bodySchema: bodySchema
@@ -657,7 +657,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 querySchema: querySchema
             }];
@@ -683,7 +683,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 querySchema: querySchema
             }];
@@ -708,7 +708,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 paramsSchema: paramsSchema
             }];
@@ -727,7 +727,7 @@ describe("api-endpoint Node", function () {
         it("should pass when no schemas are defined", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -751,7 +751,7 @@ describe("api-endpoint Node", function () {
         it("should have default response configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -782,7 +782,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 responseSchemas: responseSchemas
             }];
@@ -804,7 +804,7 @@ describe("api-endpoint Node", function () {
         it("should store custom success status code", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 method: "POST",
                 successStatusCode: "201"
@@ -823,7 +823,7 @@ describe("api-endpoint Node", function () {
         it("should store custom content type", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 responseContentType: "application/xml"
             }];
@@ -841,7 +841,7 @@ describe("api-endpoint Node", function () {
         it("should enable response validation in dev mode", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 validateResponseEnabled: true
             }];
@@ -869,7 +869,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 responseSchemas: responseSchemas
             }];
@@ -895,7 +895,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 responseSchemas: responseSchemas
             }];
@@ -921,7 +921,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 responseSchemas: responseSchemas
             }];
@@ -940,7 +940,7 @@ describe("api-endpoint Node", function () {
         it("should pass validation when no schema defined", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -962,7 +962,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 responseSchemas: responseSchemas
             }];
@@ -989,7 +989,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 successStatusCode: "201",
                 responseContentType: "application/xml",
@@ -1028,7 +1028,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 responseSchemas: responseSchemas
             }];
@@ -1052,7 +1052,7 @@ describe("api-endpoint Node", function () {
         it("should include default success response when not defined", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 successStatusCode: "201"
             }];
@@ -1076,7 +1076,7 @@ describe("api-endpoint Node", function () {
             });
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 responseContentType: "application/xml",
                 responseSchemas: responseSchemas
@@ -1097,7 +1097,7 @@ describe("api-endpoint Node", function () {
     describe("Message Handling with Validation", function () {
         it("should add validationEnabled to endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", validationEnabled: true, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", validationEnabled: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1122,7 +1122,7 @@ describe("api-endpoint Node", function () {
                 required: ["name"]
             });
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1150,7 +1150,7 @@ describe("api-endpoint Node", function () {
                 required: ["name"]
             });
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1176,7 +1176,7 @@ describe("api-endpoint Node", function () {
                 required: ["name"]
             });
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, validationEnabled: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", bodySchema: bodySchema, validationEnabled: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1201,7 +1201,7 @@ describe("api-endpoint Node", function () {
                 required: ["name"]
             });
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", bodySchema: bodySchema, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1224,7 +1224,7 @@ describe("api-endpoint Node", function () {
         it("should have empty scopes by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -1243,7 +1243,7 @@ describe("api-endpoint Node", function () {
         it("should parse scopes from comma-separated string", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "read:users, write:users, admin"
             }];
@@ -1261,7 +1261,7 @@ describe("api-endpoint Node", function () {
         it("should handle scopes with extra whitespace", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "  read:users  ,   write:users  "
             }];
@@ -1279,7 +1279,7 @@ describe("api-endpoint Node", function () {
         it("should store AND operator", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 scopeOperator: "AND"
             }];
@@ -1297,7 +1297,7 @@ describe("api-endpoint Node", function () {
         it("should store OR operator", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 scopeOperator: "OR"
             }];
@@ -1315,7 +1315,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid operator to AND", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 scopeOperator: "INVALID"
             }];
@@ -1333,7 +1333,7 @@ describe("api-endpoint Node", function () {
         it("should include scopes in getEndpointInfo", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "read:users, admin",
                 scopeOperator: "OR"
@@ -1355,7 +1355,7 @@ describe("api-endpoint Node", function () {
         it("should set hasRequiredScopes to false when no scopes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -1375,7 +1375,7 @@ describe("api-endpoint Node", function () {
         it("should authorize when no scopes required", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -1394,7 +1394,7 @@ describe("api-endpoint Node", function () {
         it("should authorize with AND when all scopes present", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "read:users, write:users",
                 scopeOperator: "AND"
@@ -1415,7 +1415,7 @@ describe("api-endpoint Node", function () {
         it("should not authorize with AND when some scopes missing", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "read:users, write:users",
                 scopeOperator: "AND"
@@ -1436,7 +1436,7 @@ describe("api-endpoint Node", function () {
         it("should authorize with OR when any scope present", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "admin, moderator, owner",
                 scopeOperator: "OR"
@@ -1457,7 +1457,7 @@ describe("api-endpoint Node", function () {
         it("should not authorize with OR when no scopes present", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "admin, moderator, owner",
                 scopeOperator: "OR"
@@ -1478,7 +1478,7 @@ describe("api-endpoint Node", function () {
         it("should handle empty token scopes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "admin"
             }];
@@ -1498,7 +1498,7 @@ describe("api-endpoint Node", function () {
         it("should handle null token scopes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "admin"
             }];
@@ -1519,7 +1519,7 @@ describe("api-endpoint Node", function () {
         it("should return empty array when no scopes required", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -1538,7 +1538,7 @@ describe("api-endpoint Node", function () {
         it("should return OAuth2 security with scopes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 requiredScopes: "read:users, write:users"
             }];
@@ -1561,7 +1561,7 @@ describe("api-endpoint Node", function () {
     describe("Authorization in Message Handling", function () {
         it("should include authorization info in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1582,7 +1582,7 @@ describe("api-endpoint Node", function () {
 
         it("should pass through when no scopes required", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1602,7 +1602,7 @@ describe("api-endpoint Node", function () {
 
         it("should return 401 when not authenticated", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1624,7 +1624,7 @@ describe("api-endpoint Node", function () {
 
         it("should return 401 when auth.authenticated is false", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1645,7 +1645,7 @@ describe("api-endpoint Node", function () {
 
         it("should return 403 when missing required scopes", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, superuser", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin, superuser", scopeOperator: "AND", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1668,7 +1668,7 @@ describe("api-endpoint Node", function () {
 
         it("should pass through when all required scopes present (AND)", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, user", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin, user", scopeOperator: "AND", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1692,7 +1692,7 @@ describe("api-endpoint Node", function () {
 
         it("should pass through when any required scope present (OR)", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1716,7 +1716,7 @@ describe("api-endpoint Node", function () {
 
         it("should return 403 with OR operator when no scopes match", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin, moderator", scopeOperator: "OR", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1740,7 +1740,7 @@ describe("api-endpoint Node", function () {
 
         it("should include details in authorization error", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin", scopeOperator: "AND", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1766,7 +1766,7 @@ describe("api-endpoint Node", function () {
 
         it("should skip authorization check when no req object", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", requiredScopes: "admin", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -1789,7 +1789,7 @@ describe("api-endpoint Node", function () {
         it("should have no CRUD operation by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -1810,7 +1810,7 @@ describe("api-endpoint Node", function () {
         it("should store list operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users"
@@ -1830,7 +1830,7 @@ describe("api-endpoint Node", function () {
         it("should store get operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "get",
                 tableName: "users",
@@ -1851,7 +1851,7 @@ describe("api-endpoint Node", function () {
         it("should store create operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "create",
                 tableName: "users"
@@ -1870,7 +1870,7 @@ describe("api-endpoint Node", function () {
         it("should store update operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "update",
                 tableName: "users"
@@ -1889,7 +1889,7 @@ describe("api-endpoint Node", function () {
         it("should store delete operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "delete",
                 tableName: "users"
@@ -1908,7 +1908,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid operation to none", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "INVALID"
             }];
@@ -1926,7 +1926,7 @@ describe("api-endpoint Node", function () {
         it("should store autoGenerateSql flag", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -1946,7 +1946,7 @@ describe("api-endpoint Node", function () {
         it("should store useFlowOutput flag", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -1966,7 +1966,7 @@ describe("api-endpoint Node", function () {
         it("should handle schema.table notation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "public.users"
@@ -1987,7 +1987,7 @@ describe("api-endpoint Node", function () {
         it("should return CRUD info with hasCrudOperation true", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -2015,7 +2015,7 @@ describe("api-endpoint Node", function () {
         it("should return hasCrudOperation false when no operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -2035,7 +2035,7 @@ describe("api-endpoint Node", function () {
         it("should return null when no CRUD operation", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -2053,7 +2053,7 @@ describe("api-endpoint Node", function () {
         it("should return null when autoGenerateSql is false", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -2074,7 +2074,7 @@ describe("api-endpoint Node", function () {
         it("should generate list SQL", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -2097,7 +2097,7 @@ describe("api-endpoint Node", function () {
         it("should generate get SQL with primary key", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "get",
                 tableName: "users",
@@ -2120,7 +2120,7 @@ describe("api-endpoint Node", function () {
         it("should generate create SQL", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "create",
                 tableName: "users",
@@ -2141,7 +2141,7 @@ describe("api-endpoint Node", function () {
         it("should generate update SQL", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "update",
                 tableName: "users",
@@ -2163,7 +2163,7 @@ describe("api-endpoint Node", function () {
         it("should generate delete SQL", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users/:id",
                 crudOperation: "delete",
                 tableName: "users",
@@ -2187,7 +2187,7 @@ describe("api-endpoint Node", function () {
         it("should include CRUD info in endpoint info", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 crudOperation: "list",
                 tableName: "users",
@@ -2216,7 +2216,7 @@ describe("api-endpoint Node", function () {
     describe("CRUD in Message Handling", function () {
         it("should not add crud object when no operation", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2236,7 +2236,7 @@ describe("api-endpoint Node", function () {
 
         it("should add crud object when operation configured", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", crudOperation: "list", tableName: "users", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2259,7 +2259,7 @@ describe("api-endpoint Node", function () {
 
         it("should add sql to crud when autoGenerateSql enabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: true, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2281,7 +2281,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add sql when autoGenerateSql disabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", crudOperation: "list", tableName: "users", autoGenerateSql: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2301,7 +2301,7 @@ describe("api-endpoint Node", function () {
 
         it("should include CRUD info in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", crudOperation: "create", tableName: "users", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", crudOperation: "create", tableName: "users", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2326,7 +2326,7 @@ describe("api-endpoint Node", function () {
         it("should have pagination disabled by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -2346,7 +2346,7 @@ describe("api-endpoint Node", function () {
         it("should enable pagination when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2364,7 +2364,7 @@ describe("api-endpoint Node", function () {
         it("should store custom page sizes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 defaultPageSize: "10",
@@ -2385,7 +2385,7 @@ describe("api-endpoint Node", function () {
         it("should store offset pagination style", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset"
@@ -2404,7 +2404,7 @@ describe("api-endpoint Node", function () {
         it("should store cursor pagination style", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2423,7 +2423,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid pagination style to offset", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "INVALID"
@@ -2442,7 +2442,7 @@ describe("api-endpoint Node", function () {
         it("should include pagination in getEndpointInfo", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 defaultPageSize: "25",
@@ -2469,7 +2469,7 @@ describe("api-endpoint Node", function () {
         it("should return pagination configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 defaultPageSize: "15",
@@ -2496,7 +2496,7 @@ describe("api-endpoint Node", function () {
         it("should return null when pagination disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: false
             }];
@@ -2515,7 +2515,7 @@ describe("api-endpoint Node", function () {
         it("should parse offset-based pagination with page", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset",
@@ -2540,7 +2540,7 @@ describe("api-endpoint Node", function () {
         it("should parse offset-based pagination with offset", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset"
@@ -2563,7 +2563,7 @@ describe("api-endpoint Node", function () {
         it("should use default page size when no limit provided", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset",
@@ -2584,7 +2584,7 @@ describe("api-endpoint Node", function () {
         it("should cap limit at max page size", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset",
@@ -2605,7 +2605,7 @@ describe("api-endpoint Node", function () {
         it("should default to page 1 offset 0 when no params", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "offset"
@@ -2626,7 +2626,7 @@ describe("api-endpoint Node", function () {
         it("should parse cursor-based pagination", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2650,7 +2650,7 @@ describe("api-endpoint Node", function () {
         it("should handle null cursor in cursor-based pagination", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2670,7 +2670,7 @@ describe("api-endpoint Node", function () {
         it("should handle empty query object", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2691,7 +2691,7 @@ describe("api-endpoint Node", function () {
         it("should handle null query", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2713,7 +2713,7 @@ describe("api-endpoint Node", function () {
         it("should return null for null params", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -2731,7 +2731,7 @@ describe("api-endpoint Node", function () {
         it("should generate offset-based metadata with total", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2759,7 +2759,7 @@ describe("api-endpoint Node", function () {
         it("should detect first page (hasPrev false)", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2780,7 +2780,7 @@ describe("api-endpoint Node", function () {
         it("should detect last page (hasNext false)", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2802,7 +2802,7 @@ describe("api-endpoint Node", function () {
         it("should handle offset pagination without total (infer from count)", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true
             }];
@@ -2824,7 +2824,7 @@ describe("api-endpoint Node", function () {
         it("should generate cursor-based metadata", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2856,7 +2856,7 @@ describe("api-endpoint Node", function () {
         it("should detect cursor first page (no prevCursor)", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2881,7 +2881,7 @@ describe("api-endpoint Node", function () {
         it("should detect cursor last page (no nextCursor)", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 paginationEnabled: true,
                 paginationStyle: "cursor"
@@ -2907,7 +2907,7 @@ describe("api-endpoint Node", function () {
     describe("Pagination in Message Handling", function () {
         it("should include pagination config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, defaultPageSize: "15", maxPageSize: "50", paginationStyle: "offset", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", paginationEnabled: true, defaultPageSize: "15", maxPageSize: "50", paginationStyle: "offset", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2930,7 +2930,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add pagination object when disabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", paginationEnabled: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2950,7 +2950,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add pagination object when no query params", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", paginationEnabled: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2970,7 +2970,7 @@ describe("api-endpoint Node", function () {
 
         it("should add pagination object when enabled with query", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "offset", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "offset", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -2994,7 +2994,7 @@ describe("api-endpoint Node", function () {
 
         it("should add cursor pagination object when configured", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "cursor", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", paginationEnabled: true, paginationStyle: "cursor", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3020,7 +3020,7 @@ describe("api-endpoint Node", function () {
         it("should have filtering disabled by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3038,7 +3038,7 @@ describe("api-endpoint Node", function () {
         it("should enable filtering when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name, status, created_at"
@@ -3059,7 +3059,7 @@ describe("api-endpoint Node", function () {
             // With SQL Server bracket escaping, all non-empty field names are valid
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name, 123invalid, valid_field, @invalid"
@@ -3079,7 +3079,7 @@ describe("api-endpoint Node", function () {
         it("should include filtering in getEndpointInfo", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name, status"
@@ -3102,7 +3102,7 @@ describe("api-endpoint Node", function () {
         it("should return filtering configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name, status"
@@ -3125,7 +3125,7 @@ describe("api-endpoint Node", function () {
         it("should return null when filtering disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: false
             }];
@@ -3144,7 +3144,7 @@ describe("api-endpoint Node", function () {
         it("should parse filter[field]=value format", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name, status"
@@ -3168,7 +3168,7 @@ describe("api-endpoint Node", function () {
         it("should parse filter[field][operator]=value format", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "age, status"
@@ -3194,7 +3194,7 @@ describe("api-endpoint Node", function () {
         it("should parse in operator with comma-separated values", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "status"
@@ -3218,7 +3218,7 @@ describe("api-endpoint Node", function () {
         it("should reject fields not in allowed list", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "name"
@@ -3243,7 +3243,7 @@ describe("api-endpoint Node", function () {
         it("should support simple field=value format for allowed fields", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 filteringEnabled: true,
                 filterableFields: "status"
@@ -3267,7 +3267,7 @@ describe("api-endpoint Node", function () {
         it("should have sorting disabled by default", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3287,7 +3287,7 @@ describe("api-endpoint Node", function () {
         it("should enable sorting when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name, created_at",
@@ -3311,7 +3311,7 @@ describe("api-endpoint Node", function () {
         it("should include sorting in getEndpointInfo", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name",
@@ -3338,7 +3338,7 @@ describe("api-endpoint Node", function () {
         it("should return sorting configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name, date",
@@ -3365,7 +3365,7 @@ describe("api-endpoint Node", function () {
         it("should return null when sorting disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: false
             }];
@@ -3384,7 +3384,7 @@ describe("api-endpoint Node", function () {
         it("should parse sort=field for ascending", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name"
@@ -3406,7 +3406,7 @@ describe("api-endpoint Node", function () {
         it("should parse sort=-field for descending", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "created_at"
@@ -3428,7 +3428,7 @@ describe("api-endpoint Node", function () {
         it("should parse multiple sort fields", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "status, created_at"
@@ -3452,7 +3452,7 @@ describe("api-endpoint Node", function () {
         it("should use default sort when no sort param provided", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name, created_at",
@@ -3476,7 +3476,7 @@ describe("api-endpoint Node", function () {
         it("should reject fields not in allowed list", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 sortingEnabled: true,
                 sortableFields: "name"
@@ -3500,7 +3500,7 @@ describe("api-endpoint Node", function () {
         it("should return empty clause for no filters", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3519,7 +3519,7 @@ describe("api-endpoint Node", function () {
         it("should generate WHERE clause for eq operator with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3541,7 +3541,7 @@ describe("api-endpoint Node", function () {
         it("should generate WHERE clause for multiple filters with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3565,7 +3565,7 @@ describe("api-endpoint Node", function () {
         it("should generate WHERE clause for IN operator with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3588,7 +3588,7 @@ describe("api-endpoint Node", function () {
         it("should support all operators with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3614,7 +3614,7 @@ describe("api-endpoint Node", function () {
         it("should return empty string for no sorts", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3632,7 +3632,7 @@ describe("api-endpoint Node", function () {
         it("should generate ORDER BY clause with bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3653,7 +3653,7 @@ describe("api-endpoint Node", function () {
         it("should generate ORDER BY with multiple fields and bracket escaping", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users"
             }];
             helper.load(apiEndpointNode, flow, function () {
@@ -3676,7 +3676,7 @@ describe("api-endpoint Node", function () {
     describe("Filtering in Message Handling", function () {
         it("should include filtering config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3697,7 +3697,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add filtering object when disabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", filteringEnabled: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3717,7 +3717,7 @@ describe("api-endpoint Node", function () {
 
         it("should add filtering object when enabled with query", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", filteringEnabled: true, filterableFields: "name, status", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3743,7 +3743,7 @@ describe("api-endpoint Node", function () {
     describe("Sorting in Message Handling", function () {
         it("should include sorting config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3766,7 +3766,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add sorting object when disabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", sortingEnabled: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3786,7 +3786,7 @@ describe("api-endpoint Node", function () {
 
         it("should add sorting object when enabled with query", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3812,7 +3812,7 @@ describe("api-endpoint Node", function () {
 
         it("should use default sort when no sort param", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", sortingEnabled: true, sortableFields: "name, created_at", defaultSortField: "created_at", defaultSortDirection: "desc", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -3836,7 +3836,7 @@ describe("api-endpoint Node", function () {
 
     describe("Rate Limiting Configuration", function () {
         it("should be disabled by default", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users" }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -3852,7 +3852,7 @@ describe("api-endpoint Node", function () {
         it("should be enabled when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitRequests: 100,
@@ -3877,7 +3877,7 @@ describe("api-endpoint Node", function () {
         it("should use default values when not provided", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true
             }];
@@ -3897,7 +3897,7 @@ describe("api-endpoint Node", function () {
         it("should support user key type", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitKeyType: "user"
@@ -3916,7 +3916,7 @@ describe("api-endpoint Node", function () {
         it("should support apiKey key type", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitKeyType: "apiKey"
@@ -3935,7 +3935,7 @@ describe("api-endpoint Node", function () {
         it("should support custom key type with path", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitKeyType: "custom",
@@ -3956,7 +3956,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid keyType to ip", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitKeyType: "invalid"
@@ -3977,7 +3977,7 @@ describe("api-endpoint Node", function () {
         it("should return rate limiting configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitRequests: 50,
@@ -4004,7 +4004,7 @@ describe("api-endpoint Node", function () {
         it("should return allowed=true when disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: false
             }];
@@ -4023,7 +4023,7 @@ describe("api-endpoint Node", function () {
         it("should check rate limit when enabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitRequests: 5,
@@ -4049,7 +4049,7 @@ describe("api-endpoint Node", function () {
         it("should block when rate limit exceeded", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitRequests: 3,
@@ -4080,7 +4080,7 @@ describe("api-endpoint Node", function () {
     describe("Rate Limiting in Message Handling", function () {
         it("should add rateLimit context to message when enabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 10, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 10, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4104,7 +4104,7 @@ describe("api-endpoint Node", function () {
 
         it("should not add rateLimit context when disabled", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: false, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: false, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4124,7 +4124,7 @@ describe("api-endpoint Node", function () {
 
         it("should block message flow when rate limited", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4155,7 +4155,7 @@ describe("api-endpoint Node", function () {
 
         it("should include rate limit config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 100, rateLimitWindowMs: 60000, rateLimitKeyType: "user", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 100, rateLimitWindowMs: 60000, rateLimitKeyType: "user", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4179,7 +4179,7 @@ describe("api-endpoint Node", function () {
 
         it("should track different keys independently", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4218,7 +4218,7 @@ describe("api-endpoint Node", function () {
         it("should include rate limiting in endpoint info", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 rateLimitingEnabled: true,
                 rateLimitRequests: 50,
@@ -4243,7 +4243,7 @@ describe("api-endpoint Node", function () {
 
     describe("Caching Configuration", function () {
         it("should be disabled by default", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users" }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4259,7 +4259,7 @@ describe("api-endpoint Node", function () {
         it("should be enabled when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheTTL: 60000,
@@ -4284,7 +4284,7 @@ describe("api-endpoint Node", function () {
         it("should use default values when not provided", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true
             }];
@@ -4304,7 +4304,7 @@ describe("api-endpoint Node", function () {
         it("should support path key strategy", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheKeyStrategy: "path"
@@ -4323,7 +4323,7 @@ describe("api-endpoint Node", function () {
         it("should support custom key strategy with expression", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheKeyStrategy: "custom",
@@ -4344,7 +4344,7 @@ describe("api-endpoint Node", function () {
         it("should parse vary headers", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheVaryHeaders: "Accept, Accept-Language"
@@ -4364,7 +4364,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid keyStrategy to full", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheKeyStrategy: "invalid"
@@ -4385,7 +4385,7 @@ describe("api-endpoint Node", function () {
         it("should return caching configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheTTL: 120000,
@@ -4412,7 +4412,7 @@ describe("api-endpoint Node", function () {
         it("should return hit:false when disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: false
             }];
@@ -4431,7 +4431,7 @@ describe("api-endpoint Node", function () {
         it("should store and retrieve cached responses", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheTTL: 60000,
@@ -4460,7 +4460,7 @@ describe("api-endpoint Node", function () {
     describe("Caching in Message Handling", function () {
         it("should add cache context to message for GET requests", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4482,7 +4482,7 @@ describe("api-endpoint Node", function () {
 
         it("should not cache POST requests", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", method: "POST", cachingEnabled: true, wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", method: "POST", cachingEnabled: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4502,7 +4502,7 @@ describe("api-endpoint Node", function () {
 
         it("should include caching config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, cacheKeyStrategy: "path", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", method: "GET", cachingEnabled: true, cacheTTL: 60000, cacheKeyStrategy: "path", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4528,7 +4528,7 @@ describe("api-endpoint Node", function () {
         it("should include caching in endpoint info", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 cachingEnabled: true,
                 cacheTTL: 120000,
@@ -4553,7 +4553,7 @@ describe("api-endpoint Node", function () {
 
     describe("Error Handling Configuration", function () {
         it("should be enabled by default", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users" }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users" }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4572,7 +4572,7 @@ describe("api-endpoint Node", function () {
         it("should allow disabling error handling", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorHandlingEnabled: false
             }];
@@ -4591,7 +4591,7 @@ describe("api-endpoint Node", function () {
         it("should support simple error format", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "simple"
             }];
@@ -4609,7 +4609,7 @@ describe("api-endpoint Node", function () {
         it("should support legacy error format", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "legacy"
             }];
@@ -4627,7 +4627,7 @@ describe("api-endpoint Node", function () {
         it("should default invalid format to rfc7807", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "invalid"
             }];
@@ -4645,7 +4645,7 @@ describe("api-endpoint Node", function () {
         it("should enable stack trace when configured", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 includeStackTrace: true
             }];
@@ -4663,7 +4663,7 @@ describe("api-endpoint Node", function () {
         it("should parse custom error codes", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 customErrorCodes: '{"MY_ERROR": {"status": 422, "title": "My Custom Error"}}'
             }];
@@ -4685,7 +4685,7 @@ describe("api-endpoint Node", function () {
         it("should return error handling configuration", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "simple",
                 includeStackTrace: true,
@@ -4712,7 +4712,7 @@ describe("api-endpoint Node", function () {
         it("should handle ApiError with RFC 7807 format", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "rfc7807",
                 logErrors: false
@@ -4740,7 +4740,7 @@ describe("api-endpoint Node", function () {
         it("should handle standard Error", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 logErrors: false
             }];
@@ -4761,7 +4761,7 @@ describe("api-endpoint Node", function () {
         it("should return basic error when error handling disabled", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorHandlingEnabled: false
             }];
@@ -4784,7 +4784,7 @@ describe("api-endpoint Node", function () {
 
     describe("Error Factory Methods", function () {
         it("should create validation error", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users", logErrors: false }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4802,7 +4802,7 @@ describe("api-endpoint Node", function () {
         });
 
         it("should create not found error", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users", logErrors: false }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4819,7 +4819,7 @@ describe("api-endpoint Node", function () {
         });
 
         it("should create authentication error", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users", logErrors: false }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4836,7 +4836,7 @@ describe("api-endpoint Node", function () {
         });
 
         it("should create authorization error", function (done) {
-            const flow = [{ id: "n1", type: "api-endpoint", path: "/users", logErrors: false }];
+            const flow = [{ id: "n1", type: "apigw-endpoint", path: "/users", logErrors: false }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
@@ -4856,7 +4856,7 @@ describe("api-endpoint Node", function () {
     describe("Error Handling in Message Handling", function () {
         it("should include error handling config in endpoint metadata", function (done) {
             const flow = [
-                { id: "n1", type: "api-endpoint", path: "/users", method: "GET", errorFormat: "simple", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", method: "GET", errorFormat: "simple", wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4882,7 +4882,7 @@ describe("api-endpoint Node", function () {
         it("should include error handling in endpoint info", function (done) {
             const flow = [{
                 id: "n1",
-                type: "api-endpoint",
+                type: "apigw-endpoint",
                 path: "/users",
                 errorFormat: "legacy",
                 includeStackTrace: true,

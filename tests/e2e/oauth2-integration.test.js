@@ -445,13 +445,13 @@ function checkFlowsConfiguration() {
         console.log('  [OK] flows.json matches oauth2-authenticated-api.json example');
 
         // Show configuration details
-        const apiConfigNode = flows.find(n => n.type === 'api-config');
+        const apiConfigNode = flows.find(n => n.type === 'apigw-config');
         if (apiConfigNode && apiConfigNode.keycloakUrl) {
             console.log(`       Keycloak: ${apiConfigNode.keycloakUrl}/realms/${apiConfigNode.keycloakRealm}`);
         }
 
         // Check for expected endpoints
-        const endpoints = flows.filter(n => n.type === 'api-endpoint');
+        const endpoints = flows.filter(n => n.type === 'apigw-endpoint');
         console.log(`  [OK] Found ${endpoints.length} API endpoint(s)`);
 
     } catch (error) {

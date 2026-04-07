@@ -1,0 +1,30 @@
+# Claude Code internals
+.claude/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+
+# Backlog / project management
+backlog/
+
+# Tests
+tests/
+
+# Development configs
+.eslintrc*
+.editorconfig
+.github/
+
+# Scripts
+scripts/
+
+# Docker/CI
+docker-compose*.yml
+Dockerfile*
+
+# Binaries and contrib tools
+contrib/
+
+# Misc
+*.log
+.DS_Store

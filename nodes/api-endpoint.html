@@ -1,6 +1,6 @@
-<script type="text/javascript" src="resources/@oriolrius/node-red-api-gateway/api-endpoint-editor.js"></script>
+<script type="text/javascript" src="resources/@oriolrius/node-red-api-gateway/apigw-endpoint-editor.js"></script>
 <script type="text/javascript">
-    RED.nodes.registerType('api-endpoint', {
+    RED.nodes.registerType('apigw-endpoint', {
         category: 'API Gateway',
         color: '#87CEEB',
         defaults: {
@@ -82,19 +82,19 @@
             var node = this;
             var E = window.ApiEndpointEditor;
 
-            // Populate server dropdown with available api-server nodes
+            // Populate server dropdown with available apigw-server nodes
             var $serverSelect = $('#node-input-server');
             $serverSelect.find('option:not(:first)').remove();
             RED.nodes.eachConfig(function(config) {
-                if (config.type === 'api-server') {
+                if (config.type === 'apigw-server') {
                     var label = config.name || ('API server:' + (config.port || 3000));
                     var selected = (node.server === config.id) ? ' selected' : '';
                     $serverSelect.append('<option value="' + config.id + '"' + selected + '>' + label + '</option>');
                 }
             });
-            // Also check regular nodes (api-server is not a config node)
+            // Also check regular nodes (apigw-server is not a config node)
             RED.nodes.eachNode(function(n) {
-                if (n.type === 'api-server') {
+                if (n.type === 'apigw-server') {
                     var label = n.name || ('API server:' + (n.port || 3000));
                     var selected = (node.server === n.id) ? ' selected' : '';
                     $serverSelect.append('<option value="' + n.id + '"' + selected + '>' + label + '</option>');
@@ -421,7 +421,7 @@
     });
 </script>
 
-<script type="text/html" data-template-name="api-endpoint">
+<script type="text/html" data-template-name="apigw-endpoint">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -891,15 +891,15 @@
     </style>
 </script>
 
-<script type="text/html" data-help-name="api-endpoint">
+<script type="text/html" data-help-name="apigw-endpoint">
     <p>Defines an API endpoint with comprehensive request/response handling capabilities.</p>
 
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>req <span class="property-type">object</span></dt>
-        <dd>The HTTP request object (populated by api-server)</dd>
+        <dd>The HTTP request object (populated by apigw-server)</dd>
         <dt>res <span class="property-type">object</span></dt>
-        <dd>The HTTP response object (populated by api-server)</dd>
+        <dd>The HTTP response object (populated by apigw-server)</dd>
     </dl>
 
     <h3>Outputs</h3>

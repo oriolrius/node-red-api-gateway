@@ -8,7 +8,7 @@
     },
     {
         "id": "crud-api-config",
-        "type": "api-config",
+        "type": "apigw-config",
         "z": "",
         "name": "Products API Config",
         "dbType": "none",
@@ -64,7 +64,7 @@
     },
     {
         "id": "crud-api-server",
-        "type": "api-server",
+        "type": "apigw-server",
         "z": "basic-crud-flow",
         "name": "Products API Server",
         "port": "3200",
@@ -82,7 +82,7 @@
     },
     {
         "id": "list-products-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "List Products",
         "server": "crud-api-server",
@@ -156,7 +156,7 @@
     },
     {
         "id": "get-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Get Product",
         "server": "crud-api-server",
@@ -230,7 +230,7 @@
     },
     {
         "id": "create-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Create Product",
         "server": "crud-api-server",
@@ -304,7 +304,7 @@
     },
     {
         "id": "update-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Update Product",
         "server": "crud-api-server",
@@ -378,7 +378,7 @@
     },
     {
         "id": "delete-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Delete Product",
         "server": "crud-api-server",

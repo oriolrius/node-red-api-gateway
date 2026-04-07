@@ -1565,5 +1565,5 @@ module.exports = function(RED) {
         });
     }
 
-    RED.nodes.registerType("api-endpoint", ApiEndpointNode);
+    RED.nodes.registerType("apigw-endpoint", ApiEndpointNode);
 };

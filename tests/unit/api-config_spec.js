@@ -14,12 +14,12 @@ describe("api-config Node", function () {
     });
 
     it("should be loaded as a config node", function (done) {
-        const flow = [{ id: "c1", type: "api-config", name: "Test Config" }];
+        const flow = [{ id: "c1", type: "apigw-config", name: "Test Config" }];
         helper.load(apiConfigNode, flow, function () {
             const c1 = helper.getNode("c1");
             try {
                 c1.should.have.property("name", "Test Config");
-                c1.should.have.property("type", "api-config");
+                c1.should.have.property("type", "apigw-config");
                 done();
             } catch (err) {
                 done(err);
@@ -30,7 +30,7 @@ describe("api-config Node", function () {
     it("should store database configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "DB Config",
             dbType: "postgres",
             dbHost: "db.example.com",
@@ -54,7 +54,7 @@ describe("api-config Node", function () {
     it("should store OAuth2/Keycloak configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "OAuth Config",
             oauth2Enabled: true,
             keycloakUrl: "https://keycloak.example.com",
@@ -78,7 +78,7 @@ describe("api-config Node", function () {
     it("should store OPA configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "OPA Config",
             opaEnabled: true,
             opaUrl: "http://opa.example.com:8181",
@@ -106,7 +106,7 @@ describe("api-config Node", function () {
     it("should store OPA cache, timeout, and retry settings", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "OPA Advanced Config",
             opaEnabled: true,
             opaUrl: "http://opa.example.com:8181",
@@ -131,7 +131,7 @@ describe("api-config Node", function () {
     it("should store SQL Server specific configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "MSSQL Config",
             dbType: "mssql",
             dbHost: "sql.example.com",
@@ -156,7 +156,7 @@ describe("api-config Node", function () {
     it("should store connection pool settings", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Pool Config",
             dbType: "postgres",
             dbPoolMin: 2,
@@ -179,7 +179,7 @@ describe("api-config Node", function () {
     it("should store TLS configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "TLS Config",
             tlsEnabled: true,
             tlsRejectUnauthorized: true,
@@ -207,7 +207,7 @@ describe("api-config Node", function () {
     it("should support different TLS minimum versions", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "TLS 1.2 Config",
             tlsEnabled: true,
             tlsMinVersion: "TLSv1.2"
@@ -226,7 +226,7 @@ describe("api-config Node", function () {
     it("should store API version configuration", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "API Version Config",
             apiVersion: "v2",
             apiBasePath: "/api",
@@ -248,7 +248,7 @@ describe("api-config Node", function () {
     it("should compute full base path with version", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Full Path Config",
             apiVersion: "v1",
             apiBasePath: "/api",
@@ -268,7 +268,7 @@ describe("api-config Node", function () {
     it("should compute full base path without version", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "No Version Path Config",
             apiVersion: "v1",
             apiBasePath: "/api",
@@ -288,7 +288,7 @@ describe("api-config Node", function () {
     it("should normalize base path", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Normalize Path Config",
             apiVersion: "v1",
             apiBasePath: "api/",
@@ -309,7 +309,7 @@ describe("api-config Node", function () {
     it("should return OpenAPI info", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "OpenAPI Info Config",
             apiVersion: "v2",
             apiBasePath: "/api",
@@ -336,7 +336,7 @@ describe("api-config Node", function () {
     it("should store credentials securely", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Credentials Config"
         }];
         const credentials = {
@@ -362,7 +362,7 @@ describe("api-config Node", function () {
     it("should have default values when not specified", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Default Config"
         }];
         helper.load(apiConfigNode, flow, function () {
@@ -382,7 +382,7 @@ describe("api-config Node", function () {
     it("should store JWT validation settings", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "JWT Config",
             oauth2Enabled: true,
             keycloakUrl: "https://keycloak.example.com",
@@ -414,7 +414,7 @@ describe("api-config Node", function () {
     it("should allow disabling JWT issuer validation", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "JWT No Issuer Validation",
             oauth2Enabled: true,
             jwtValidateIssuer: false,
@@ -436,7 +436,7 @@ describe("api-config Node", function () {
     it("should allow disabling JWT audience validation", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "JWT No Audience Validation",
             oauth2Enabled: true,
             jwtValidateIssuer: true,
@@ -458,7 +458,7 @@ describe("api-config Node", function () {
     it("should support different JWT algorithms", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "JWT ES256 Config",
             oauth2Enabled: true,
             jwtAlgorithms: "ES256"
@@ -477,7 +477,7 @@ describe("api-config Node", function () {
     it("should handle close event properly", function (done) {
         const flow = [{
             id: "c1",
-            type: "api-config",
+            type: "apigw-config",
             name: "Close Test Config"
         }];
         helper.load(apiConfigNode, flow, function () {
@@ -497,7 +497,7 @@ describe("api-config Node", function () {
         it("should create database connection manager when dbType is set", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "DB Config",
                 dbType: "postgres",
                 dbHost: "localhost"
@@ -518,7 +518,7 @@ describe("api-config Node", function () {
         it("should not create database connection manager when dbType is none", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No DB Config",
                 dbType: "none"
             }];
@@ -537,7 +537,7 @@ describe("api-config Node", function () {
         it("should create keycloak connection manager when oauth2 is enabled", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "OAuth Config",
                 oauth2Enabled: true,
                 keycloakUrl: "https://keycloak.example.com"
@@ -557,7 +557,7 @@ describe("api-config Node", function () {
         it("should create opa connection manager when opa is enabled", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "OPA Config",
                 opaEnabled: true,
                 opaUrl: "http://localhost:8181",
@@ -579,7 +579,7 @@ describe("api-config Node", function () {
         it("should have helper methods for connection management", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Full Config",
                 dbType: "postgres",
                 oauth2Enabled: true,
@@ -603,7 +603,7 @@ describe("api-config Node", function () {
         it("should return connection manager by service name", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Full Config",
                 dbType: "postgres"
             }];
@@ -626,7 +626,7 @@ describe("api-config Node", function () {
         it("should return aggregated connection status", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Multi Config",
                 dbType: "postgres",
                 oauth2Enabled: true
@@ -649,7 +649,7 @@ describe("api-config Node", function () {
         it("should check if all services are connected", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Check Config",
                 dbType: "postgres"
             }];
@@ -672,7 +672,7 @@ describe("api-config Node", function () {
         it("should shutdown connection managers on close", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Shutdown Config",
                 dbType: "postgres",
                 oauth2Enabled: true
@@ -710,7 +710,7 @@ describe("api-config Node", function () {
         it("should have health check manager", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Health Check Config",
                 dbType: "postgres"
             }];
@@ -729,7 +729,7 @@ describe("api-config Node", function () {
         it("should register database health check when dbType is set", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "DB Health Config",
                 dbType: "postgres",
                 dbHost: "localhost"
@@ -748,7 +748,7 @@ describe("api-config Node", function () {
         it("should register keycloak health check when oauth2 is enabled", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Keycloak Health Config",
                 oauth2Enabled: true,
                 keycloakUrl: "https://keycloak.example.com"
@@ -767,7 +767,7 @@ describe("api-config Node", function () {
         it("should register opa health check when opa is enabled", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "OPA Health Config",
                 opaEnabled: true,
                 opaUrl: "http://localhost:8181"
@@ -786,7 +786,7 @@ describe("api-config Node", function () {
         it("should have health check helper methods", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Health Methods Config",
                 dbType: "postgres"
             }];
@@ -810,7 +810,7 @@ describe("api-config Node", function () {
         it("should return health status report", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Health Report Config",
                 dbType: "postgres"
             }];
@@ -832,7 +832,7 @@ describe("api-config Node", function () {
         it("should run health checks on demand", async function () {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "On Demand Health Config",
                 dbType: "postgres",
                 dbHost: "localhost"
@@ -857,7 +857,7 @@ describe("api-config Node", function () {
         it("should shutdown health check manager on close", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Health Shutdown Config",
                 dbType: "postgres"
             }];
@@ -881,7 +881,7 @@ describe("api-config Node", function () {
         it("should create connection pool when dbType is set", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Pool Config",
                 dbType: "postgres",
                 dbPoolMin: 0,
@@ -903,7 +903,7 @@ describe("api-config Node", function () {
         it("should not create connection pool when dbType is none", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Config",
                 dbType: "none"
             }];
@@ -921,7 +921,7 @@ describe("api-config Node", function () {
         it("should configure pool with custom settings", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Custom Pool Config",
                 dbType: "postgres",
                 dbPoolMin: 5,
@@ -946,7 +946,7 @@ describe("api-config Node", function () {
         it("should have pool helper methods", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Pool Methods Config",
                 dbType: "postgres"
             }];
@@ -970,7 +970,7 @@ describe("api-config Node", function () {
         it("should return null for pool stats when no pool", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Stats Config",
                 dbType: "none"
             }];
@@ -989,7 +989,7 @@ describe("api-config Node", function () {
         it("should return pool statistics", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Stats Config",
                 dbType: "postgres",
                 dbPoolMin: 2,
@@ -1018,7 +1018,7 @@ describe("api-config Node", function () {
         it("should return pool status", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Status Config",
                 dbType: "postgres"
             }];
@@ -1041,7 +1041,7 @@ describe("api-config Node", function () {
         it("should throw error when setting factory on null pool", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Factory Config",
                 dbType: "none"
             }];
@@ -1064,7 +1064,7 @@ describe("api-config Node", function () {
         it("should throw error when initializing null pool", async function () {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Init Config",
                 dbType: "none"
             }];
@@ -1086,7 +1086,7 @@ describe("api-config Node", function () {
         it("should throw error when acquiring from null pool", async function () {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Acquire Config",
                 dbType: "none"
             }];
@@ -1108,7 +1108,7 @@ describe("api-config Node", function () {
         it("should throw error when releasing to null pool", async function () {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "No Pool Release Config",
                 dbType: "none"
             }];
@@ -1130,7 +1130,7 @@ describe("api-config Node", function () {
         it("should shutdown connection pool on close", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Pool Shutdown Config",
                 dbType: "postgres"
             }];
@@ -1152,7 +1152,7 @@ describe("api-config Node", function () {
         it("should store dbPoolAcquireTimeout setting", function (done) {
             const flow = [{
                 id: "c1",
-                type: "api-config",
+                type: "apigw-config",
                 name: "Acquire Timeout Config",
                 dbType: "postgres",
                 dbPoolAcquireTimeout: 25000

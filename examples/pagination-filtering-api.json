@@ -8,7 +8,7 @@
     },
     {
         "id": "pagination-api-config",
-        "type": "api-config",
+        "type": "apigw-config",
         "z": "",
         "name": "Pagination Demo Config",
         "dbType": "none",
@@ -64,7 +64,7 @@
     },
     {
         "id": "pagination-api-server",
-        "type": "api-server",
+        "type": "apigw-server",
         "z": "pagination-filtering-flow",
         "name": "Pagination Demo Server",
         "port": "3203",
@@ -82,7 +82,7 @@
     },
     {
         "id": "list-orders-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "pagination-filtering-flow",
         "name": "List Orders (Offset Pagination)",
         "server": "pagination-api-server",
@@ -156,7 +156,7 @@
     },
     {
         "id": "list-events-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "pagination-filtering-flow",
         "name": "List Events (Cursor Pagination)",
         "server": "pagination-api-server",
@@ -230,7 +230,7 @@
     },
     {
         "id": "list-products-cached-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "pagination-filtering-flow",
         "name": "List Products (Cached + Filtered)",
         "server": "pagination-api-server",

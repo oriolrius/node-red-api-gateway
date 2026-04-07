@@ -374,12 +374,12 @@ async function testNodeInPalette() {
 
         // Check for api-server node
         const apiServerNode = nodes.find(n =>
-            n.types && n.types.includes('api-server')
+            n.types && n.types.includes('apigw-server')
         );
 
         // Check for api-endpoint node
         const apiEndpointNode = nodes.find(n =>
-            n.types && n.types.includes('api-endpoint')
+            n.types && n.types.includes('apigw-endpoint')
         );
 
         let allFound = true;
@@ -439,7 +439,7 @@ async function testBasicFunctionality() {
         },
         {
             id: "api-server-test",
-            type: "api-server",
+            type: "apigw-server",
             z: "e2e-test-tab",
             name: "Test API Server",
             wires: [["http-response-test"]]

@@ -755,7 +755,7 @@ module.exports = function(RED) {
         });
     }
 
-    RED.nodes.registerType("api-config", ApiConfigNode, {
+    RED.nodes.registerType("apigw-config", ApiConfigNode, {
         credentials: {
             dbUser: { type: "text" },
             dbPassword: { type: "password" },

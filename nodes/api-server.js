@@ -1051,7 +1051,7 @@ module.exports = function(RED) {
         });
     }
 
-    RED.nodes.registerType("api-server", ApiServerNode);
+    RED.nodes.registerType("apigw-server", ApiServerNode);
 
     // HTTP Admin endpoint for OpenAPI import
     RED.httpAdmin.post('/api-gateway/import-openapi', RED.auth.needsPermission('flows.write'), function(req, res) {

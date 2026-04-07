@@ -274,12 +274,12 @@ function setupFlows() {
         console.log('  [OK] Copied flows to .nodered/flows.json');
 
         // Show configuration details
-        const apiConfigNode = example.find(n => n.type === 'api-config');
+        const apiConfigNode = example.find(n => n.type === 'apigw-config');
         if (apiConfigNode && apiConfigNode.opaEnabled) {
             console.log(`       OPA: ${apiConfigNode.opaUrl}${apiConfigNode.opaPolicyPath}`);
         }
 
-        const endpoints = example.filter(n => n.type === 'api-endpoint');
+        const endpoints = example.filter(n => n.type === 'apigw-endpoint');
         console.log(`  [OK] Found ${endpoints.length} API endpoint(s)`);
         console.log('');
 

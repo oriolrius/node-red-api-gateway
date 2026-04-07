@@ -8,7 +8,7 @@
   },
   {
     "id": "full-stack-api-config",
-    "type": "api-config",
+    "type": "apigw-config",
     "z": "",
     "name": "Full Stack API Config",
     "dbType": "mssql",
@@ -65,7 +65,7 @@
   },
   {
     "id": "full-stack-api-server",
-    "type": "api-server",
+    "type": "apigw-server",
     "z": "full-stack-flow",
     "name": "Full Stack API Server",
     "port": "3443",
@@ -85,7 +85,7 @@
   },
   {
     "id": "public-health-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "Public Health Check",
     "server": "full-stack-api-server",
@@ -165,7 +165,7 @@
   },
   {
     "id": "list-products-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "List Products (Auto SQL)",
     "server": "full-stack-api-server",
@@ -225,7 +225,7 @@
   },
   {
     "id": "get-product-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "Get Product (Auto SQL)",
     "server": "full-stack-api-server",
@@ -285,7 +285,7 @@
   },
   {
     "id": "create-product-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "Create Product (Auto SQL)",
     "server": "full-stack-api-server",
@@ -345,7 +345,7 @@
   },
   {
     "id": "update-product-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "Update Product (Auto SQL)",
     "server": "full-stack-api-server",
@@ -405,7 +405,7 @@
   },
   {
     "id": "delete-product-endpoint",
-    "type": "api-endpoint",
+    "type": "apigw-endpoint",
     "z": "full-stack-flow",
     "name": "Delete Product (Auto SQL)",
     "server": "full-stack-api-server",

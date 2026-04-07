@@ -8,7 +8,7 @@
     },
     {
         "id": "crud-api-config",
-        "type": "api-config",
+        "type": "apigw-config",
         "name": "Products API Config",
         "dbType": "mssql",
         "dbHost": "192.168.210.42",
@@ -63,7 +63,7 @@
     },
     {
         "id": "crud-api-server",
-        "type": "api-server",
+        "type": "apigw-server",
         "z": "basic-crud-flow",
         "name": "Products API Server",
         "config": "crud-api-config",
@@ -83,7 +83,7 @@
     },
     {
         "id": "list-products-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "List Products",
         "server": "crud-api-server",
@@ -143,7 +143,7 @@
     },
     {
         "id": "get-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Get Product",
         "server": "crud-api-server",
@@ -223,7 +223,7 @@
     },
     {
         "id": "create-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Create Product",
         "server": "crud-api-server",
@@ -303,7 +303,7 @@
     },
     {
         "id": "update-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Update Product",
         "server": "crud-api-server",
@@ -383,7 +383,7 @@
     },
     {
         "id": "delete-product-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "Delete Product",
         "server": "crud-api-server",
@@ -483,7 +483,7 @@
     },
     {
         "id": "d02012cc2548d74d",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "basic-crud-flow",
         "name": "List inspecregistres",
         "server": "crud-api-server",

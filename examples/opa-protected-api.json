@@ -8,7 +8,7 @@
     },
     {
         "id": "opa-api-config",
-        "type": "api-config",
+        "type": "apigw-config",
         "z": "",
         "name": "OPA Protected API Config",
         "dbType": "none",
@@ -64,7 +64,7 @@
     },
     {
         "id": "opa-api-server",
-        "type": "api-server",
+        "type": "apigw-server",
         "z": "opa-protected-flow",
         "name": "OPA Protected API Server",
         "port": "3200",
@@ -82,7 +82,7 @@
     },
     {
         "id": "list-documents-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "opa-protected-flow",
         "name": "List Documents",
         "server": "opa-api-server",
@@ -156,7 +156,7 @@
     },
     {
         "id": "get-document-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "opa-protected-flow",
         "name": "Get Document",
         "server": "opa-api-server",
@@ -230,7 +230,7 @@
     },
     {
         "id": "create-document-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "opa-protected-flow",
         "name": "Create Document",
         "server": "opa-api-server",
@@ -304,7 +304,7 @@
     },
     {
         "id": "delete-document-endpoint",
-        "type": "api-endpoint",
+        "type": "apigw-endpoint",
         "z": "opa-protected-flow",
         "name": "Delete Document (Admin Only)",
         "server": "opa-api-server",

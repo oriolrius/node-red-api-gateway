@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('api-config', {
+    RED.nodes.registerType('apigw-config', {
         category: 'config',
         defaults: {
             name: { value: "", required: true },
@@ -164,7 +164,7 @@
     });
 </script>
 
-<script type="text/html" data-template-name="api-config">
+<script type="text/html" data-template-name="apigw-config">
     <div class="form-row">
         <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-config-input-name" placeholder="Configuration name">
@@ -521,7 +521,7 @@
     </div>
 </script>
 
-<script type="text/html" data-help-name="api-config">
+<script type="text/html" data-help-name="apigw-config">
     <p>Configuration node for API Gateway shared settings.</p>
 
     <h3>Overview</h3>
