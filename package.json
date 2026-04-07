@@ -1,6 +1,6 @@
 {
   "name": "@oriolrius/node-red-api-gateway",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Node-RED nodes for API gateway functionality",
   "keywords": [
     "node-red"
