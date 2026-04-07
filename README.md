@@ -48,20 +48,20 @@ npm link @oriolrius/node-red-api-gateway
 
 ### 1. Basic API Setup
 
-1. Drag an **api-config** node onto the canvas and configure:
+1. Drag an **apigw-config** node onto the canvas and configure:
    - API Version: `v1`
    - Base Path: `/api`
    - OpenAPI Title: `My API`
 
-2. Drag an **api-server** node and configure:
+2. Drag an **apigw-server** node and configure:
    - Port: `3000`
-   - Config: Select your api-config node
+   - Config: Select your apigw-config node
    - Enable Swagger UI: `true`
 
-3. Drag an **api-endpoint** node and configure:
+3. Drag an **apigw-endpoint** node and configure:
    - Path: `/hello`
    - Method: `GET`
-   - Server: Select your api-server node
+   - Server: Select your apigw-server node
 
 4. Connect a **function** node to handle the request:
 
@@ -89,9 +89,9 @@ The package includes several example flows demonstrating different features:
 
 ## Nodes
 
-### api-config
+### apigw-config
 
-Configuration node for centralized settings shared across api-server and api-endpoint nodes.
+Configuration node for centralized settings shared across apigw-server and apigw-endpoint nodes.
 
 **Database Configuration:**
 - Database type (PostgreSQL, MSSQL, MySQL, etc.)
@@ -117,23 +117,23 @@ Configuration node for centralized settings shared across api-server and api-end
 - Output format (console, file)
 - Header redaction
 
-### api-server
+### apigw-server
 
 HTTP server node that hosts your API endpoints.
 
 **Configuration:**
 - Host and port
-- Reference to api-config node
+- Reference to apigw-config node
 - OpenAPI specification endpoint (`/openapi.json`)
 - Swagger UI documentation (`/docs`)
 - Prometheus metrics endpoint (`/metrics`)
 
 **Features:**
-- Automatic route registration from api-endpoint nodes
+- Automatic route registration from apigw-endpoint nodes
 - Route conflict detection
 - Graceful shutdown
 
-### api-endpoint
+### apigw-endpoint
 
 Individual API endpoint definition node.
 
@@ -192,7 +192,7 @@ Individual API endpoint definition node.
 ### Basic CRUD Endpoint
 
 ```javascript
-// In your function node connected to an api-endpoint
+// In your function node connected to an apigw-endpoint
 const products = [
   { id: 1, name: "Widget", price: 29.99 },
   { id: 2, name: "Gadget", price: 49.99 }
@@ -208,7 +208,7 @@ return null;
 
 ### Request Validation
 
-Configure the api-endpoint with a body schema:
+Configure the apigw-endpoint with a body schema:
 
 ```json
 {
@@ -225,8 +225,8 @@ Invalid requests automatically return 400 errors with validation details.
 
 ### OAuth2 Protected Endpoint
 
-1. Configure api-config with Keycloak settings
-2. Set `requiredScopes` on api-endpoint (e.g., `admin, user:write`)
+1. Configure apigw-config with Keycloak settings
+2. Set `requiredScopes` on apigw-endpoint (e.g., `admin, user:write`)
 3. Access user info in your function:
 
 ```javascript
@@ -242,7 +242,7 @@ if (auth.authenticated) {
 Enable pagination on list endpoints:
 
 ```javascript
-// Pagination context is populated by api-endpoint
+// Pagination context is populated by apigw-endpoint
 const { page, limit, offset } = msg.pagination || {};
 
 // Query database with pagination
@@ -265,7 +265,7 @@ msg.res.json({
 
 ### Rate Limiting
 
-Enable rate limiting on api-endpoint:
+Enable rate limiting on apigw-endpoint:
 - Requests: `100`
 - Window: `60000` (1 minute)
 - Key Type: `ip` (or `user` for per-user limits)
@@ -278,7 +278,7 @@ console.log('Remaining requests:', msg.rateLimit.remaining);
 
 ### Response Caching
 
-Enable caching on api-endpoint:
+Enable caching on apigw-endpoint:
 - TTL: `30000` (30 seconds)
 - Key Strategy: `full` (includes query string)
 - Vary Headers: `authorization` (for user-specific caching)
@@ -295,7 +295,7 @@ if (msg.cache.hit) {
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 - npm >= 8.0.0
 
 ### Setup
@@ -363,9 +363,9 @@ This script uses [npm-cli](https://github.com/oriolrius/npm-cli) via `uvx` to do
 ```
 node-red-api-gateway/
 ├── nodes/                     # Node-RED nodes
-│   ├── api-config.js/html    # Configuration node
-│   ├── api-server.js/html    # HTTP server node
-│   ├── api-endpoint.js/html  # Endpoint definition node
+│   ├── api-config.js/html    # Configuration node (apigw-config)
+│   ├── api-server.js/html    # HTTP server node (apigw-server)
+│   ├── api-endpoint.js/html  # Endpoint definition node (apigw-endpoint)
 │   └── icons/                # Node icons
 ├── lib/                       # Shared utility modules
 │   ├── path-utils.js         # Path manipulation
@@ -394,7 +394,7 @@ node-red-api-gateway/
 
 ### Message Properties
 
-When a request hits an api-endpoint, the following properties are available on `msg`:
+When a request hits an apigw-endpoint, the following properties are available on `msg`:
 
 | Property | Type | Description |
 |----------|------|-------------|
