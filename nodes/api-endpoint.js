@@ -1004,11 +1004,11 @@ module.exports = function(RED) {
                 // so handlers can run parameterized SQL without instantiating
                 // their own mssql ConnectionPool. Only attached when an mssql
                 // pool is configured on the apigw-config.
-                if (configNode && configNode.dbType === 'mssql' &&
-                    typeof configNode.executeQuery === 'function') {
+                if (configNode && configNode.dbType === "mssql" &&
+                    typeof configNode.executeQuery === "function") {
                     msg.db = {
                         executeQuery: configNode.executeQuery.bind(configNode),
-                        isReady: typeof configNode.isSqlServerReady === 'function'
+                        isReady: typeof configNode.isSqlServerReady === "function"
                             ? configNode.isSqlServerReady.bind(configNode)
                             : () => false
                     };
