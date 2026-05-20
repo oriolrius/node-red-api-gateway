@@ -597,10 +597,20 @@ module.exports = function(RED) {
                     }
                     break;
 
-                case 'get':
-                    // Get by primary key
-                    if (urlParams.id) params.id = urlParams.id;
+                case 'get': {
+                    // Bind primary-key parameter. Prefer urlParams[primaryKey];
+                    // fall back to the sole path param when paths use a
+                    // differently-named placeholder (e.g. :idCota vs PK id_cota);
+                    // legacy fallback to urlParams.id for paths that still use :id.
+                    const pkCol = sqlTemplate.primaryKey;
+                    let pkVal = pkCol ? urlParams[pkCol] : undefined;
+                    if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
+                        pkVal = urlParams[context.paramNames[0]];
+                    }
+                    if (pkVal === undefined) pkVal = urlParams.id;
+                    if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
                     break;
+                }
 
                 case 'create':
                     // Insert body fields - build actual INSERT SQL from template
@@ -621,7 +631,13 @@ module.exports = function(RED) {
                 case 'update':
                     // Update by primary key with body fields - build actual UPDATE SQL
                     {
-                        if (urlParams.id) params.id = urlParams.id;
+                        const pkCol = sqlTemplate.primaryKey;
+                        let pkVal = pkCol ? urlParams[pkCol] : undefined;
+                        if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
+                            pkVal = urlParams[context.paramNames[0]];
+                        }
+                        if (pkVal === undefined) pkVal = urlParams.id;
+                        if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
                         const assignments = Object.keys(body).map(c => `${c} = @${c}`);
                         // Replace @assignments placeholder with actual SET clause
                         sql = sql.replace('@assignments', assignments.join(', '));
@@ -636,10 +652,17 @@ module.exports = function(RED) {
                     }
                     break;
 
-                case 'delete':
-                    // Delete by primary key
-                    if (urlParams.id) params.id = urlParams.id;
+                case 'delete': {
+                    // Delete by primary key (see 'get' for fallback chain).
+                    const pkCol = sqlTemplate.primaryKey;
+                    let pkVal = pkCol ? urlParams[pkCol] : undefined;
+                    if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
+                        pkVal = urlParams[context.paramNames[0]];
+                    }
+                    if (pkVal === undefined) pkVal = urlParams.id;
+                    if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
                     break;
+                }
             }
 
             // Execute the query
