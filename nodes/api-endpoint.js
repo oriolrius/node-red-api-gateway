@@ -1366,7 +1366,8 @@ module.exports = function(RED) {
                                 params: msg.req?.params || {},
                                 query: msg.req?.query || {},
                                 filtering: msg.filtering || null,
-                                sorting: msg.sorting || null
+                                sorting: msg.sorting || null,
+                                paramNames: node.paramNames || []
                             };
 
                             if (requestLogger) {
