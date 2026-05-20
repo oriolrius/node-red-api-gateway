@@ -1,0 +1,9 @@
+# Override for msgdb-integration.test.js — reduces network_base port
+# bindings to only what this test needs, avoiding host-port conflicts
+# (e.g. with another Keycloak on 8080).
+services:
+  network_base:
+    ports: !override
+      - "1433:1433"
+      - "1880:1880"
+      - "3200:3200"

@@ -32,7 +32,8 @@
     "test:opa": "node tests/e2e/opa-integration.test.js",
     "setup:certs": "bash tests/e2e/setup-certs.sh",
     "test:openapi-tls": "node tests/e2e/openapi-tls.test.js",
-    "test:full-stack": "node tests/e2e/full-stack-integration.test.js"
+    "test:full-stack": "node tests/e2e/full-stack-integration.test.js",
+    "test:msgdb-e2e": "node tests/e2e/msgdb-integration.test.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0",
