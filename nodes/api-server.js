@@ -288,7 +288,8 @@ module.exports = function(RED) {
                     req: {
                         method: request.method,
                         url: request.url,
-                        path: request.routeOptions?.url || request.url.split('?')[0],
+                        path: request.url.split('?')[0],
+                        route: request.routeOptions?.url,
                         query: request.query || {},
                         params: request.params || {},
                         headers: request.headers,

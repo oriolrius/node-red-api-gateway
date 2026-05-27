@@ -1053,8 +1053,13 @@ module.exports = function(RED) {
                     };
                 }
 
-                // If request path is provided, extract parameters
-                if (msg.req && msg.req.path) {
+                // If request path is provided and params weren't already set
+                // (e.g. by the HTTP route handler in api-server.js, which gets
+                // them from Fastify), extract them here for synthetic/test
+                // messages. Never overwrite an existing params map — doing so
+                // would clobber Fastify's real values with placeholder
+                // literals when msg.req.path is a route template.
+                if (msg.req && msg.req.path && (!msg.req.params || Object.keys(msg.req.params).length === 0)) {
                     const extraction = node.extractRequestParams(msg.req.path);
                     if (extraction.match) {
                         msg.req.params = extraction.params;
