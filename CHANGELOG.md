@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.7.2
+
+### Fixed
+
+- `apigw-server` populated `msg.req.path` with Fastify's
+  `request.routeOptions?.url` (the route **template**, e.g.
+  `/api/v1/maquines/:zIdMaquina`) rather than the actual request URL.
+  Combined with `apigw-endpoint` unconditionally re-extracting params
+  from `msg.req.path`, this overwrote Fastify's correctly-parsed
+  `req.params` with placeholder *literals* (`{ zIdMaquina: ':zIdMaquina' }`).
+  Downstream SQL then received `':zIdMaquina'` as the value, producing
+  `Conversion failed when converting the nvarchar value ':zIdMaquina' to
+  data type smallint` (int/smallint/uniqueidentifier PKs), `404 not found`
+  (string PKs returning 0 rows), and `400 idMesura must be an integer`
+  (custom handlers using `parseInt(msg.req.params.idMesura, 10)`).
+- `msg.req.path` is now the actual request path (no query string). The
+  route template remains available under `msg.req.route` for
+  observability and OpenAPI tooling.
+- `apigw-endpoint` only re-extracts params from `msg.req.path` when
+  `msg.req.params` is empty/absent. This preserves the synthetic-message
+  contract used by unit tests while never clobbering Fastify-supplied
+  values.
+
+### Tests
+
+- `tests/unit/api-endpoint_spec.js` — two regressions: pre-populated
+  `req.params` is preserved when `req.path` is the actual URL **and**
+  when it is a route template.
+
+### Notes
+
+- Backwards compatible for any flow that already received correct
+  `msg.req.params` (it now stays correct). Flows that relied on
+  `msg.req.path` being the template should switch to `msg.req.route`.
+
 ## 0.7.1
 
 ### Fixed
