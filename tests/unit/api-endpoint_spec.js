@@ -249,6 +249,56 @@ describe("api-endpoint Node", function () {
             });
         });
 
+        it("should NOT overwrite pre-populated req.params (Fastify path)", function (done) {
+            // Regression for v0.7.2: api-server.js sets req.params from
+            // Fastify's parsed route params, and req.path = actual URL.
+            // The endpoint must not re-extract on top of that (the
+            // template-vs-URL re-match would corrupt values back to
+            // placeholder literals like ":id" — see node-red-api-gateway
+            // v0.7.1 → 0.7.2 fix notes).
+            const flow = [
+                { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.req.params.should.deepEqual({ id: "789" });
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { path: "/users/789", params: { id: "789" } } });
+            });
+        });
+
+        it("should NOT corrupt params when req.path is a route template", function (done) {
+            // Regression for v0.7.2: if a caller passes req.path as a route
+            // template (e.g. "/users/:id") with req.params already
+            // populated, we must keep the real param values intact.
+            // Pre-fix this produced { id: ":id" } and broke downstream SQL.
+            const flow = [
+                { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
+                { id: "n2", type: "helper" }
+            ];
+            helper.load(apiEndpointNode, flow, function () {
+                const n1 = helper.getNode("n1");
+                const n2 = helper.getNode("n2");
+                n2.on("input", function (msg) {
+                    try {
+                        msg.req.params.should.deepEqual({ id: "789" });
+                        done();
+                    } catch (err) {
+                        done(err);
+                    }
+                });
+                n1.receive({ payload: "test", req: { path: "/users/:id", params: { id: "789" } } });
+            });
+        });
+
         it("should not add params if path does not match", function (done) {
             const flow = [
                 { id: "n1", type: "apigw-endpoint", path: "/users/:id", method: "GET", wires: [["n2"]] },
