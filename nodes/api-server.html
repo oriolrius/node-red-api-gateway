@@ -484,7 +484,7 @@
 
     <div class="form-row">
         <label for="openapi-import-content"><i class="fa fa-code"></i> Spec</label>
-        <textarea id="openapi-import-content" rows="6" placeholder="Paste OpenAPI 3.0 YAML or JSON specification here..." style="width: 70%; font-family: monospace; font-size: 11px;"></textarea>
+        <textarea id="openapi-import-content" rows="6" placeholder="Paste OpenAPI 3.1 YAML or JSON specification here..." style="width: 70%; font-family: monospace; font-size: 11px;"></textarea>
     </div>
 
     <div class="form-row">
@@ -584,7 +584,7 @@
     <h3>Overview</h3>
     <p>The API Server node provides:</p>
     <ul>
-        <li>Automatic OpenAPI 3.0 specification generation from registered endpoints</li>
+        <li>Automatic OpenAPI 3.1 specification generation from registered endpoints</li>
         <li>JSON and YAML spec endpoints for API documentation</li>
         <li>Optional Swagger UI for interactive API exploration</li>
         <li>Prometheus metrics endpoint for monitoring</li>
@@ -693,9 +693,9 @@ http://localhost:3000/metrics       - Prometheus metrics</pre>
     The server tracks all registered endpoints and includes them in the generated OpenAPI specification.</p>
 
     <h3>Import from OpenAPI</h3>
-    <p>You can import existing OpenAPI 3.0 specifications to auto-generate endpoint nodes:</p>
+    <p>You can import existing OpenAPI 3.1 specifications to auto-generate endpoint nodes:</p>
     <ol>
-        <li><b>Upload or paste</b> an OpenAPI 3.0 specification (JSON or YAML)</li>
+        <li><b>Upload or paste</b> an OpenAPI 3.1 specification (JSON or YAML)</li>
         <li><b>Preview</b> to see available paths, methods, and tags</li>
         <li><b>Select paths</b> to import (supports partial imports)</li>
         <li><b>Import</b> to generate API Endpoint nodes with configured schemas</li>

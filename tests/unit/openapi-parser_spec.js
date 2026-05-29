@@ -68,16 +68,15 @@ describe("OpenAPI Parser", function () {
                 result.should.have.property("description", "A string");
             });
 
-            it("should handle nullable types", function () {
-                const schema = { type: "string", nullable: true };
+            it("should pass through type arrays containing null", function () {
+                const schema = { type: ["string", "null"] };
                 const result = openApiSchemaToJsonSchema(schema);
                 result.type.should.deepEqual(["string", "null"]);
             });
 
-            it("should remove OpenAPI-specific properties", function () {
+            it("should strip OpenAPI-only schema decorations and keep valid 3.1 annotations", function () {
                 const schema = {
                     type: "object",
-                    nullable: true,
                     discriminator: { propertyName: "type" },
                     xml: { name: "user" },
                     externalDocs: { url: "http://example.com" },
@@ -86,17 +85,17 @@ describe("OpenAPI Parser", function () {
                 const result = openApiSchemaToJsonSchema(schema);
                 should(result.discriminator).be.undefined();
                 should(result.xml).be.undefined();
-                should(result.externalDocs).be.undefined();
-                should(result.deprecated).be.undefined();
+                // 3.1 keeps externalDocs and deprecated as valid Schema annotations
+                result.externalDocs.should.deepEqual({ url: "http://example.com" });
+                result.deprecated.should.equal(true);
             });
 
-            it("should handle nested properties", function () {
+            it("should recurse through nested properties", function () {
                 const schema = {
                     type: "object",
                     properties: {
                         user: {
-                            type: "object",
-                            nullable: true,
+                            type: ["object", "null"],
                             properties: {
                                 name: { type: "string" }
                             }
@@ -105,26 +104,45 @@ describe("OpenAPI Parser", function () {
                 };
                 const result = openApiSchemaToJsonSchema(schema);
                 result.properties.user.type.should.deepEqual(["object", "null"]);
+                result.properties.user.properties.name.type.should.equal("string");
             });
 
-            it("should handle array items", function () {
+            it("should recurse through array items", function () {
                 const schema = {
                     type: "array",
-                    items: { type: "string", nullable: true }
+                    items: { type: ["string", "null"] }
                 };
                 const result = openApiSchemaToJsonSchema(schema);
                 result.items.type.should.deepEqual(["string", "null"]);
             });
 
-            it("should handle allOf/anyOf/oneOf", function () {
+            it("should recurse through allOf/anyOf/oneOf", function () {
                 const schema = {
                     allOf: [
-                        { type: "object", nullable: true },
+                        { type: ["object", "null"] },
                         { type: "object" }
                     ]
                 };
                 const result = openApiSchemaToJsonSchema(schema);
                 result.allOf[0].type.should.deepEqual(["object", "null"]);
+            });
+
+            it("should recurse through 2020-12 containers ($defs, prefixItems, propertyNames, if/then/else)", function () {
+                const schema = {
+                    $defs: { inner: { type: "string", xml: { name: "x" } } },
+                    prefixItems: [{ type: "string", xml: { name: "x" } }],
+                    propertyNames: { type: "string", xml: { name: "x" } },
+                    if: { type: "object", xml: { name: "x" } },
+                    then: { type: "object", xml: { name: "x" } },
+                    else: { type: "object", xml: { name: "x" } }
+                };
+                const result = openApiSchemaToJsonSchema(schema);
+                should(result.$defs.inner.xml).be.undefined();
+                should(result.prefixItems[0].xml).be.undefined();
+                should(result.propertyNames.xml).be.undefined();
+                should(result.if.xml).be.undefined();
+                should(result.then.xml).be.undefined();
+                should(result.else.xml).be.undefined();
             });
         });
 
@@ -537,7 +555,7 @@ describe("OpenAPI Parser", function () {
 
     describe("parseOpenApiSpec", function () {
         const minimalSpec = {
-            openapi: "3.0.3",
+            openapi: "3.1.0",
             info: { title: "Test API", version: "1.0.0" },
             paths: {
                 "/users": {
@@ -582,6 +600,28 @@ describe("OpenAPI Parser", function () {
             should.throws(() => parseOpenApiSpec(null), /Invalid OpenAPI specification/);
             should.throws(() => parseOpenApiSpec({}), /Unsupported OpenAPI version/);
             should.throws(() => parseOpenApiSpec({ openapi: "2.0" }), /Unsupported OpenAPI version/);
+        });
+
+        it("should reject OpenAPI 3.0.x specs (3.1-only)", function () {
+            should.throws(() => parseOpenApiSpec({ openapi: "3.0.3", info: { title: "x", version: "1" }, paths: {} }), /Only OpenAPI 3\.1\.x is supported/);
+            should.throws(() => parseOpenApiSpec({ openapi: "3.0.0", info: { title: "x", version: "1" }, paths: {} }), /Only OpenAPI 3\.1\.x is supported/);
+        });
+
+        it("should accept a 3.1 spec with webhooks and no paths", function () {
+            const spec = {
+                openapi: "3.1.0",
+                info: { title: "Webhook-only", version: "1.0.0" },
+                webhooks: {
+                    newPet: {
+                        post: {
+                            responses: { "200": { description: "ok" } }
+                        }
+                    }
+                }
+            };
+            const result = parseOpenApiSpec(spec);
+            result.endpoints.should.have.length(0);
+            result.apiInfo.title.should.equal("Webhook-only");
         });
 
         it("should extract tags", function () {
@@ -632,7 +672,7 @@ describe("OpenAPI Parser", function () {
 
         it("should resolve $ref in schemas", function () {
             const specWithRefs = {
-                openapi: "3.0.3",
+                openapi: "3.1.0",
                 info: { title: "Test API", version: "1.0.0" },
                 paths: {
                     "/users": {
@@ -751,7 +791,7 @@ describe("OpenAPI Parser", function () {
 
         it("should parse JSON when content starts with {", function () {
             const json = JSON.stringify({
-                openapi: "3.0.3",
+                openapi: "3.1.0",
                 info: { title: "Test", version: "1.0.0" },
                 paths: {}
             });
@@ -768,7 +808,7 @@ describe("OpenAPI Parser", function () {
     describe("parseFromJson", function () {
         it("should parse valid JSON string", function () {
             const json = JSON.stringify({
-                openapi: "3.0.3",
+                openapi: "3.1.0",
                 info: { title: "JSON API", version: "2.0.0" },
                 paths: {}
             });
@@ -785,7 +825,7 @@ describe("OpenAPI Parser", function () {
 
     describe("OpenApiParser Class", function () {
         const testSpec = JSON.stringify({
-            openapi: "3.0.3",
+            openapi: "3.1.0",
             info: { title: "Parser Test API", version: "1.0.0", description: "Test description" },
             paths: {
                 "/items": {
@@ -872,7 +912,7 @@ describe("OpenAPI Parser", function () {
 
     describe("Complex OpenAPI Spec", function () {
         const complexSpec = {
-            openapi: "3.0.3",
+            openapi: "3.1.0",
             info: {
                 title: "Complex API",
                 version: "1.0.0",

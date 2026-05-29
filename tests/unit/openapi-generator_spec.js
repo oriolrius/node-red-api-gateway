@@ -26,7 +26,7 @@ describe("OpenAPI Generator", function () {
                 should(jsonSchemaToOpenApi(undefined)).be.undefined();
             });
 
-            it("should remove $id from schema", function () {
+            it("should preserve $id (valid in JSON Schema 2020-12)", function () {
                 const schema = {
                     $id: "User",
                     type: "object",
@@ -35,17 +35,18 @@ describe("OpenAPI Generator", function () {
                     }
                 };
                 const result = jsonSchemaToOpenApi(schema);
-                should(result.$id).be.undefined();
+                result.$id.should.equal("User");
                 result.should.have.property("type", "object");
             });
 
-            it("should convert nested properties", function () {
+            it("should recurse through nested properties and keep $id", function () {
                 const schema = {
                     type: "object",
                     properties: {
                         user: {
                             $id: "NestedUser",
                             type: "object",
+                            xml: { name: "user" },
                             properties: {
                                 name: { type: "string" }
                             }
@@ -53,33 +54,73 @@ describe("OpenAPI Generator", function () {
                     }
                 };
                 const result = jsonSchemaToOpenApi(schema);
-                should(result.properties.user.$id).be.undefined();
-                result.properties.user.should.have.property("type", "object");
+                result.properties.user.$id.should.equal("NestedUser");
+                should(result.properties.user.xml).be.undefined();
             });
 
-            it("should handle array items", function () {
+            it("should recurse through array items and strip OAS-only decorations", function () {
                 const schema = {
                     type: "array",
                     items: {
                         $id: "Item",
-                        type: "object"
+                        type: "object",
+                        xml: { name: "i" }
                     }
                 };
                 const result = jsonSchemaToOpenApi(schema);
-                should(result.items.$id).be.undefined();
-                result.items.should.have.property("type", "object");
+                result.items.$id.should.equal("Item");
+                should(result.items.xml).be.undefined();
             });
 
-            it("should handle allOf/anyOf/oneOf", function () {
+            it("should recurse through allOf/anyOf/oneOf", function () {
                 const schema = {
                     allOf: [
-                        { $id: "Schema1", type: "object" },
+                        { $id: "Schema1", type: "object", xml: { name: "s1" } },
                         { $id: "Schema2", type: "object" }
                     ]
                 };
                 const result = jsonSchemaToOpenApi(schema);
-                should(result.allOf[0].$id).be.undefined();
-                should(result.allOf[1].$id).be.undefined();
+                result.allOf[0].$id.should.equal("Schema1");
+                should(result.allOf[0].xml).be.undefined();
+                result.allOf[1].$id.should.equal("Schema2");
+            });
+
+            it("should defensively rewrite stray `nullable: true` to type-null array", function () {
+                const schema = { type: "string", nullable: true };
+                const result = jsonSchemaToOpenApi(schema);
+                should(result.nullable).be.undefined();
+                result.type.should.deepEqual(["string", "null"]);
+            });
+
+            it("should defensively rewrite boolean exclusiveMinimum/Maximum to numeric form", function () {
+                const schema = {
+                    type: "number",
+                    minimum: 0,
+                    exclusiveMinimum: true,
+                    maximum: 10,
+                    exclusiveMaximum: true
+                };
+                const result = jsonSchemaToOpenApi(schema);
+                result.exclusiveMinimum.should.equal(0);
+                result.exclusiveMaximum.should.equal(10);
+                should(result.minimum).be.undefined();
+                should(result.maximum).be.undefined();
+            });
+
+            it("should recurse through 2020-12 containers ($defs, prefixItems, if/then/else)", function () {
+                const schema = {
+                    $defs: { inner: { type: "string", xml: { name: "x" } } },
+                    prefixItems: [{ type: "string", xml: { name: "x" } }],
+                    if: { type: "object", xml: { name: "x" } },
+                    then: { type: "object", xml: { name: "x" } },
+                    else: { type: "object", xml: { name: "x" } }
+                };
+                const result = jsonSchemaToOpenApi(schema);
+                should(result.$defs.inner.xml).be.undefined();
+                should(result.prefixItems[0].xml).be.undefined();
+                should(result.if.xml).be.undefined();
+                should(result.then.xml).be.undefined();
+                should(result.else.xml).be.undefined();
             });
         });
 
@@ -420,11 +461,39 @@ describe("OpenAPI Generator", function () {
         });
 
         describe("generate", function () {
-            it("should generate valid OpenAPI 3.0 structure", function () {
+            it("should generate valid OpenAPI 3.1 structure", function () {
                 const spec = generator.generate();
-                spec.should.have.property("openapi", "3.0.3");
+                spec.should.have.property("openapi", "3.1.0");
+                spec.should.have.property(
+                    "jsonSchemaDialect",
+                    "https://json-schema.org/draft/2020-12/schema"
+                );
                 spec.should.have.property("info");
                 spec.should.have.property("paths");
+            });
+
+            it("should never emit `nullable` anywhere in the generated spec", function () {
+                generator.registerEndpoint({
+                    id: "epNullable",
+                    getEndpointInfo: () => ({
+                        id: "epNullable",
+                        name: "Nullable test",
+                        path: "/with-nullable",
+                        method: "GET",
+                        paramNames: [],
+                        successStatusCode: 200,
+                        responseSchemas: {
+                            "200": {
+                                type: "object",
+                                properties: {
+                                    name: { type: "string", nullable: true }
+                                }
+                            }
+                        }
+                    })
+                });
+                const serialized = JSON.stringify(generator.generate());
+                serialized.should.not.match(/"nullable"\s*:/);
             });
 
             it("should include registered endpoints as paths", function () {
@@ -705,7 +774,7 @@ describe("OpenAPI Generator", function () {
             const spec = generator.generate();
 
             // Verify structure
-            spec.openapi.should.equal("3.0.3");
+            spec.openapi.should.equal("3.1.0");
             spec.info.title.should.equal("Users API");
 
             // Verify paths

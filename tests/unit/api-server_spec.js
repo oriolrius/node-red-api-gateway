@@ -85,7 +85,7 @@ describe("api-server Node", function () {
                 try {
                     n1.should.have.property("getOpenApiSpec");
                     const spec = n1.getOpenApiSpec();
-                    spec.should.have.property("openapi", "3.0.3");
+                    spec.should.have.property("openapi", "3.1.0");
                     spec.should.have.property("info");
                     spec.should.have.property("paths");
                     done();
