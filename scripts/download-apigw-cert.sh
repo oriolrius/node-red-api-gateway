@@ -7,12 +7,18 @@
 
 set -e
 
-# Configuration
-NPM_URL="http://rproxy.joor.net:81"
-NPM_USER="oriol@joor.net"
-NPM_PASS='***REMOVED***'
-CERT_ID=23  # apigw.joor.net
-DOMAIN="apigw.joor.net"
+# Configuration (override any of these via the environment)
+NPM_URL="${NPM_URL:-http://rproxy.joor.net:81}"
+CERT_ID="${CERT_ID:-23}"          # apigw.joor.net
+DOMAIN="${DOMAIN:-apigw.joor.net}"
+
+# Nginx Proxy Manager credentials.
+# NEVER hardcode these — provide them via the environment. For example, pull them
+# from Bitwarden (item "NPM (10.2.0.2)") just before running:
+#   export NPM_USER=$(bash "$HOME/.claude/skills/bitwarden/scripts/bw_exec.sh" get username "NPM (10.2.0.2)")
+#   export NPM_PASS=$(bash "$HOME/.claude/skills/bitwarden/scripts/bw_exec.sh" get password "NPM (10.2.0.2)")
+: "${NPM_USER:?Set NPM_USER (Nginx Proxy Manager login) in the environment — see comments above}"
+: "${NPM_PASS:?Set NPM_PASS (Nginx Proxy Manager password) in the environment — see comments above}"
 
 # Target directory (relative to script location)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
