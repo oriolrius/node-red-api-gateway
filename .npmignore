@@ -25,6 +25,14 @@ Dockerfile*
 # Binaries and contrib tools
 contrib/
 
+# Build artifacts
+*.tgz
+
+# Local tooling caches
+.codegraph/
+.engram/
+.mcp.json
+
 # Misc
 *.log
 .DS_Store

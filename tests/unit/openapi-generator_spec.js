@@ -285,7 +285,7 @@ describe("OpenAPI Generator", function () {
                 };
                 const result = buildOAuth2SecurityScheme(config);
                 result.should.have.property("type", "oauth2");
-                result.flows.authorizationCode.authorizationUrl.should.containEql("myrealm");
+                result.flows.clientCredentials.tokenUrl.should.containEql("myrealm");
             });
         });
 
@@ -797,8 +797,8 @@ describe("OpenAPI Generator", function () {
             pathParams[0].name.should.equal("id");
 
             // Verify security schemes
-            spec.components.securitySchemes.oauth2.flows.authorizationCode.scopes.should.have.property("read:users");
-            spec.components.securitySchemes.oauth2.flows.authorizationCode.scopes.should.have.property("write:users");
+            spec.components.securitySchemes.oauth2.flows.clientCredentials.scopes.should.have.property("read:users");
+            spec.components.securitySchemes.oauth2.flows.clientCredentials.scopes.should.have.property("write:users");
 
             // Verify tags
             spec.tags.should.containDeep([{ name: "users" }]);

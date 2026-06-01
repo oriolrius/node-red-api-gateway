@@ -28,6 +28,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+*.tgz
 
 # Environment
 .env
@@ -45,3 +46,7 @@ tests/e2e/certs/
 
 # Development launcher credentials (contains secrets)
 tests/launcher/flows_cred.json
+
+# Local tooling caches
+.codegraph/
+.engram/
