@@ -2,131 +2,122 @@
 
 Utility scripts for the node-red-api-gateway project.
 
+## refresh-cert.sh
+
+Generic certificate refresher for [Nginx Proxy Manager](https://nginxproxymanager.com/)
+(NPM). Fetches a certificate via [npm-cli](https://github.com/oriolrius/npm-cli)
+(run with `uvx`, no install), writes it to disk under configurable filenames, and
+**optionally reloads the service that serves it — only when the certificate changed.**
+
+Fully environment-driven: **no hardcoded paths, domains, or credentials.** Credentials
+are read from the environment (or a sourced `ENV_FILE`) and never live in the script.
+
+### Practices it implements
+
+- **Fresh auth every run** — npm-cli login tokens expire after ~1 day, so a cached
+  token silently breaks unattended jobs. This re-authenticates each run.
+- **certbot archive-index aware** — on renewal NPM/certbot bumps the file index
+  (`cert1.pem → cert2.pem`). Files are matched by *role*, not a fixed index.
+- **Reload only on change** — diffs before doing anything; idempotent otherwise.
+- **Self-healing detection** — when a verify host is set, it compares against the
+  **live served** cert, so a failed reload retries on the next run.
+- **Large-flow safe** — Node-RED redeploys POST the flows via a file, not a CLI arg.
+
+### Environment contract
+
+| Variable | Req | Default | Notes |
+|----------|-----|---------|-------|
+| `NPM_URL` | ✓ | — | NPM base URL, e.g. `http://rproxy.example.com:81` |
+| `NPM_USER` + `NPM_PASS` | ✓\* | — | NPM login (\*or `NPM_TOKEN`) |
+| `NPM_TOKEN` | ✓\* | — | Alternative to user/pass |
+| `CERT_ID` | ✓ | — | NPM cert id (`npm-cli certs list`) |
+| `DOMAIN` | ✓ | — | Cert domain (download subdir) |
+| `OUT_DIR` | ✓ | — | Where to write the cert files |
+| `OUT_FULLCHAIN` | | `fullchain1.pem` | Empty = skip |
+| `OUT_PRIVKEY` | | `privkey1.pem` | Empty = skip |
+| `OUT_CERT` | | `cert1.pem` | Empty = skip |
+| `OUT_CHAIN` | | `chain1.pem` | Empty = skip |
+| `RELOAD_CMD` | | — | Reload command on change (wins over node-red mode) |
+| `NR_URL`+`NR_USER`+`NR_PASS` | | — | Node-RED admin API: full flow redeploy |
+| `VERIFY_HOST` [`VERIFY_PORT`=443] | | — | Probe live cert → compare-to-live + post-reload verify |
+| `NPM_CLI` | | `uvx --from git+https://github.com/oriolrius/npm-cli npm-cli` | npm-cli invocation |
+| `ENV_FILE` | | — | File to source for all of the above |
+
+Reload precedence on change: `RELOAD_CMD` → else node-red (`NR_*`) → else none.
+
+### Examples
+
+**e2e cert prep** (no reload — what `download-apigw-cert.sh` does):
+```bash
+NPM_URL=http://rproxy.joor.net:81 NPM_USER=… NPM_PASS=… \
+CERT_ID=23 DOMAIN=apigw.joor.net OUT_DIR=./tests/e2e/certs \
+OUT_FULLCHAIN=server.crt OUT_PRIVKEY=server.key \
+./scripts/refresh-cert.sh
+```
+
+**Node-RED gateway** (redeploy + verify on change):
+```bash
+NPM_URL=… NPM_USER=… NPM_PASS=… CERT_ID=26 DOMAIN=api.example.com \
+OUT_DIR=/opt/stacks/node-red/certs/api.example.com \
+NR_URL=http://localhost:1880 NR_USER=admin NR_PASS=… \
+VERIFY_HOST=127.0.0.1 VERIFY_PORT=443 \
+./scripts/refresh-cert.sh
+```
+
+**nginx** (reload on change):
+```bash
+NPM_URL=… NPM_USER=… NPM_PASS=… CERT_ID=7 DOMAIN=www.example.com \
+OUT_DIR=/etc/ssl/www.example.com \
+RELOAD_CMD='systemctl reload nginx' \
+VERIFY_HOST=127.0.0.1 \
+./scripts/refresh-cert.sh
+```
+
+### Cron
+
+Keep secrets out of the crontab — put config in a root-only env file and source it:
+
+```bash
+# /root/.config/example-cert.env  (chmod 600)
+NPM_URL=http://rproxy.example.com:81
+NPM_USER=...
+NPM_PASS=...
+CERT_ID=7
+DOMAIN=www.example.com
+OUT_DIR=/etc/ssl/www.example.com
+RELOAD_CMD=systemctl reload nginx
+VERIFY_HOST=127.0.0.1
+```
+
+```cron
+0 1 * * * ENV_FILE=/root/.config/example-cert.env /path/to/refresh-cert.sh >> /var/log/example-cert.log 2>&1
+```
+
+`uvx` must be on `PATH` (e.g. `~/.local/bin`); set it in the env file or the cron line
+if needed. Pin a different npm-cli via `NPM_CLI`.
+
+---
+
 ## download-apigw-cert.sh
 
-Downloads SSL certificates for `apigw.joor.net` from Nginx Proxy Manager (NPM) and updates the e2e test certificates.
-
-### Features
-
-- Uses [npm-cli](https://github.com/oriolrius/npm-cli) via `uvx` (no installation required)
-- **Safe updates**: Only overwrites files if they differ from the downloaded version
-- Compares using `diff -q` before copying
-- Maps NPM certificate files to project structure:
-  - `cert1.pem` → `tests/e2e/certs/cert1.pem`
-  - `chain1.pem` → `tests/e2e/certs/chain1.pem`
-  - `fullchain1.pem` → `tests/e2e/certs/server.crt`
-  - `privkey1.pem` → `tests/e2e/certs/server.key`
-
-### Prerequisites
-
-- **uv** - Python package manager with `uvx` command
-  ```bash
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
-
-### Usage
+Thin **preset** over `refresh-cert.sh` for the JOOR e2e use case: fetches the
+`apigw.joor.net` cert (NPM id 23) into `tests/e2e/certs/`, mapping `fullchain → server.crt`
+and `privkey → server.key` (plus `cert1.pem`/`chain1.pem`). No service reload — it just
+stages cert files for the tests.
 
 ```bash
+# credentials from the environment (e.g. Bitwarden)
+export NPM_USER=$(bash "$HOME/.claude/skills/bitwarden/scripts/bw_exec.sh" get username "NPM (10.2.0.2)")
+export NPM_PASS=$(bash "$HOME/.claude/skills/bitwarden/scripts/bw_exec.sh" get password "NPM (10.2.0.2)")
 ./scripts/download-apigw-cert.sh
 ```
 
-### Output Example
+Any default (`CERT_ID`, `DOMAIN`, `OUT_DIR`, `OUT_*`) can be overridden via the environment.
 
-```
-=== NPM Certificate Downloader for apigw.joor.net ===
-Using: uvx npm-cli
+---
 
-Authenticating with NPM...
-✓ Logged in successfully. Token cached for server 'default'
-Downloading certificate ID 23 (apigw.joor.net)...
-✓ Certificate downloaded to /tmp/tmp.xxx/apigw.joor.net
+## audit-saved-schemas.js
 
-Comparing certificates...
-  [SKIP] cert1.pem - identical
-  [SKIP] chain1.pem - identical
-  [SKIP] server.crt (fullchain) - identical
-  [SKIP] server.key (privkey) - identical
-
-All certificates are already up to date - no changes made
-
-Done.
-```
-
-### Crontab Setup
-
-To automatically sync certificates (e.g., weekly), add a cron job:
-
-#### 1. Edit crontab
-
-```bash
-crontab -e
-```
-
-#### 2. Add cron entry
-
-Run weekly on Sunday at 3:00 AM:
-
-```cron
-# Sync apigw.joor.net certificates from NPM
-0 3 * * 0 PATH=/home/oriol/.local/bin:/usr/local/bin:/usr/bin:/bin /home/oriol/nodered/node-red-api-gateway/scripts/download-apigw-cert.sh >> /home/oriol/logs/apigw-cert-sync.log 2>&1
-```
-
-**Important notes:**
-- The `PATH` must include the directory containing `uvx` (`/home/oriol/.local/bin`)
-- Adjust paths according to your system
-- Create the log directory: `mkdir -p ~/logs`
-
-#### 3. Alternative: Wrapper script for cron
-
-Create a wrapper script that sets up the environment:
-
-```bash
-#!/bin/bash
-# /home/oriol/bin/sync-apigw-cert.sh
-
-# Set PATH for uvx
-export PATH="/home/oriol/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-
-# Run the certificate sync
-/home/oriol/nodered/node-red-api-gateway/scripts/download-apigw-cert.sh
-```
-
-Then use in crontab:
-```cron
-0 3 * * 0 /home/oriol/bin/sync-apigw-cert.sh >> /home/oriol/logs/apigw-cert-sync.log 2>&1
-```
-
-#### 4. Verify cron is working
-
-```bash
-# List current crontab
-crontab -l
-
-# Check cron logs (Ubuntu/Debian)
-grep CRON /var/log/syslog | tail -20
-
-# Test the script manually first
-./scripts/download-apigw-cert.sh
-```
-
-### Configuration
-
-The script has hardcoded configuration for the JOOR infrastructure:
-
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `NPM_URL` | `http://rproxy.joor.net:81` | NPM server URL |
-| `NPM_USER` | `oriol@joor.net` | NPM username |
-| `CERT_ID` | `23` | Certificate ID for apigw.joor.net |
-| `DOMAIN` | `apigw.joor.net` | Domain name |
-
-### Why uvx instead of uv pip install?
-
-Using `uvx` (run without install) is preferred for cron jobs because:
-
-1. **No installation required** - Works immediately without setup
-2. **Always latest version** - Fetches the latest npm-cli from GitHub
-3. **Isolated execution** - No conflicts with system packages
-4. **Simpler cron setup** - Just needs uvx in PATH, no virtual environment activation
-
-The only requirement is having `uv` installed, which provides the `uvx` command.
+See the script header. Audits saved request/response schemas for OpenAPI 3.0-only
+constructs that won't compile under the Ajv 2020-12 validator (used during the
+OAS 3.1 migration).
