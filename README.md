@@ -350,13 +350,18 @@ Utility scripts are located in the `scripts/` directory. See [scripts/README.md]
 
 ### Certificate Management
 
-Download SSL certificates from Nginx Proxy Manager for e2e tests:
+Download SSL certificates from Nginx Proxy Manager for e2e tests (credentials come
+from the environment — e.g. `NPM_USER`/`NPM_PASS`):
 
 ```bash
 ./scripts/download-apigw-cert.sh
 ```
 
-This script uses [npm-cli](https://github.com/oriolrius/npm-cli) via `uvx` to download certificates and only updates files if they differ.
+This is a thin preset over the generic `scripts/refresh-cert.sh`, which can fetch any
+NPM certificate, write it under configurable filenames, and optionally reload the
+service that serves it (Node-RED redeploy, `systemctl reload nginx`, etc.) only when
+the cert changed. It uses [npm-cli](https://github.com/oriolrius/npm-cli) via `uvx`.
+See [scripts/README.md](scripts/README.md) for the full environment contract.
 
 ## Project Structure
 
