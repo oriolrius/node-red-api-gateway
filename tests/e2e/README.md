@@ -46,7 +46,7 @@ docker compose up -d
 
 ```bash
 cd tests/e2e
-docker compose --profile sqlserver up -d
+docker compose --profile all up -d
 ```
 
 ### Start with Node-RED (E2E Testing)
