@@ -5,6 +5,8 @@ const {
     validateCrudOperation,
     validateTableName,
     validateColumnName,
+    quoteIdentifierPart,
+    quoteTableName,
     generateCrudSql,
     getDefaultStatusDescription
 } = require("../../lib/crud-generator");
@@ -60,6 +62,17 @@ describe("CRUD Generator", function() {
             validateTableName("dbo.users").valid.should.be.true();
         });
 
+        it("should accept 3-part database.schema.table names (issue #1)", function() {
+            validateTableName("mydb.dbo.my_table").valid.should.be.true();
+            validateTableName("DEV.dbo.Clientes").valid.should.be.true();
+        });
+
+        it("should accept bracket-quoted identifiers (issue #1)", function() {
+            validateTableName("[db].[schema].[table]").valid.should.be.true();
+            validateTableName("[my_table]").valid.should.be.true();
+            validateTableName("dbo.[my table]").valid.should.be.true();
+        });
+
         it("should reject invalid table names", function() {
             validateTableName("123users").valid.should.be.false();
             validateTableName("user-profiles").valid.should.be.false();
@@ -68,8 +81,38 @@ describe("CRUD Generator", function() {
             validateTableName(null).valid.should.be.false();
         });
 
-        it("should reject multiple dots", function() {
-            validateTableName("db.schema.table").valid.should.be.false();
+        it("should reject more than three dot-separated parts", function() {
+            validateTableName("server.db.schema.table").valid.should.be.false();
+        });
+    });
+
+    describe("quoteIdentifierPart", function() {
+        it("should bracket-quote a plain identifier", function() {
+            quoteIdentifierPart("id").should.equal("[id]");
+        });
+
+        it("should bracket-quote identifiers with special characters (issue #2)", function() {
+            quoteIdentifierPart("%Descuento").should.equal("[%Descuento]");
+            quoteIdentifierPart("ComisionSobreZona%_").should.equal("[ComisionSobreZona%_]");
+        });
+
+        it("should escape embedded closing brackets", function() {
+            quoteIdentifierPart("weird]name").should.equal("[weird]]name]");
+        });
+
+        it("should be idempotent for already-bracketed identifiers", function() {
+            quoteIdentifierPart("[id]").should.equal("[id]");
+        });
+    });
+
+    describe("quoteTableName", function() {
+        it("should bracket-quote each part of a qualified name (issue #2)", function() {
+            quoteTableName("DEV.dbo.Clientes").should.equal("[DEV].[dbo].[Clientes]");
+            quoteTableName("users").should.equal("[users]");
+        });
+
+        it("should be idempotent for already-bracketed names", function() {
+            quoteTableName("[DEV].[dbo].[Clientes]").should.equal("[DEV].[dbo].[Clientes]");
         });
     });
 
@@ -93,32 +136,38 @@ describe("CRUD Generator", function() {
         describe("list operation", function() {
             it("should generate SELECT * query with pagination", function() {
                 const result = generateCrudSql("list", "users", "id");
-                result.sql.should.equal("SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                result.sql.should.equal("SELECT * FROM [users] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
                 result.operation.should.equal("list");
                 result.tableName.should.equal("users");
                 result.supportsPagination.should.be.true();
                 result.paramMapping.offset.should.equal("query.offset");
                 result.paramMapping.limit.should.equal("query.limit");
             });
+
+            it("should bracket-quote a 3-part table name (issue #1/#2)", function() {
+                const result = generateCrudSql("list", "mydb.dbo.my_table", "id");
+                result.sql.should.equal("SELECT * FROM [mydb].[dbo].[my_table] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                result.tableName.should.equal("mydb.dbo.my_table");
+            });
         });
 
         describe("get operation", function() {
             it("should generate SELECT with WHERE clause", function() {
                 const result = generateCrudSql("get", "users", "id");
-                result.sql.should.equal("SELECT * FROM users WHERE id = @id");
+                result.sql.should.equal("SELECT * FROM [users] WHERE [id] = @id");
                 result.paramMapping.id.should.equal("params.id");
             });
 
             it("should use custom primary key", function() {
                 const result = generateCrudSql("get", "users", "user_id");
-                result.sql.should.containEql("user_id = @user_id");
+                result.sql.should.containEql("[user_id] = @user_id");
             });
         });
 
         describe("create operation", function() {
             it("should generate INSERT template", function() {
                 const result = generateCrudSql("create", "users", "id");
-                result.sql.should.containEql("INSERT INTO users");
+                result.sql.should.containEql("INSERT INTO [users]");
                 result.paramMapping.columns.should.equal("body.*");
             });
         });
@@ -126,8 +175,8 @@ describe("CRUD Generator", function() {
         describe("update operation", function() {
             it("should generate UPDATE template", function() {
                 const result = generateCrudSql("update", "users", "id");
-                result.sql.should.containEql("UPDATE users SET");
-                result.sql.should.containEql("WHERE id = @id");
+                result.sql.should.containEql("UPDATE [users] SET");
+                result.sql.should.containEql("WHERE [id] = @id");
                 result.paramMapping.id.should.equal("params.id");
                 result.paramMapping.assignments.should.equal("body.*");
             });
@@ -136,7 +185,7 @@ describe("CRUD Generator", function() {
         describe("delete operation", function() {
             it("should generate DELETE query", function() {
                 const result = generateCrudSql("delete", "users", "id");
-                result.sql.should.equal("DELETE FROM users WHERE id = @id");
+                result.sql.should.equal("DELETE FROM [users] WHERE [id] = @id");
             });
         });
 

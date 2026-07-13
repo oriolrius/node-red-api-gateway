@@ -7,6 +7,7 @@ const {
     createOpaHealthCheck
 } = require('../lib/health-check');
 const { PoolState, ConnectionPoolManager } = require('../lib/connection-pool');
+const { quoteIdentifierPart } = require('../lib/crud-generator');
 const {
     LOG_LEVELS,
     LOG_OUTPUTS,
@@ -613,18 +614,23 @@ module.exports = function(RED) {
                 }
 
                 case 'create':
-                    // Insert body fields - build actual INSERT SQL from template
+                    // Insert body fields - build actual INSERT SQL from template.
+                    // Column identifiers are bracket-quoted (so names with special
+                    // chars like % are legal); parameter names are positional
+                    // (col0, col1, ...) and thus decoupled from the column names,
+                    // since a column name may be an invalid SQL parameter token.
                     {
                         const columns = Object.keys(body);
-                        const placeholders = columns.map(c => `@${c}`);
+                        const identifiers = columns.map(quoteIdentifierPart);
+                        const placeholders = columns.map((c, i) => `@col${i}`);
                         // Replace @columns and @values placeholders with actual values
-                        sql = sql.replace('@columns', columns.join(', '));
+                        sql = sql.replace('@columns', identifiers.join(', '));
                         sql = sql.replace('@values', placeholders.join(', '));
                         // Add OUTPUT clause to return inserted row (SQL Server)
                         sql = sql.replace(') VALUES', ') OUTPUT INSERTED.* VALUES');
-                        for (const [key, value] of Object.entries(body)) {
-                            params[key] = value;
-                        }
+                        columns.forEach((c, i) => {
+                            params[`col${i}`] = body[c];
+                        });
                     }
                     break;
 
@@ -638,7 +644,11 @@ module.exports = function(RED) {
                         }
                         if (pkVal === undefined) pkVal = urlParams.id;
                         if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
-                        const assignments = Object.keys(body).map(c => `${c} = @${c}`);
+                        // Bracket-quote column identifiers; use positional param
+                        // names (col0, col1, ...) decoupled from column names so
+                        // special-character columns bind to valid SQL parameters.
+                        const columns = Object.keys(body);
+                        const assignments = columns.map((c, i) => `${quoteIdentifierPart(c)} = @col${i}`);
                         // Replace @assignments placeholder with actual SET clause
                         sql = sql.replace('@assignments', assignments.join(', '));
                         // Add OUTPUT clause to return updated row (SQL Server)
@@ -646,9 +656,9 @@ module.exports = function(RED) {
                         if (whereIndex > -1) {
                             sql = sql.slice(0, whereIndex) + 'OUTPUT INSERTED.* ' + sql.slice(whereIndex);
                         }
-                        for (const [key, value] of Object.entries(body)) {
-                            params[key] = value;
-                        }
+                        columns.forEach((c, i) => {
+                            params[`col${i}`] = body[c];
+                        });
                     }
                     break;
 
