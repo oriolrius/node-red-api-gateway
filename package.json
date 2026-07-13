@@ -17,6 +17,15 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "files": [
+    "nodes/",
+    "lib/",
+    "resources/",
+    "policies/templates/*.rego",
+    "policies/templates/README.md",
+    "examples/",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "test": "mocha \"tests/unit/**/*_spec.js\" --exit",
     "test:watch": "mocha \"tests/unit/**/*_spec.js\" --watch",

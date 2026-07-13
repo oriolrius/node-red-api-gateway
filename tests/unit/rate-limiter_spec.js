@@ -98,12 +98,21 @@ describe("Rate Limiter", function() {
         });
 
         describe("ip key type", function() {
-            it("should extract from x-forwarded-for header", function() {
+            it("should extract from x-forwarded-for only when trustProxy is set", function() {
                 const req = {
                     headers: { "x-forwarded-for": "192.168.1.1, 10.0.0.1" }
                 };
-                const key = extractRateLimitKey(req, "ip");
+                const key = extractRateLimitKey(req, "ip", null, { trustProxy: true });
                 key.should.equal("192.168.1.1");
+            });
+
+            it("should ignore x-forwarded-for by default (anti-spoof) and use req.ip", function() {
+                const req = {
+                    headers: { "x-forwarded-for": "1.2.3.4" },
+                    ip: "192.168.1.9"
+                };
+                const key = extractRateLimitKey(req, "ip");
+                key.should.equal("192.168.1.9");
             });
 
             it("should extract from req.ip", function() {
@@ -414,11 +423,20 @@ describe("RateLimiter", function() {
     describe("checkRequest", function() {
         it("should extract key from request and check", function() {
             const req = {
-                headers: { "x-forwarded-for": "192.168.1.1" }
+                headers: {},
+                ip: "192.168.1.1"
             };
             const result = limiter.checkRequest(req);
             result.allowed.should.be.true();
             result.key.should.equal("192.168.1.1");
+        });
+
+        it("should honour x-forwarded-for when trustProxy is enabled", function() {
+            const proxied = new RateLimiter({ requests: 5, windowMs: 60000, keyType: "ip", trustProxy: true });
+            const req = { headers: { "x-forwarded-for": "203.0.113.7" } };
+            const result = proxied.checkRequest(req);
+            result.key.should.equal("203.0.113.7");
+            proxied.shutdown();
         });
 
         it("should use configured key type", function() {

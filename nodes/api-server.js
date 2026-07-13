@@ -53,6 +53,7 @@ module.exports = function(RED) {
         // Fastify instance (will be created on deploy)
         node.fastify = null;
         node.serverStarted = false;
+        node.closing = false;
 
         // Route registration tracking
         node.registeredRoutes = new Map();  // path+method -> endpointId
@@ -99,6 +100,14 @@ module.exports = function(RED) {
             }
 
             const logger = node.configNode.getLogger();
+            // Normalize the configured signing algorithm(s). The editor stores a
+            // single selection (e.g. "ES256") or a comma-separated list; pass it
+            // through so a non-RS choice actually takes effect instead of being
+            // silently rejected by the RS-only default allow-list.
+            const configuredAlgorithms = typeof node.configNode.jwtAlgorithms === "string"
+                ? node.configNode.jwtAlgorithms.split(",").map(a => a.trim()).filter(Boolean)
+                : (Array.isArray(node.configNode.jwtAlgorithms) ? node.configNode.jwtAlgorithms : []);
+
             node.keycloakClient = new KeycloakClient({
                 keycloakUrl: node.configNode.keycloakUrl,
                 realm: node.configNode.keycloakRealm,
@@ -106,9 +115,12 @@ module.exports = function(RED) {
                 clientSecret: node.configNode.credentials?.keycloakClientSecret,
                 timeout: 5000,
                 validateIssuer: node.configNode.jwtValidateIssuer !== false,
+                // Honour an explicit issuer override when provided.
+                issuer: (node.configNode.jwtIssuer || "").trim() || undefined,
                 validateAudience: node.configNode.jwtValidateAudience === true,
                 audience: node.configNode.jwtAudience,
                 clockTolerance: node.configNode.jwtClockTolerance || 0,
+                algorithms: configuredAlgorithms.length > 0 ? configuredAlgorithms : undefined,
                 logger: logger
             });
 
@@ -157,11 +169,15 @@ module.exports = function(RED) {
                 }
             }
 
-            // Check for conflicting patterns (e.g., /users/:id vs /users/:userId)
+            // Check for conflicting patterns (e.g., /users/:id vs /users/:userId).
+            // Route keys are `METHOD:path` and the path itself contains ':param'
+            // segments, so split only on the FIRST colon to keep the path intact.
             for (const [key, existingId] of node.registeredRoutes) {
                 if (existingId === endpointId) continue;
 
-                const [existingMethod, existingPath] = key.split(":");
+                const sep = key.indexOf(":");
+                const existingMethod = key.slice(0, sep);
+                const existingPath = key.slice(sep + 1);
                 if (existingMethod === method.toUpperCase() && pathsConflict(existingPath, path)) {
                     return { conflict: true, existingEndpointId: existingId };
                 }
@@ -451,9 +467,15 @@ module.exports = function(RED) {
                 node.log(`Registered Fastify route: ${endpointNode.method} ${fullPath}`);
                 return true;
             } catch (err) {
-                // Fastify 5.x throws an error when adding routes after listen()
-                // Schedule a server restart to register the new route
-                if (!isRestart && err.message && err.message.includes("after")) {
+                // Fastify throws when a route is added after listen(). In Fastify 5
+                // this is FST_ERR_INSTANCE_ALREADY_LISTENING ("Fastify instance is
+                // already listening. Cannot add route!"); older/other messages used
+                // the word "after". Match the code first, then fall back to message
+                // text so the server is restarted to pick up the new route.
+                const alreadyListening =
+                    err.code === "FST_ERR_INSTANCE_ALREADY_LISTENING" ||
+                    (err.message && /already listening|after/i.test(err.message));
+                if (!isRestart && alreadyListening) {
                     node.log(`Route registration failed (server already listening), scheduling restart: ${endpointNode.method} ${fullPath}`);
                     scheduleRestart(`new endpoint added: ${endpointNode.method} ${fullPath}`);
                     return false;
@@ -507,7 +529,7 @@ module.exports = function(RED) {
          * Fastify 5.x doesn't allow adding routes after listen(), so we need to restart
          */
         async function restartServer() {
-            if (!node.serverStarted) {
+            if (!node.serverStarted || node.closing) {
                 return;
             }
 
@@ -528,6 +550,13 @@ module.exports = function(RED) {
 
                 // Mark server as not started so startServer() will proceed
                 node.serverStarted = false;
+
+                // If the node was closed while we awaited fastify.close(), do NOT
+                // re-listen: the node is being destroyed and binding the port
+                // again would leak a zombie listener (EADDRINUSE on next deploy).
+                if (node.closing) {
+                    return;
+                }
 
                 // Queue all current endpoints for re-registration
                 node.pendingEndpoints = currentEndpoints.slice();
@@ -550,7 +579,7 @@ module.exports = function(RED) {
          * Initialize and start the Fastify server
          */
         async function startServer() {
-            if (node.serverStarted) {
+            if (node.serverStarted || node.closing) {
                 return;
             }
 
@@ -685,10 +714,12 @@ module.exports = function(RED) {
                     node.fastify.get(node.openapiPath, async (request, reply) => {
                         const spec = node.openapiGenerator.generate();
 
-                        // Add server URL based on request
+                        // Add server URL based on request. Use request.host
+                        // (includes the port); request.hostname strips it in
+                        // Fastify 5, which would advertise a port-less URL.
                         if (!spec.servers || spec.servers.length === 0) {
                             const protocol = request.protocol || "http";
-                            const host = request.hostname || `${node.host}:${node.port}`;
+                            const host = request.host || `${node.host}:${node.port}`;
                             spec.servers = [{
                                 url: `${protocol}://${host}`,
                                 description: "Current server"
@@ -805,6 +836,19 @@ module.exports = function(RED) {
                     shape: "ring",
                     text: "failed to start"
                 });
+                // Roll back the "started" state so a later registerEndpoint()
+                // re-queues its route instead of registering it into a Fastify
+                // instance that never began listening (which would paint a false
+                // green status). Any routes already added to this dead instance
+                // are dropped with it.
+                node.serverStarted = false;
+                try {
+                    if (node.fastify) await node.fastify.close();
+                } catch (closeErr) {
+                    node.debug?.(`Error closing failed server instance: ${closeErr.message}`);
+                }
+                node.fastify = null;
+                node.registeredRoutes.clear();
             }
         }
 
@@ -1022,6 +1066,9 @@ module.exports = function(RED) {
         });
 
         node.on("close", async function(removed, done) {
+            // Signal any in-flight debounced restart to abort before it re-listens.
+            node.closing = true;
+
             // Clear any pending restart timer
             if (node.restartTimer) {
                 clearTimeout(node.restartTimer);

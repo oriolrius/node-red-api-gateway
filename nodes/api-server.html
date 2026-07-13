@@ -354,6 +354,17 @@
                         wires: [[]]
                     };
 
+                    // Attach the registered type definition before adding.
+                    // RED.nodes.add() dereferences node._def (e.g. node._def._)
+                    // during insertion, so a bare config object throws a
+                    // TypeError and aborts the whole import (zero nodes created).
+                    nodeConfig._def = RED.nodes.getType("apigw-endpoint");
+                    nodeConfig.outputs = (nodeConfig._def && typeof nodeConfig._def.outputs === "number")
+                        ? nodeConfig._def.outputs
+                        : 1;
+                    nodeConfig.changed = true;
+                    nodeConfig.valid = true;
+
                     // Add node to workspace
                     var newNode = RED.nodes.add(nodeConfig);
                     if (newNode) {

@@ -1,5 +1,5 @@
 # Continuous Integration
-# Runs lint and unit tests on pushes and pull requests.
+# Runs secret scanning, lint, and unit tests on pushes and pull requests.
 name: CI
 
 on:
@@ -9,6 +9,22 @@ on:
     branches: [main]
 
 jobs:
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
     name: Test
     runs-on: ubuntu-latest

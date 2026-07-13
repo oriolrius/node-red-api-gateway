@@ -171,6 +171,10 @@ module.exports = function(RED) {
             ? config.rateLimitKeyType
             : RATE_LIMIT_DEFAULTS.keyType;
         node.rateLimitCustomKeyPath = (config.rateLimitCustomKeyPath || "").trim() || null;
+        // Only honour X-Forwarded-For for the 'ip' key type when explicitly
+        // enabled (gateway sits behind a trusted proxy). Defaults off so a
+        // directly-exposed gateway can't be bypassed via a spoofed header.
+        node.rateLimitTrustProxy = config.rateLimitTrustProxy === true;
         node.rateLimiter = null;
 
         // Initialize rate limiter if enabled
@@ -188,7 +192,8 @@ module.exports = function(RED) {
                 requests: node.rateLimitRequests,
                 windowMs: node.rateLimitWindowMs,
                 keyType: node.rateLimitKeyType,
-                customKeyPath: node.rateLimitCustomKeyPath
+                customKeyPath: node.rateLimitCustomKeyPath,
+                trustProxy: node.rateLimitTrustProxy
             });
         }
 
@@ -394,9 +399,13 @@ module.exports = function(RED) {
         node.validateRequest = function(req) {
             const errors = [];
 
-            // Validate body if schema defined
-            if (node.bodySchema && req.body !== undefined) {
-                const result = validateBody(req.body, node.bodySchema);
+            // Validate body if schema defined. A completely absent body
+            // (req.body === undefined when no payload/content-type is sent) is
+            // validated as an empty object so a schema that marks fields as
+            // required still rejects the request instead of being bypassed.
+            if (node.bodySchema) {
+                const bodyToValidate = req.body !== undefined ? req.body : {};
+                const result = validateBody(bodyToValidate, node.bodySchema);
                 if (!result.valid) {
                     errors.push(...result.errors.map(e => ({
                         ...e,
@@ -1308,10 +1317,12 @@ module.exports = function(RED) {
                         return;
                     }
 
+                    // Store original body for reference BEFORE overwriting it,
+                    // so downstream nodes (audit, diffing) see the untransformed
+                    // client payload rather than the transformed data.
+                    msg.req.originalBody = msg.req.body;
                     // Update request body with transformed data
                     msg.req.body = transformResult.data;
-                    // Store original body for reference
-                    msg.req.originalBody = msg.req.body;
                 }
 
                 // Perform validation if enabled and request data is present
