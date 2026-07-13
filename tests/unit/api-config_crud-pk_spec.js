@@ -105,7 +105,56 @@ describe("api-config executeCrudOperation primary-key binding", function () {
                 { sql: "UPDATE t SET @assignments WHERE id_cota = @id_cota", primaryKey: "id_cota" },
                 { params: { id_cota: 5 }, body: { descripcio: "x" } }
             ).then(function () {
-                calls[0].params.should.deepEqual({ id_cota: 5, descripcio: "x" });
+                // Body fields bind under positional param names (col0, ...),
+                // the primary key keeps its column name.
+                calls[0].params.should.deepEqual({ id_cota: 5, col0: "x" });
+                calls[0].sql.should.containEql("[descripcio] = @col0");
+                done();
+            }).catch(done);
+        });
+    });
+
+    // Regression: issue #2 - special-character columns must be bracket-quoted and
+    // must bind to valid SQL parameter names (never @%Descuento).
+    it("bracket-quotes special-char columns and uses safe params on create", function (done) {
+        load(function (node) {
+            const calls = [];
+            node.executeQuery = async function (sql, params) {
+                calls.push({ sql, params });
+                return { recordset: [{}], rowsAffected: [1] };
+            };
+            node.executeCrudOperation(
+                "create",
+                { sql: "INSERT INTO [DEV].[dbo].[Clientes] (@columns) VALUES (@values)", primaryKey: "id" },
+                { body: { "%Descuento": 10, "zMaquina": "M1" } }
+            ).then(function () {
+                const sql = calls[0].sql;
+                sql.should.containEql("[%Descuento], [zMaquina]");
+                sql.should.containEql("(@col0, @col1)");
+                sql.should.containEql("OUTPUT INSERTED.*");
+                sql.should.not.containEql("@%Descuento");
+                calls[0].params.should.deepEqual({ col0: 10, col1: "M1" });
+                done();
+            }).catch(done);
+        });
+    });
+
+    it("bracket-quotes special-char columns and uses safe params on update", function (done) {
+        load(function (node) {
+            const calls = [];
+            node.executeQuery = async function (sql, params) {
+                calls.push({ sql, params });
+                return { recordset: [{}], rowsAffected: [1] };
+            };
+            node.executeCrudOperation(
+                "update",
+                { sql: "UPDATE [DEV].[dbo].[Clientes] SET @assignments WHERE id = @id", primaryKey: "id" },
+                { params: { id: 3 }, body: { "%Descuento": 5 } }
+            ).then(function () {
+                const sql = calls[0].sql;
+                sql.should.containEql("[%Descuento] = @col0");
+                sql.should.not.containEql("@%Descuento");
+                calls[0].params.should.deepEqual({ id: 3, col0: 5 });
                 done();
             }).catch(done);
         });

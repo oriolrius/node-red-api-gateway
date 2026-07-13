@@ -2134,7 +2134,7 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                    result.should.have.property("sql", "SELECT * FROM [users] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
                     result.should.have.property("operation", "list");
                     result.should.have.property("supportsPagination", true);
                     done();
@@ -2158,7 +2158,7 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "SELECT * FROM users WHERE user_id = @user_id");
+                    result.should.have.property("sql", "SELECT * FROM [users] WHERE [user_id] = @user_id");
                     result.should.have.property("primaryKey", "user_id");
                     done();
                 } catch (err) {
@@ -2180,7 +2180,7 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "INSERT INTO users (@columns) VALUES (@values)");
+                    result.should.have.property("sql", "INSERT INTO [users] (@columns) VALUES (@values)");
                     done();
                 } catch (err) {
                     done(err);
@@ -2202,7 +2202,7 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "UPDATE users SET @assignments WHERE id = @id");
+                    result.should.have.property("sql", "UPDATE [users] SET @assignments WHERE [id] = @id");
                     done();
                 } catch (err) {
                     done(err);
@@ -2224,7 +2224,7 @@ describe("api-endpoint Node", function () {
                 const n1 = helper.getNode("n1");
                 try {
                     const result = n1.getCrudSql();
-                    result.should.have.property("sql", "DELETE FROM users WHERE id = @id");
+                    result.should.have.property("sql", "DELETE FROM [users] WHERE [id] = @id");
                     done();
                 } catch (err) {
                     done(err);
@@ -2318,7 +2318,7 @@ describe("api-endpoint Node", function () {
                 n2.on("input", function (msg) {
                     try {
                         msg.crud.should.have.property("sql");
-                        msg.crud.sql.should.have.property("sql", "SELECT * FROM users ORDER BY id OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                        msg.crud.sql.should.have.property("sql", "SELECT * FROM [users] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
                         msg.crud.sql.should.have.property("supportsPagination", true);
                         done();
                     } catch (err) {

@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.8.1
+
+### Fixed
+
+- **Auto-CRUD now bracket-quotes every SQL identifier** (table, primary key,
+  and body columns) in generated queries ([#2]). Columns whose names contain
+  characters that are special in T-SQL (e.g. `%Descuento`) previously produced
+  `INSERT`/`UPDATE` statements like `..., %Descuento, ...` and failed with
+  `500 Incorrect syntax near '%'`. Generated SQL is now
+  `INSERT INTO [DEV].[dbo].[Clientes] ([%Descuento], ...) OUTPUT INSERTED.* VALUES (@col0, ...)`.
+  Body-field parameters are bound to positional names (`@col0`, `@col1`, …)
+  decoupled from the column names, so a column name that is not a valid SQL
+  parameter token no longer breaks the query.
+- **`validateTableName` accepts fully-qualified `database.schema.table` names**
+  ([#1]). Three-part identifiers (and bracket-quoted variants such as
+  `[db].[schema].[table]`) are now valid and no longer emit spurious
+  `Invalid table name format` warnings on every deploy/flow reload.
+
+### Known limitations
+
+- Binary/`IMAGE` columns are still bound as `nvarchar` and can raise
+  `Operand type clash: nvarchar is incompatible with image` on write. This
+  requires column-type introspection and is tracked separately (secondary note
+  in [#2]).
+
+[#1]: https://github.com/oriolrius/node-red-api-gateway/issues/1
+[#2]: https://github.com/oriolrius/node-red-api-gateway/issues/2
+
 ## 0.8.0
 
 ### Changed (breaking)
