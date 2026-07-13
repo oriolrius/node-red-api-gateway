@@ -142,7 +142,12 @@
         if (!tableName || tableName.trim() === '') {
             return { valid: true }; // Empty is allowed
         }
-        if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/.test(tableName.trim())) {
+        // Keep in sync with lib/crud-generator.js validateTableName: allow 1-3
+        // dot-separated parts (table, schema.table, database.schema.table), each
+        // a bare identifier or a bracket-quoted identifier (e.g. [My Table]).
+        var IDENT = '(?:\\[[^\\]\\[.]+\\]|[a-zA-Z_][a-zA-Z0-9_]*)';
+        var QUALIFIED = new RegExp('^' + IDENT + '(?:\\.' + IDENT + '){0,2}$');
+        if (!QUALIFIED.test(tableName.trim())) {
             return { valid: false, error: 'Invalid table name format' };
         }
         return { valid: true };

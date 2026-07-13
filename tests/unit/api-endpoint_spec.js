@@ -4076,7 +4076,8 @@ describe("api-endpoint Node", function () {
                 rateLimitingEnabled: true,
                 rateLimitRequests: 5,
                 rateLimitWindowMs: 60000,
-                rateLimitKeyType: "ip"
+                rateLimitKeyType: "ip",
+                rateLimitTrustProxy: true
             }];
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
@@ -4128,7 +4129,7 @@ describe("api-endpoint Node", function () {
     describe("Rate Limiting in Message Handling", function () {
         it("should add rateLimit context to message when enabled", function (done) {
             const flow = [
-                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 10, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 10, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", rateLimitTrustProxy: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {
@@ -4224,7 +4225,7 @@ describe("api-endpoint Node", function () {
 
         it("should track different keys independently", function (done) {
             const flow = [
-                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", wires: [["n2"]] },
+                { id: "n1", type: "apigw-endpoint", path: "/users", rateLimitingEnabled: true, rateLimitRequests: 2, rateLimitWindowMs: 60000, rateLimitKeyType: "ip", rateLimitTrustProxy: true, wires: [["n2"]] },
                 { id: "n2", type: "helper" }
             ];
             helper.load(apiEndpointNode, flow, function () {

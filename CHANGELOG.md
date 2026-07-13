@@ -2,6 +2,90 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.8.2
+
+Hardening release: fixes the binary/LOB auto-CRUD failure ([#3]) plus a batch
+of correctness and security issues found by an internal multi-agent code review,
+and adds secret-scanning to CI/CD.
+
+### Security
+
+- **JWT expiry could be silently disabled.** A non-zero "Clock Tolerance"
+  configured in the editor was persisted as a string, so `exp + tolerance`
+  string-concatenated and made the expiry check always pass — expired tokens
+  were accepted. Clock tolerance is now coerced to a number at both config
+  ingestion and in the Keycloak client.
+- **Rate-limit bypass via spoofed `X-Forwarded-For`.** The `ip` key type trusted
+  the client-supplied header by default, allowing unlimited requests (and
+  unbounded memory growth) from rotating fake IPs. `X-Forwarded-For` is now
+  honoured only when a new **`trustProxy`** option is enabled; the token-bucket
+  map is also size-capped.
+- **Configured JWT signing algorithm was ignored.** Selecting ES*/PS* in the
+  editor had no effect (the client kept its RS-only default and rejected all
+  tokens); the selection is now wired through.
+- **Issuer override was dead.** The editor's "Issuer" field is now honoured, so
+  tokens whose `iss` differs from the gateway's Keycloak URL (reverse-proxy
+  setups) can validate.
+- **OPA fail-open made explicit.** Enabling OPA now logs a prominent warning that
+  request-time policy evaluation is not implemented, instead of silently
+  authorizing every request (full enforcement remains a follow-up).
+- Added **gitleaks** secret scanning to the CI and release workflows (release
+  publish now requires a clean scan), a `.gitleaks.toml` allowlist, a local
+  pre-commit hook installer, a fail-closed `files` allow-list for the npm
+  tarball, and enabled GitHub push-protection.
+
+### Fixed
+
+- **Binary/LOB auto-CRUD writes** ([#3]): create/update now introspects column
+  types (`INFORMATION_SCHEMA`, cached) and binds `image`/`varbinary`/`binary`
+  columns as `VarBinary` (decoding base64/hex/Buffer), and `text`/`ntext`
+  appropriately, instead of always `NVarChar` — resolving
+  `Operand type clash: nvarchar is incompatible with image`.
+- **Route conflict false positives**: the conflict check split route keys on
+  every `:`, truncating parameterized paths (`/users/:id`) and wrongly blocking
+  valid sibling routes.
+- **New/edited endpoints returned 404 after deploy**: the "server already
+  listening" restart was gated on an error-message substring that never matches
+  Fastify 5; it now detects the error by code.
+- **Request validation could be silently disabled**: a schema carrying an `$id`
+  threw "already exists" on redeploy/reuse (shared Ajv), leaving the endpoint
+  unvalidated. Ajv no longer registers schema `$id`s.
+- **Response-cache key collisions**: unescaped separators let distinct requests
+  (and, with vary-headers, distinct tenants) collide and serve each other's
+  cached responses. Key components are now delimiter-escaped.
+- **Auto-CRUD SQL correctness**: custom sort was dropped when the primary key
+  contained the letter `o`; body keys containing `$`-replacement patterns
+  corrupted generated SQL; positional params could collide with a PK literally
+  named `col0`; unqualified table introspection merged columns across schemas.
+- **Editor pool settings** saved as strings broke the SQL Server connection
+  (tarn rejects non-numbers); numeric config is now parsed.
+- **SQL Server never reconnected** after a failed initial connect; it now retries
+  with capped backoff.
+- **`applyFieldMapping`** lost data on field swaps/rename-chains; values are now
+  resolved from the original object first.
+- **OpenAPI import** no longer infinitely recurses on circular `$ref`s, skips
+  unsupported OPTIONS/HEAD operations (with a warning) instead of mis-importing
+  them as GET, emits unique `operationId`s, advertises the server URL with its
+  port, and no longer aborts node creation on a missing `_def`.
+- **Redeploy hygiene**: the Pino logger transport and its file handle are closed;
+  an in-flight debounced server restart no longer races node close into a zombie
+  listener / `EADDRINUSE`; a timed-out pool acquire is dequeued so freed
+  connections are not leaked.
+- **`msg.req.originalBody`** now holds the pre-transformation body.
+- **Editor table-name validation** accepts the same 3-part / bracket-quoted names
+  the runtime does.
+- **Required body validation** is now enforced when the request body is absent.
+
+### Known limitations
+
+- Duplicating (copy/paste) an endpoint together with its server node leaves the
+  pasted endpoint bound to the original server (Node-RED remaps only typed
+  config-node references); rebind the server manually after pasting.
+- OPA policy evaluation is configured/health-checked but not enforced at request
+  time (see Security note).
+
+[#3]: https://github.com/oriolrius/node-red-api-gateway/issues/3
+
 ## 0.8.1
 
 ### Fixed

@@ -1,0 +1,28 @@
+# Gitleaks configuration - extends the default ruleset.
+# https://github.com/gitleaks/gitleaks#configuration
+title = "node-red-api-gateway secret scanning"
+
+[extend]
+useDefault = true
+
+# Deliberately-invalid JWT fixture used by the e2e client-credentials tests
+# (header + {"exp":0} + literal "invalid" signature - not a real token).
+[[allowlists]]
+description = "Invalid JWT test fixture"
+regexes = ['''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9\.eyJleHAiOjB9\.invalid''']
+
+# Skill documentation: placeholder keys ("sk-12345abcdef") and tables that
+# quote private-key PEM headers as text, not actual key material.
+[[allowlists]]
+description = "Claude skill documentation examples"
+paths = ['''\.claude/skills/security-practices/references/.*''']
+
+# Local docker e2e stack fixtures: intentionally-committed dev-only
+# credentials (localhost SQL Server / Keycloak containers).
+[[allowlists]]
+description = "E2E test stack fixtures (localhost-only dev credentials)"
+paths = [
+    '''tests/e2e/\.nodered/flows_cred\.json''',
+    '''tests/e2e/config/.*\.env''',
+    '''tests/e2e/\.env\.example''',
+]

@@ -50,3 +50,8 @@ tests/launcher/flows_cred.json
 # Local tooling caches
 .codegraph/
 .engram/
+
+# Local tooling state (never commit - may accumulate tokens/config)
+.mcp.json
+.claude/scheduled_tasks.json
+.claude/scheduled_tasks.lock

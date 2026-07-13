@@ -159,4 +159,74 @@ describe("api-config executeCrudOperation primary-key binding", function () {
             }).catch(done);
         });
     });
+
+    // Regression: custom sort was dropped when the PK contained the letter 'o'
+    // (broken /ORDER BY [^O]+/i regex).
+    it("applies custom sort even when the primary key contains 'o'", function (done) {
+        load(function (node) {
+            const calls = [];
+            node.executeQuery = async function (sql, params) {
+                calls.push({ sql, params });
+                return { recordset: [], rowsAffected: [0] };
+            };
+            node.executeCrudOperation(
+                "list",
+                { sql: "SELECT * FROM [t] ORDER BY [ProductID] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY", primaryKey: "ProductID", tableName: "t" },
+                { query: {}, sorting: { orderByClause: "ORDER BY [name] DESC" } }
+            ).then(function () {
+                calls[0].sql.should.containEql("ORDER BY [name] DESC");
+                calls[0].sql.should.not.containEql("ORDER BY [ProductID]");
+                done();
+            }).catch(done);
+        });
+    });
+
+    // Regression: a body key containing a String.replace special pattern ($&, $', ...)
+    // must not corrupt the generated SQL.
+    it("does not corrupt SQL when a column key contains $-replacement patterns", function (done) {
+        load(function (node) {
+            const calls = [];
+            node.executeQuery = async function (sql, params) {
+                calls.push({ sql, params });
+                return { recordset: [{}], rowsAffected: [1] };
+            };
+            node.executeCrudOperation(
+                "create",
+                { sql: "INSERT INTO [t] (@columns) VALUES (@values)", primaryKey: "id", tableName: "t" },
+                { body: { "a$&b": 1, "c$'d": 2 } }
+            ).then(function () {
+                const sql = calls[0].sql;
+                sql.should.containEql("[a$&b]");
+                sql.should.containEql("[c$'d]");
+                // The template markers must be fully consumed, not re-expanded.
+                sql.should.not.containEql("@columns");
+                sql.should.not.containEql("@values");
+                done();
+            }).catch(done);
+        });
+    });
+
+    // Regression: positional body params must not collide with a PK literally
+    // named col0/col1/... (which would overwrite the WHERE parameter).
+    it("avoids parameter collision when the PK is named col0", function (done) {
+        load(function (node) {
+            const calls = [];
+            node.executeQuery = async function (sql, params) {
+                calls.push({ sql, params });
+                return { recordset: [{}], rowsAffected: [1] };
+            };
+            node.executeCrudOperation(
+                "update",
+                { sql: "UPDATE [t] SET @assignments WHERE [col0] = @col0", primaryKey: "col0", tableName: "t" },
+                { params: { col0: 42 }, body: { name: "x" } }
+            ).then(function () {
+                // PK param preserved as 42; body value bound under a non-colliding name.
+                calls[0].params.col0.should.equal(42);
+                const bodyKeys = Object.keys(calls[0].params).filter(function (k) { return k !== "col0"; });
+                bodyKeys.length.should.equal(1);
+                calls[0].params[bodyKeys[0]].should.equal("x");
+                done();
+            }).catch(done);
+        });
+    });
 });
