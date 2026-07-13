@@ -1,4 +1,4 @@
-const should = require("should");
+require("should");
 const {
     HTTP_METHODS,
     isValidMethod,
@@ -194,7 +194,7 @@ describe("path-utils", function () {
         });
 
         it("should handle non-string input", function () {
-            const { regex, paramNames } = pathToRegex(null);
+            const { paramNames } = pathToRegex(null);
             paramNames.should.deepEqual([]);
         });
     });

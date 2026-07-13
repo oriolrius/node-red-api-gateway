@@ -1,21 +1,19 @@
-'use strict';
+"use strict";
 
-const fs = require('fs');
-const { OpenApiGenerator } = require('../lib/openapi-generator');
-const { OpenApiParser } = require('../lib/openapi-parser');
+const fs = require("fs");
+const { OpenApiGenerator } = require("../lib/openapi-generator");
+const { OpenApiParser } = require("../lib/openapi-parser");
 const {
     generateRequestId,
-    createTimer,
-    requestSerializer,
-    responseSerializer
-} = require('../lib/logger');
-const { getMetricsCollector } = require('../lib/metrics-collector');
+    createTimer
+} = require("../lib/logger");
+const { getMetricsCollector } = require("../lib/metrics-collector");
 const {
     pathsConflict,
     combinePaths,
     normalizePath
-} = require('../lib/path-utils');
-const { KeycloakClient } = require('../lib/keycloak-client');
+} = require("../lib/path-utils");
+const { KeycloakClient } = require("../lib/keycloak-client");
 
 module.exports = function(RED) {
     function ApiServerNode(config) {
@@ -25,17 +23,17 @@ module.exports = function(RED) {
         // Store configuration
         node.name = config.name;
         node.port = parseInt(config.port, 10) || 3000;
-        node.host = config.host || '0.0.0.0';
+        node.host = config.host || "0.0.0.0";
 
         // OpenAPI configuration
         node.openapiEnabled = config.openapiEnabled !== false;  // Enabled by default
-        node.openapiPath = config.openapiPath || '/openapi.json';
+        node.openapiPath = config.openapiPath || "/openapi.json";
         node.swaggerUiEnabled = config.swaggerUiEnabled === true;
-        node.swaggerUiPath = config.swaggerUiPath || '/docs';
+        node.swaggerUiPath = config.swaggerUiPath || "/docs";
 
         // Metrics configuration
         node.metricsEnabled = config.metricsEnabled !== false;  // Enabled by default
-        node.metricsPath = config.metricsPath || '/metrics';
+        node.metricsPath = config.metricsPath || "/metrics";
         node.metricsCollector = null;
 
         // Get reference to api-config node
@@ -73,11 +71,11 @@ module.exports = function(RED) {
         function initializeOpenApiGenerator() {
             const options = {
                 info: {
-                    title: 'API Gateway',
-                    description: 'Node-RED powered API Gateway',
-                    version: '1.0.0'
+                    title: "API Gateway",
+                    description: "Node-RED powered API Gateway",
+                    version: "1.0.0"
                 },
-                basePath: '',
+                basePath: "",
                 config: null
             };
 
@@ -85,7 +83,7 @@ module.exports = function(RED) {
             if (node.configNode) {
                 const openApiInfo = node.configNode.getOpenApiInfo();
                 options.info = openApiInfo.info;
-                options.basePath = openApiInfo.basePath || '';
+                options.basePath = openApiInfo.basePath || "";
                 options.config = node.configNode;
             }
 
@@ -114,12 +112,12 @@ module.exports = function(RED) {
                 logger: logger
             });
 
-            node.keycloakClient.on('circuitOpen', () => {
-                node.warn('Keycloak circuit breaker opened - authentication may fail');
+            node.keycloakClient.on("circuitOpen", () => {
+                node.warn("Keycloak circuit breaker opened - authentication may fail");
             });
 
-            node.keycloakClient.on('circuitClosed', () => {
-                node.log('Keycloak circuit breaker closed - authentication restored');
+            node.keycloakClient.on("circuitClosed", () => {
+                node.log("Keycloak circuit breaker closed - authentication restored");
             });
 
             // Pre-fetch JWKS
@@ -163,7 +161,7 @@ module.exports = function(RED) {
             for (const [key, existingId] of node.registeredRoutes) {
                 if (existingId === endpointId) continue;
 
-                const [existingMethod, existingPath] = key.split(':');
+                const [existingMethod, existingPath] = key.split(":");
                 if (existingMethod === method.toUpperCase() && pathsConflict(existingPath, path)) {
                     return { conflict: true, existingEndpointId: existingId };
                 }
@@ -188,12 +186,12 @@ module.exports = function(RED) {
 
                 // Extract Bearer token from Authorization header
                 const authHeader = request.headers.authorization;
-                if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                if (!authHeader || !authHeader.startsWith("Bearer ")) {
                     if (requiresAuth) {
                         reply.code(401).send({
                             statusCode: 401,
-                            error: 'Unauthorized',
-                            message: 'Missing or invalid Authorization header'
+                            error: "Unauthorized",
+                            message: "Missing or invalid Authorization header"
                         });
                         return;
                     }
@@ -208,8 +206,8 @@ module.exports = function(RED) {
                     if (requiresAuth) {
                         reply.code(503).send({
                             statusCode: 503,
-                            error: 'Service Unavailable',
-                            message: 'OAuth2 authentication not configured'
+                            error: "Service Unavailable",
+                            message: "OAuth2 authentication not configured"
                         });
                         return;
                     }
@@ -223,8 +221,8 @@ module.exports = function(RED) {
                     if (requiresAuth) {
                         reply.code(401).send({
                             statusCode: 401,
-                            error: 'Unauthorized',
-                            message: validationResult.error || 'Invalid token'
+                            error: "Unauthorized",
+                            message: validationResult.error || "Invalid token"
                         });
                         return;
                     }
@@ -234,7 +232,7 @@ module.exports = function(RED) {
 
                 // Extract user info and scopes
                 const payload = validationResult.payload;
-                const scopes = payload.scope ? payload.scope.split(' ') : [];
+                const scopes = payload.scope ? payload.scope.split(" ") : [];
 
                 // Extract roles from various possible locations in the token
                 // 1. Standard Keycloak realm_access.roles
@@ -288,7 +286,7 @@ module.exports = function(RED) {
                     req: {
                         method: request.method,
                         url: request.url,
-                        path: request.url.split('?')[0],
+                        path: request.url.split("?")[0],
                         route: request.routeOptions?.url,
                         query: request.query || {},
                         params: request.params || {},
@@ -340,15 +338,15 @@ module.exports = function(RED) {
                 };
 
                 // Create a promise that will be resolved when the response is sent
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve, _reject) => {
                     // Set timeout for response
                     const timeout = setTimeout(() => {
                         if (!msg.res._responded) {
                             msg.res._responded = true;
                             reply.code(504).send({
                                 statusCode: 504,
-                                error: 'Gateway Timeout',
-                                message: 'Request timed out waiting for response'
+                                error: "Gateway Timeout",
+                                message: "Request timed out waiting for response"
                             });
                             resolve();
                         }
@@ -386,7 +384,7 @@ module.exports = function(RED) {
                             msg.res._responded = true;
                             reply.code(500).send({
                                 statusCode: 500,
-                                error: 'Internal Server Error',
+                                error: "Internal Server Error",
                                 message: err.message
                             });
                         }
@@ -455,7 +453,7 @@ module.exports = function(RED) {
             } catch (err) {
                 // Fastify 5.x throws an error when adding routes after listen()
                 // Schedule a server restart to register the new route
-                if (!isRestart && err.message && err.message.includes('after')) {
+                if (!isRestart && err.message && err.message.includes("after")) {
                     node.log(`Route registration failed (server already listening), scheduling restart: ${endpointNode.method} ${fullPath}`);
                     scheduleRestart(`new endpoint added: ${endpointNode.method} ${fullPath}`);
                     return false;
@@ -537,13 +535,13 @@ module.exports = function(RED) {
                 // Start the server again (this will register all pending endpoints)
                 await startServer();
 
-                node.log('Server restart complete');
+                node.log("Server restart complete");
             } catch (err) {
                 node.error(`Failed to restart server: ${err.message}`);
                 node.status({
-                    fill: 'red',
-                    shape: 'ring',
-                    text: 'restart failed'
+                    fill: "red",
+                    shape: "ring",
+                    text: "restart failed"
                 });
             }
         }
@@ -560,9 +558,9 @@ module.exports = function(RED) {
                 // Dynamically require fastify
                 let fastify;
                 try {
-                    fastify = require('fastify');
+                    fastify = require("fastify");
                 } catch (err) {
-                    node.warn('Fastify not installed. OpenAPI endpoints will not be available. Install with: npm install fastify');
+                    node.warn("Fastify not installed. OpenAPI endpoints will not be available. Install with: npm install fastify");
                     return;
                 }
 
@@ -575,10 +573,10 @@ module.exports = function(RED) {
                     routerOptions: {
                         ignoreTrailingSlash: true
                     },
-                    requestIdHeader: 'x-request-id',
+                    requestIdHeader: "x-request-id",
                     genReqId: (req) => {
                         // Use existing request ID or generate new one
-                        return req.headers['x-request-id'] || generateRequestId();
+                        return req.headers["x-request-id"] || generateRequestId();
                     }
                 };
 
@@ -607,9 +605,9 @@ module.exports = function(RED) {
                     } catch (err) {
                         node.error(`Failed to load TLS certificates: ${err.message}`);
                         node.status({
-                            fill: 'red',
-                            shape: 'ring',
-                            text: 'TLS cert error'
+                            fill: "red",
+                            shape: "ring",
+                            text: "TLS cert error"
                         });
                         return;
                     }
@@ -625,7 +623,7 @@ module.exports = function(RED) {
 
                 // Add request/response timing hooks for logging and metrics
                 // Always add hooks - metrics may be enabled even without logging
-                node.fastify.addHook('onRequest', async (request) => {
+                node.fastify.addHook("onRequest", async (request) => {
                     request.startTime = Date.now();
                     request.timer = createTimer();
 
@@ -635,20 +633,20 @@ module.exports = function(RED) {
                     }
                 });
 
-                node.fastify.addHook('onResponse', async (request, reply) => {
+                node.fastify.addHook("onResponse", async (request, reply) => {
                     const duration = request.timer ? request.timer.elapsed() : (Date.now() - request.startTime);
 
                     // Log request if logger is enabled
                     if (logger) {
                         logger.info({
-                            event: 'http_request',
+                            event: "http_request",
                             requestId: request.id,
                             method: request.method,
                             url: request.url,
                             statusCode: reply.statusCode,
                             duration: duration,
                             durationMs: `${duration}ms`,
-                            userAgent: request.headers['user-agent'],
+                            userAgent: request.headers["user-agent"],
                             remoteAddress: request.ip
                         }, `${request.method} ${request.url} ${reply.statusCode} - ${duration}ms`);
                     }
@@ -656,7 +654,7 @@ module.exports = function(RED) {
                     // Record metrics
                     if (node.metricsCollector) {
                         // Extract path without query string for metrics
-                        const path = request.url.split('?')[0];
+                        const path = request.url.split("?")[0];
                         node.metricsCollector.recordHttpRequest({
                             method: request.method,
                             path: path,
@@ -667,10 +665,10 @@ module.exports = function(RED) {
                     }
                 });
 
-                node.fastify.addHook('onError', async (request, reply, error) => {
+                node.fastify.addHook("onError", async (request, reply, error) => {
                     if (logger) {
                         logger.error({
-                            event: 'http_error',
+                            event: "http_error",
                             requestId: request.id,
                             method: request.method,
                             url: request.url,
@@ -689,23 +687,23 @@ module.exports = function(RED) {
 
                         // Add server URL based on request
                         if (!spec.servers || spec.servers.length === 0) {
-                            const protocol = request.protocol || 'http';
+                            const protocol = request.protocol || "http";
                             const host = request.hostname || `${node.host}:${node.port}`;
                             spec.servers = [{
                                 url: `${protocol}://${host}`,
-                                description: 'Current server'
+                                description: "Current server"
                             }];
                         }
 
-                        reply.type('application/json');
+                        reply.type("application/json");
                         return spec;
                     });
 
                     // YAML endpoint
-                    const yamlPath = node.openapiPath.replace(/\.json$/, '.yaml');
+                    const yamlPath = node.openapiPath.replace(/\.json$/, ".yaml");
                     if (yamlPath !== node.openapiPath) {
                         node.fastify.get(yamlPath, async (request, reply) => {
-                            reply.type('text/yaml');
+                            reply.type("text/yaml");
                             return node.openapiGenerator.toYAML();
                         });
                     }
@@ -715,17 +713,17 @@ module.exports = function(RED) {
                 if (node.swaggerUiEnabled) {
                     try {
                         // @fastify/swagger-ui requires @fastify/swagger to be registered first
-                        const swagger = require('@fastify/swagger');
-                        const swaggerUi = require('@fastify/swagger-ui');
+                        const swagger = require("@fastify/swagger");
+                        const swaggerUi = require("@fastify/swagger-ui");
 
                         // Register @fastify/swagger with our custom specification
                         await node.fastify.register(swagger, {
-                            mode: 'dynamic',
+                            mode: "dynamic",
                             openapi: {
                                 info: {
-                                    title: node.configNode?.openapiTitle || 'API Gateway',
-                                    description: node.configNode?.openapiDescription || '',
-                                    version: node.configNode?.apiVersion || '1.0.0'
+                                    title: node.configNode?.openapiTitle || "API Gateway",
+                                    description: node.configNode?.openapiDescription || "",
+                                    version: node.configNode?.apiVersion || "1.0.0"
                                 }
                             }
                         });
@@ -737,7 +735,7 @@ module.exports = function(RED) {
                             transformSpecificationClone: true,
                             transformSpecification: () => node.getOpenApiSpec(),
                             uiConfig: {
-                                docExpansion: 'list',
+                                docExpansion: "list",
                                 deepLinking: true,
                                 displayRequestDuration: true,
                                 filter: true
@@ -746,8 +744,8 @@ module.exports = function(RED) {
                             staticCSP: false
                         });
                     } catch (err) {
-                        if (err.code === 'MODULE_NOT_FOUND') {
-                            node.warn('Swagger UI not available. Install with: npm install @fastify/swagger @fastify/swagger-ui');
+                        if (err.code === "MODULE_NOT_FOUND") {
+                            node.warn("Swagger UI not available. Install with: npm install @fastify/swagger @fastify/swagger-ui");
                         } else {
                             node.warn(`Swagger UI setup failed: ${err.message}`);
                         }
@@ -758,7 +756,7 @@ module.exports = function(RED) {
                 if (node.metricsEnabled) {
                     // Initialize metrics collector with server context
                     node.metricsCollector = getMetricsCollector({
-                        prefix: 'api_gateway_',
+                        prefix: "api_gateway_",
                         defaultLabels: {
                             server: `${node.host}:${node.port}`
                         }
@@ -770,7 +768,7 @@ module.exports = function(RED) {
                             reply.type(node.metricsCollector.getContentType());
                             return metrics;
                         } catch (err) {
-                            reply.code(500).send({ error: 'Failed to collect metrics' });
+                            reply.code(500).send({ error: "Failed to collect metrics" });
                         }
                     });
                 }
@@ -782,10 +780,10 @@ module.exports = function(RED) {
 
                 // Start the server
                 await node.fastify.listen({ port: node.port, host: node.host });
-                const protocol = tlsEnabled ? 'https' : 'http';
+                const protocol = tlsEnabled ? "https" : "http";
                 node.status({
-                    fill: 'green',
-                    shape: 'dot',
+                    fill: "green",
+                    shape: "dot",
                     text: `${protocol}://${node.host}:${node.port}`
                 });
 
@@ -803,9 +801,9 @@ module.exports = function(RED) {
             } catch (err) {
                 node.error(`Failed to start server: ${err.message}`);
                 node.status({
-                    fill: 'red',
-                    shape: 'ring',
-                    text: 'failed to start'
+                    fill: "red",
+                    shape: "ring",
+                    text: "failed to start"
                 });
             }
         }
@@ -820,7 +818,7 @@ module.exports = function(RED) {
                     node.serverStarted = false;
                     node.fastify = null;
                     node.registeredRoutes.clear();
-                    node.log('API Server stopped');
+                    node.log("API Server stopped");
                 } catch (err) {
                     node.error(`Error stopping server: ${err.message}`);
                 }
@@ -852,7 +850,7 @@ module.exports = function(RED) {
             // Register Fastify route (will queue if server not yet started)
             registerFastifyRoute(endpointNode);
 
-            node.log(`Registered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
+            node.log(`Registered endpoint: ${endpointNode.method || "GET"} ${endpointNode.path || "/"}`);
             updateStatus();
         };
 
@@ -885,7 +883,7 @@ module.exports = function(RED) {
                 node.pendingEndpoints.splice(pendingIndex, 1);
             }
 
-            node.log(`Unregistered endpoint: ${endpointNode.method || 'GET'} ${endpointNode.path || '/'}`);
+            node.log(`Unregistered endpoint: ${endpointNode.method || "GET"} ${endpointNode.path || "/"}`);
             updateStatus();
         };
 
@@ -906,7 +904,7 @@ module.exports = function(RED) {
          */
         node.getOpenApiJSON = function() {
             if (!node.openapiGenerator) {
-                return '{}';
+                return "{}";
             }
             return node.openapiGenerator.toJSON();
         };
@@ -917,7 +915,7 @@ module.exports = function(RED) {
          */
         node.getOpenApiYAML = function() {
             if (!node.openapiGenerator) {
-                return '';
+                return "";
             }
             return node.openapiGenerator.toYAML();
         };
@@ -936,7 +934,7 @@ module.exports = function(RED) {
          */
         node.getEndpointsInfo = function() {
             return Array.from(node.endpoints.values()).map(ep => {
-                if (typeof ep.getEndpointInfo === 'function') {
+                if (typeof ep.getEndpointInfo === "function") {
                     return ep.getEndpointInfo();
                 }
                 return {
@@ -961,17 +959,17 @@ module.exports = function(RED) {
          */
         function updateStatus() {
             const endpointCount = node.endpoints.size;
-            const protocol = (node.configNode?.tlsEnabled && node.configNode?.tlsCertPath && node.configNode?.tlsKeyPath) ? 'https' : 'http';
+            const protocol = (node.configNode?.tlsEnabled && node.configNode?.tlsCertPath && node.configNode?.tlsKeyPath) ? "https" : "http";
             if (node.serverStarted) {
                 node.status({
-                    fill: 'green',
-                    shape: 'dot',
+                    fill: "green",
+                    shape: "dot",
                     text: `${protocol}://${node.host}:${node.port} (${endpointCount} endpoints)`
                 });
             } else {
                 node.status({
-                    fill: 'yellow',
-                    shape: 'ring',
+                    fill: "yellow",
+                    shape: "ring",
                     text: `${endpointCount} endpoints registered`
                 });
             }
@@ -1055,21 +1053,21 @@ module.exports = function(RED) {
     RED.nodes.registerType("apigw-server", ApiServerNode);
 
     // HTTP Admin endpoint for OpenAPI import
-    RED.httpAdmin.post('/api-gateway/import-openapi', RED.auth.needsPermission('flows.write'), function(req, res) {
+    RED.httpAdmin.post("/api-gateway/import-openapi", RED.auth.needsPermission("flows.write"), function(req, res) {
         const parser = new OpenApiParser({ detectCrud: true });
 
         try {
-            let content = req.body.content || '';
+            let content = req.body.content || "";
 
             // Handle both raw text and form data
-            if (typeof content !== 'string') {
+            if (typeof content !== "string") {
                 content = JSON.stringify(content);
             }
 
-            if (!content || content.trim() === '') {
+            if (!content || content.trim() === "") {
                 return res.status(400).json({
                     success: false,
-                    error: 'No OpenAPI content provided'
+                    error: "No OpenAPI content provided"
                 });
             }
 
@@ -1106,20 +1104,20 @@ module.exports = function(RED) {
     });
 
     // HTTP Admin endpoint to get supported filters/tags from a parsed spec
-    RED.httpAdmin.post('/api-gateway/preview-openapi', RED.auth.needsPermission('flows.read'), function(req, res) {
+    RED.httpAdmin.post("/api-gateway/preview-openapi", RED.auth.needsPermission("flows.read"), function(req, res) {
         const parser = new OpenApiParser({ detectCrud: true });
 
         try {
-            let content = req.body.content || '';
+            let content = req.body.content || "";
 
-            if (typeof content !== 'string') {
+            if (typeof content !== "string") {
                 content = JSON.stringify(content);
             }
 
-            if (!content || content.trim() === '') {
+            if (!content || content.trim() === "") {
                 return res.status(400).json({
                     success: false,
-                    error: 'No OpenAPI content provided'
+                    error: "No OpenAPI content provided"
                 });
             }
 

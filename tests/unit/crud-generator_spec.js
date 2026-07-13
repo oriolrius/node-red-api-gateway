@@ -1,4 +1,4 @@
-const should = require("should");
+require("should");
 const {
     CRUD_OPERATIONS,
     CRUD_METHOD_MAPPING,

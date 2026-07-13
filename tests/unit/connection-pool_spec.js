@@ -1,31 +1,31 @@
-const should = require('should');
-const sinon = require('sinon');
-const { PoolState, ConnectionPoolManager, DEFAULT_POOL_CONFIG } = require('../../lib/connection-pool');
+const should = require("should");
+const sinon = require("sinon");
+const { PoolState, ConnectionPoolManager, DEFAULT_POOL_CONFIG } = require("../../lib/connection-pool");
 
-describe('ConnectionPool', function() {
-    describe('PoolState enum', function() {
-        it('should have correct state values', function() {
-            PoolState.INITIALIZING.should.equal('initializing');
-            PoolState.RUNNING.should.equal('running');
-            PoolState.DRAINING.should.equal('draining');
-            PoolState.CLOSED.should.equal('closed');
+describe("ConnectionPool", function() {
+    describe("PoolState enum", function() {
+        it("should have correct state values", function() {
+            PoolState.INITIALIZING.should.equal("initializing");
+            PoolState.RUNNING.should.equal("running");
+            PoolState.DRAINING.should.equal("draining");
+            PoolState.CLOSED.should.equal("closed");
         });
     });
 
-    describe('DEFAULT_POOL_CONFIG', function() {
-        it('should have expected default values', function() {
-            DEFAULT_POOL_CONFIG.should.have.property('minConnections', 0);
-            DEFAULT_POOL_CONFIG.should.have.property('maxConnections', 10);
-            DEFAULT_POOL_CONFIG.should.have.property('idleTimeout', 30000);
-            DEFAULT_POOL_CONFIG.should.have.property('acquireTimeout', 15000);
-            DEFAULT_POOL_CONFIG.should.have.property('createRetryInterval', 1000);
-            DEFAULT_POOL_CONFIG.should.have.property('validateOnBorrow', true);
-            DEFAULT_POOL_CONFIG.should.have.property('evictionInterval', 60000);
+    describe("DEFAULT_POOL_CONFIG", function() {
+        it("should have expected default values", function() {
+            DEFAULT_POOL_CONFIG.should.have.property("minConnections", 0);
+            DEFAULT_POOL_CONFIG.should.have.property("maxConnections", 10);
+            DEFAULT_POOL_CONFIG.should.have.property("idleTimeout", 30000);
+            DEFAULT_POOL_CONFIG.should.have.property("acquireTimeout", 15000);
+            DEFAULT_POOL_CONFIG.should.have.property("createRetryInterval", 1000);
+            DEFAULT_POOL_CONFIG.should.have.property("validateOnBorrow", true);
+            DEFAULT_POOL_CONFIG.should.have.property("evictionInterval", 60000);
         });
     });
 });
 
-describe('ConnectionPoolManager', function() {
+describe("ConnectionPoolManager", function() {
     let pool;
     let clock;
     let connectionId;
@@ -42,7 +42,7 @@ describe('ConnectionPoolManager', function() {
     }
 
     beforeEach(function() {
-        pool = new ConnectionPoolManager('test-pool');
+        pool = new ConnectionPoolManager("test-pool");
     });
 
     afterEach(async function() {
@@ -56,69 +56,69 @@ describe('ConnectionPoolManager', function() {
         }
     });
 
-    describe('initialization', function() {
-        it('should initialize with INITIALIZING state', function() {
+    describe("initialization", function() {
+        it("should initialize with INITIALIZING state", function() {
             pool.state.should.equal(PoolState.INITIALIZING);
         });
 
-        it('should store pool name', function() {
-            pool.poolName.should.equal('test-pool');
+        it("should store pool name", function() {
+            pool.poolName.should.equal("test-pool");
         });
 
-        it('should use default config when no options provided', function() {
-            pool.config.should.have.property('minConnections', DEFAULT_POOL_CONFIG.minConnections);
-            pool.config.should.have.property('maxConnections', DEFAULT_POOL_CONFIG.maxConnections);
-            pool.config.should.have.property('idleTimeout', DEFAULT_POOL_CONFIG.idleTimeout);
-            pool.config.should.have.property('acquireTimeout', DEFAULT_POOL_CONFIG.acquireTimeout);
+        it("should use default config when no options provided", function() {
+            pool.config.should.have.property("minConnections", DEFAULT_POOL_CONFIG.minConnections);
+            pool.config.should.have.property("maxConnections", DEFAULT_POOL_CONFIG.maxConnections);
+            pool.config.should.have.property("idleTimeout", DEFAULT_POOL_CONFIG.idleTimeout);
+            pool.config.should.have.property("acquireTimeout", DEFAULT_POOL_CONFIG.acquireTimeout);
         });
 
-        it('should allow custom config options', function() {
-            const customPool = new ConnectionPoolManager('custom', {
+        it("should allow custom config options", function() {
+            const customPool = new ConnectionPoolManager("custom", {
                 minConnections: 2,
                 maxConnections: 20,
                 idleTimeout: 60000,
                 acquireTimeout: 30000
             });
-            customPool.config.should.have.property('minConnections', 2);
-            customPool.config.should.have.property('maxConnections', 20);
-            customPool.config.should.have.property('idleTimeout', 60000);
-            customPool.config.should.have.property('acquireTimeout', 30000);
+            customPool.config.should.have.property("minConnections", 2);
+            customPool.config.should.have.property("maxConnections", 20);
+            customPool.config.should.have.property("idleTimeout", 60000);
+            customPool.config.should.have.property("acquireTimeout", 30000);
         });
 
-        it('should throw error if factory not set before initialize', async function() {
+        it("should throw error if factory not set before initialize", async function() {
             try {
                 await pool.initialize();
-                should.fail('Expected error');
+                should.fail("Expected error");
             } catch (err) {
-                err.message.should.containEql('Connection factory not set');
+                err.message.should.containEql("Connection factory not set");
             }
         });
     });
 
-    describe('setFactory', function() {
-        it('should accept factory with create and destroy functions', function() {
+    describe("setFactory", function() {
+        it("should accept factory with create and destroy functions", function() {
             const factory = createMockFactory();
             (function() {
                 pool.setFactory(factory);
             }).should.not.throw();
         });
 
-        it('should throw error if create function missing', function() {
+        it("should throw error if create function missing", function() {
             (function() {
                 pool.setFactory({ destroy: sinon.stub() });
             }).should.throw(/create function/);
         });
 
-        it('should throw error if destroy function missing', function() {
+        it("should throw error if destroy function missing", function() {
             (function() {
                 pool.setFactory({ create: sinon.stub() });
             }).should.throw(/destroy function/);
         });
     });
 
-    describe('pool initialization', function() {
-        it('should create minimum connections on initialize', async function() {
-            const customPool = new ConnectionPoolManager('min-pool', {
+    describe("pool initialization", function() {
+        it("should create minimum connections on initialize", async function() {
+            const customPool = new ConnectionPoolManager("min-pool", {
                 minConnections: 3,
                 maxConnections: 10
             });
@@ -134,22 +134,22 @@ describe('ConnectionPoolManager', function() {
             await customPool.shutdown();
         });
 
-        it('should emit initialized event', async function() {
+        it("should emit initialized event", async function() {
             pool.setFactory(createMockFactory());
 
             let eventData = null;
-            pool.on('initialized', function(data) {
+            pool.on("initialized", function(data) {
                 eventData = data;
             });
 
             await pool.initialize();
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'test-pool');
-            eventData.should.have.property('size', 0);
+            eventData.should.have.property("pool", "test-pool");
+            eventData.should.have.property("size", 0);
         });
 
-        it('should transition to RUNNING state', async function() {
+        it("should transition to RUNNING state", async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
 
@@ -158,22 +158,22 @@ describe('ConnectionPoolManager', function() {
         });
     });
 
-    describe('acquire and release', function() {
+    describe("acquire and release", function() {
         beforeEach(async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
         });
 
-        it('should create connection when pool is empty', async function() {
+        it("should create connection when pool is empty", async function() {
             const conn = await pool.acquire();
 
             should.exist(conn);
-            conn.should.have.property('id');
-            conn.should.have.property('connected', true);
+            conn.should.have.property("id");
+            conn.should.have.property("connected", true);
             pool.borrowedCount.should.equal(1);
         });
 
-        it('should return connection from pool when available', async function() {
+        it("should return connection from pool when available", async function() {
             const conn1 = await pool.acquire();
             await pool.release(conn1);
 
@@ -183,7 +183,7 @@ describe('ConnectionPoolManager', function() {
             conn2.id.should.equal(conn1.id); // Same connection
         });
 
-        it('should release connection back to pool', async function() {
+        it("should release connection back to pool", async function() {
             const conn = await pool.acquire();
             pool.borrowedCount.should.equal(1);
             pool.availableCount.should.equal(0);
@@ -194,37 +194,37 @@ describe('ConnectionPoolManager', function() {
             pool.availableCount.should.equal(1);
         });
 
-        it('should emit connectionAcquired event', async function() {
+        it("should emit connectionAcquired event", async function() {
             let eventData = null;
-            pool.on('connectionAcquired', function(data) {
+            pool.on("connectionAcquired", function(data) {
                 eventData = data;
             });
 
             await pool.acquire();
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'test-pool');
-            eventData.should.have.property('available');
-            eventData.should.have.property('borrowed');
+            eventData.should.have.property("pool", "test-pool");
+            eventData.should.have.property("available");
+            eventData.should.have.property("borrowed");
         });
 
-        it('should emit connectionReleased event', async function() {
+        it("should emit connectionReleased event", async function() {
             const conn = await pool.acquire();
 
             let eventData = null;
-            pool.on('connectionReleased', function(data) {
+            pool.on("connectionReleased", function(data) {
                 eventData = data;
             });
 
             await pool.release(conn);
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'test-pool');
+            eventData.should.have.property("pool", "test-pool");
         });
 
-        it('should not exceed maxConnections', async function() {
+        it("should not exceed maxConnections", async function() {
             this.timeout(5000);
-            const smallPool = new ConnectionPoolManager('small', {
+            const smallPool = new ConnectionPoolManager("small", {
                 minConnections: 0,
                 maxConnections: 2,
                 acquireTimeout: 100
@@ -240,9 +240,9 @@ describe('ConnectionPoolManager', function() {
             // Third acquire should timeout
             try {
                 await smallPool.acquire(100);
-                should.fail('Expected timeout');
+                should.fail("Expected timeout");
             } catch (err) {
-                err.message.should.containEql('timeout');
+                err.message.should.containEql("timeout");
             }
 
             await smallPool.release(conn1);
@@ -251,9 +251,9 @@ describe('ConnectionPoolManager', function() {
         });
     });
 
-    describe('acquire timeout', function() {
+    describe("acquire timeout", function() {
         beforeEach(async function() {
-            pool = new ConnectionPoolManager('timeout-pool', {
+            pool = new ConnectionPoolManager("timeout-pool", {
                 maxConnections: 1,
                 acquireTimeout: 100
             });
@@ -261,23 +261,23 @@ describe('ConnectionPoolManager', function() {
             await pool.initialize();
         });
 
-        it('should timeout if no connection available', async function() {
+        it("should timeout if no connection available", async function() {
             // Borrow the only connection
             await pool.acquire();
 
             try {
                 await pool.acquire(50);
-                should.fail('Expected timeout');
+                should.fail("Expected timeout");
             } catch (err) {
-                err.message.should.containEql('timeout');
+                err.message.should.containEql("timeout");
             }
         });
 
-        it('should emit acquireTimeout event', async function() {
+        it("should emit acquireTimeout event", async function() {
             await pool.acquire();
 
             let eventData = null;
-            pool.on('acquireTimeout', function(data) {
+            pool.on("acquireTimeout", function(data) {
                 eventData = data;
             });
 
@@ -288,11 +288,11 @@ describe('ConnectionPoolManager', function() {
             }
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'timeout-pool');
-            eventData.should.have.property('timeout', 50);
+            eventData.should.have.property("pool", "timeout-pool");
+            eventData.should.have.property("timeout", 50);
         });
 
-        it('should update totalTimeouts stat', async function() {
+        it("should update totalTimeouts stat", async function() {
             await pool.acquire();
 
             try {
@@ -306,8 +306,8 @@ describe('ConnectionPoolManager', function() {
         });
     });
 
-    describe('connection validation', function() {
-        it('should validate connection before returning', async function() {
+    describe("connection validation", function() {
+        it("should validate connection before returning", async function() {
             const factory = createMockFactory();
             pool.setFactory(factory);
             await pool.initialize();
@@ -322,7 +322,7 @@ describe('ConnectionPoolManager', function() {
             factory.validate.calledOnce.should.be.true();
         });
 
-        it('should destroy invalid connections', async function() {
+        it("should destroy invalid connections", async function() {
             const factory = createMockFactory();
             factory.validate.onCall(0).resolves(false); // First validation fails
             factory.validate.onCall(1).resolves(true);  // Second succeeds
@@ -345,37 +345,37 @@ describe('ConnectionPoolManager', function() {
         });
     });
 
-    describe('statistics', function() {
+    describe("statistics", function() {
         beforeEach(async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
         });
 
-        it('should return complete statistics', function() {
+        it("should return complete statistics", function() {
             const stats = pool.getStatistics();
 
-            stats.should.have.property('pool', 'test-pool');
-            stats.should.have.property('state', PoolState.RUNNING);
-            stats.should.have.property('config');
-            stats.should.have.property('current');
-            stats.should.have.property('cumulative');
-            stats.should.have.property('peaks');
+            stats.should.have.property("pool", "test-pool");
+            stats.should.have.property("state", PoolState.RUNNING);
+            stats.should.have.property("config");
+            stats.should.have.property("current");
+            stats.should.have.property("cumulative");
+            stats.should.have.property("peaks");
 
-            stats.config.should.have.property('minConnections');
-            stats.config.should.have.property('maxConnections');
+            stats.config.should.have.property("minConnections");
+            stats.config.should.have.property("maxConnections");
 
-            stats.current.should.have.property('total');
-            stats.current.should.have.property('available');
-            stats.current.should.have.property('borrowed');
-            stats.current.should.have.property('pending');
+            stats.current.should.have.property("total");
+            stats.current.should.have.property("available");
+            stats.current.should.have.property("borrowed");
+            stats.current.should.have.property("pending");
 
-            stats.cumulative.should.have.property('totalCreated');
-            stats.cumulative.should.have.property('totalDestroyed');
-            stats.cumulative.should.have.property('totalAcquired');
-            stats.cumulative.should.have.property('totalReleased');
+            stats.cumulative.should.have.property("totalCreated");
+            stats.cumulative.should.have.property("totalDestroyed");
+            stats.cumulative.should.have.property("totalAcquired");
+            stats.cumulative.should.have.property("totalReleased");
         });
 
-        it('should track cumulative stats', async function() {
+        it("should track cumulative stats", async function() {
             const conn1 = await pool.acquire();
             const conn2 = await pool.acquire();
             await pool.release(conn1);
@@ -387,7 +387,7 @@ describe('ConnectionPoolManager', function() {
             stats.cumulative.totalReleased.should.equal(2);
         });
 
-        it('should track peak stats', async function() {
+        it("should track peak stats", async function() {
             const conn1 = await pool.acquire();
             const conn2 = await pool.acquire();
             const conn3 = await pool.acquire();
@@ -401,24 +401,24 @@ describe('ConnectionPoolManager', function() {
             await pool.release(conn3);
         });
 
-        it('should return simplified status', function() {
+        it("should return simplified status", function() {
             const status = pool.getStatus();
 
-            status.should.have.property('state', PoolState.RUNNING);
-            status.should.have.property('available');
-            status.should.have.property('borrowed');
-            status.should.have.property('pending');
-            status.should.have.property('total');
+            status.should.have.property("state", PoolState.RUNNING);
+            status.should.have.property("available");
+            status.should.have.property("borrowed");
+            status.should.have.property("pending");
+            status.should.have.property("total");
         });
     });
 
-    describe('idle eviction', function() {
+    describe("idle eviction", function() {
         beforeEach(function() {
             clock = sinon.useFakeTimers();
         });
 
-        it('should evict idle connections', async function() {
-            const customPool = new ConnectionPoolManager('evict-pool', {
+        it("should evict idle connections", async function() {
+            const customPool = new ConnectionPoolManager("evict-pool", {
                 minConnections: 0,
                 maxConnections: 5,
                 idleTimeout: 1000,
@@ -447,8 +447,8 @@ describe('ConnectionPoolManager', function() {
             await customPool.shutdown();
         });
 
-        it('should keep minConnections even if idle', async function() {
-            const customPool = new ConnectionPoolManager('min-evict-pool', {
+        it("should keep minConnections even if idle", async function() {
+            const customPool = new ConnectionPoolManager("min-evict-pool", {
                 minConnections: 2,
                 maxConnections: 5,
                 idleTimeout: 1000,
@@ -478,8 +478,8 @@ describe('ConnectionPoolManager', function() {
             await customPool.shutdown();
         });
 
-        it('should emit idleEviction event', async function() {
-            const customPool = new ConnectionPoolManager('evict-event-pool', {
+        it("should emit idleEviction event", async function() {
+            const customPool = new ConnectionPoolManager("evict-event-pool", {
                 minConnections: 0,
                 maxConnections: 5,
                 idleTimeout: 500,
@@ -492,7 +492,7 @@ describe('ConnectionPoolManager', function() {
             await customPool.release(conn);
 
             let eventData = null;
-            customPool.on('idleEviction', function(data) {
+            customPool.on("idleEviction", function(data) {
                 eventData = data;
             });
 
@@ -501,26 +501,26 @@ describe('ConnectionPoolManager', function() {
             await customPool._evictIdleConnections();
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'evict-event-pool');
-            eventData.should.have.property('evicted', 1);
+            eventData.should.have.property("pool", "evict-event-pool");
+            eventData.should.have.property("evicted", 1);
 
             await customPool.shutdown();
         });
     });
 
-    describe('drain', function() {
+    describe("drain", function() {
         beforeEach(async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
         });
 
-        it('should transition to DRAINING state', async function() {
+        it("should transition to DRAINING state", async function() {
             await pool.drain(100);
             pool.state.should.equal(PoolState.DRAINING);
         });
 
-        it('should reject pending acquire requests', async function() {
-            const smallPool = new ConnectionPoolManager('drain-pool', {
+        it("should reject pending acquire requests", async function() {
+            const smallPool = new ConnectionPoolManager("drain-pool", {
                 maxConnections: 1,
                 acquireTimeout: 5000
             });
@@ -543,7 +543,7 @@ describe('ConnectionPoolManager', function() {
             await smallPool.shutdown();
         });
 
-        it('should wait for borrowed connections to be released', async function() {
+        it("should wait for borrowed connections to be released", async function() {
             clock = sinon.useFakeTimers();
 
             const conn = await pool.acquire();
@@ -568,18 +568,18 @@ describe('ConnectionPoolManager', function() {
         });
     });
 
-    describe('shutdown', function() {
+    describe("shutdown", function() {
         beforeEach(async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
         });
 
-        it('should transition to CLOSED state', async function() {
+        it("should transition to CLOSED state", async function() {
             await pool.shutdown();
             pool.state.should.equal(PoolState.CLOSED);
         });
 
-        it('should destroy all connections', async function() {
+        it("should destroy all connections", async function() {
             const conn1 = await pool.acquire();
             const conn2 = await pool.acquire();
             await pool.release(conn1);
@@ -592,47 +592,47 @@ describe('ConnectionPoolManager', function() {
             factory.callCount.should.equal(2);
         });
 
-        it('should emit shutdown event', async function() {
+        it("should emit shutdown event", async function() {
             let eventData = null;
-            pool.on('shutdown', function(data) {
+            pool.on("shutdown", function(data) {
                 eventData = data;
             });
 
             await pool.shutdown();
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'test-pool');
-            eventData.should.have.property('stats');
+            eventData.should.have.property("pool", "test-pool");
+            eventData.should.have.property("stats");
         });
 
-        it('should be idempotent', async function() {
+        it("should be idempotent", async function() {
             await pool.shutdown();
             await pool.shutdown(); // Should not throw
             pool.state.should.equal(PoolState.CLOSED);
         });
 
-        it('should prevent new acquires', async function() {
+        it("should prevent new acquires", async function() {
             await pool.shutdown();
 
             try {
                 await pool.acquire();
-                should.fail('Expected error');
+                should.fail("Expected error");
             } catch (err) {
                 // May say "shutting down" or "CLOSED" depending on timing
-                (err.message.includes('shutting down') || err.message.includes('CLOSED')).should.be.true();
+                (err.message.includes("shutting down") || err.message.includes("CLOSED")).should.be.true();
             }
         });
     });
 
-    describe('clear', function() {
+    describe("clear", function() {
         beforeEach(async function() {
             pool.setFactory(createMockFactory());
             await pool.initialize();
         });
 
-        it('should destroy all connections and reinitialize', async function() {
+        it("should destroy all connections and reinitialize", async function() {
             const conn1 = await pool.acquire();
-            const conn2 = await pool.acquire();
+            await pool.acquire();
             await pool.release(conn1);
 
             pool.totalCount.should.equal(2);
@@ -644,27 +644,27 @@ describe('ConnectionPoolManager', function() {
             pool.totalCount.should.equal(0);
         });
 
-        it('should emit cleared event', async function() {
+        it("should emit cleared event", async function() {
             let eventData = null;
-            pool.on('cleared', function(data) {
+            pool.on("cleared", function(data) {
                 eventData = data;
             });
 
             await pool.clear();
 
             should.exist(eventData);
-            eventData.should.have.property('pool', 'test-pool');
+            eventData.should.have.property("pool", "test-pool");
         });
     });
 
-    describe('error handling', function() {
-        it('should handle create errors', async function() {
+    describe("error handling", function() {
+        it("should handle create errors", async function() {
             const factory = createMockFactory();
-            factory.create.rejects(new Error('Connection refused'));
+            factory.create.rejects(new Error("Connection refused"));
             pool.setFactory(factory);
 
             let errorEvent = null;
-            pool.on('createError', function(data) {
+            pool.on("createError", function(data) {
                 errorEvent = data;
             });
 
@@ -678,13 +678,13 @@ describe('ConnectionPoolManager', function() {
             }
 
             should.exist(errorEvent);
-            errorEvent.should.have.property('pool', 'test-pool');
-            errorEvent.error.message.should.equal('Connection refused');
+            errorEvent.should.have.property("pool", "test-pool");
+            errorEvent.error.message.should.equal("Connection refused");
         });
 
-        it('should track error count in stats', async function() {
+        it("should track error count in stats", async function() {
             const factory = createMockFactory();
-            factory.create.rejects(new Error('Failed'));
+            factory.create.rejects(new Error("Failed"));
             pool.setFactory(factory);
             await pool.initialize();
 

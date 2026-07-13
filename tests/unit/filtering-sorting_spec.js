@@ -1,7 +1,5 @@
-const should = require("should");
+require("should");
 const {
-    SORT_DIRECTIONS,
-    FILTER_SORT_DEFAULTS,
     parseFieldList,
     validateFieldName,
     parseFilterParams,
