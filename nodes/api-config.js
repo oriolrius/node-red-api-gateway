@@ -1,32 +1,29 @@
-const { ConnectionState, ConnectionStateManager } = require('../lib/connection-state');
+const { ConnectionStateManager } = require("../lib/connection-state");
 const {
     HealthStatus,
     HealthCheckManager,
     createDatabaseHealthCheck,
     createKeycloakHealthCheck,
     createOpaHealthCheck
-} = require('../lib/health-check');
-const { PoolState, ConnectionPoolManager } = require('../lib/connection-pool');
-const { quoteIdentifierPart } = require('../lib/crud-generator');
+} = require("../lib/health-check");
+const { ConnectionPoolManager } = require("../lib/connection-pool");
+const { quoteIdentifierPart } = require("../lib/crud-generator");
 const {
-    LOG_LEVELS,
-    LOG_OUTPUTS,
     LOG_DEFAULTS,
     createLogger,
     createRequestLogger,
-    createNodeRedLoggerBridge,
     validateLoggerConfig,
     generateRequestId
-} = require('../lib/logger');
+} = require("../lib/logger");
 
 // SQL Server support (lazy-loaded)
 let mssql = null;
 function getMssql() {
     if (!mssql) {
         try {
-            mssql = require('mssql');
+            mssql = require("mssql");
         } catch (err) {
-            throw new Error('mssql package not installed. Run: npm install mssql');
+            throw new Error("mssql package not installed. Run: npm install mssql");
         }
     }
     return mssql;
@@ -41,8 +38,8 @@ module.exports = function(RED) {
         node.connectionManagers = {};
 
         // Create connection manager for database if configured
-        if (config.dbType && config.dbType !== 'none') {
-            node.connectionManagers.database = new ConnectionStateManager('database', {
+        if (config.dbType && config.dbType !== "none") {
+            node.connectionManagers.database = new ConnectionStateManager("database", {
                 initialBackoff: 1000,
                 maxBackoff: 30000,
                 maxRetries: Infinity
@@ -51,7 +48,7 @@ module.exports = function(RED) {
 
         // Create connection manager for Keycloak if enabled
         if (config.oauth2Enabled) {
-            node.connectionManagers.keycloak = new ConnectionStateManager('keycloak', {
+            node.connectionManagers.keycloak = new ConnectionStateManager("keycloak", {
                 initialBackoff: 1000,
                 maxBackoff: 30000,
                 maxRetries: Infinity
@@ -60,7 +57,7 @@ module.exports = function(RED) {
 
         // Create connection manager for OPA if enabled
         if (config.opaEnabled) {
-            node.connectionManagers.opa = new ConnectionStateManager('opa', {
+            node.connectionManagers.opa = new ConnectionStateManager("opa", {
                 initialBackoff: config.opaTimeout || 5000,
                 maxBackoff: 30000,
                 maxRetries: config.opaRetryAttempts || 3
@@ -76,8 +73,8 @@ module.exports = function(RED) {
         });
 
         // Register health checks for configured services
-        if (config.dbType && config.dbType !== 'none') {
-            node.healthCheckManager.registerCheck('database', createDatabaseHealthCheck({
+        if (config.dbType && config.dbType !== "none") {
+            node.healthCheckManager.registerCheck("database", createDatabaseHealthCheck({
                 dbType: config.dbType,
                 dbHost: config.dbHost,
                 dbPort: config.dbPort,
@@ -86,14 +83,14 @@ module.exports = function(RED) {
         }
 
         if (config.oauth2Enabled) {
-            node.healthCheckManager.registerCheck('keycloak', createKeycloakHealthCheck({
+            node.healthCheckManager.registerCheck("keycloak", createKeycloakHealthCheck({
                 keycloakUrl: config.keycloakUrl,
                 keycloakRealm: config.keycloakRealm
             }));
         }
 
         if (config.opaEnabled) {
-            node.healthCheckManager.registerCheck('opa', createOpaHealthCheck({
+            node.healthCheckManager.registerCheck("opa", createOpaHealthCheck({
                 opaUrl: config.opaUrl,
                 opaPolicyPath: config.opaPolicyPath,
                 opaTimeout: config.opaTimeout
@@ -124,8 +121,8 @@ module.exports = function(RED) {
         node.connectionPool = null;
         node.mssqlPool = null;  // Native mssql ConnectionPool for SQL Server
 
-        if (config.dbType && config.dbType !== 'none') {
-            node.connectionPool = new ConnectionPoolManager('database', {
+        if (config.dbType && config.dbType !== "none") {
+            node.connectionPool = new ConnectionPoolManager("database", {
                 minConnections: config.dbPoolMin || 0,
                 maxConnections: config.dbPoolMax || 10,
                 idleTimeout: config.dbPoolIdleTimeout || 30000,
@@ -133,14 +130,14 @@ module.exports = function(RED) {
             });
 
             // Initialize SQL Server connection pool if dbType is mssql
-            if (config.dbType === 'mssql') {
+            if (config.dbType === "mssql") {
                 const sql = getMssql();
                 const mssqlConfig = {
-                    server: config.dbHost || 'localhost',
+                    server: config.dbHost || "localhost",
                     port: parseInt(config.dbPort, 10) || 1433,
-                    database: config.dbName || '',
-                    user: node.credentials?.dbUser || '',
-                    password: node.credentials?.dbPassword || '',
+                    database: config.dbName || "",
+                    user: node.credentials?.dbUser || "",
+                    password: node.credentials?.dbPassword || "",
                     options: {
                         encrypt: config.dbEncrypt !== false,
                         trustServerCertificate: config.dbTrustServerCertificate === true,
@@ -170,7 +167,7 @@ module.exports = function(RED) {
                 });
 
                 // Handle pool errors
-                node.mssqlPool.on('error', err => {
+                node.mssqlPool.on("error", err => {
                     node.error(`SQL Server pool error: ${err.message}`);
                     if (node.connectionManagers.database) {
                         node.connectionManagers.database.error(err, false);
@@ -216,21 +213,21 @@ module.exports = function(RED) {
         node.apiVersionInPath = config.apiVersionInPath;
 
         // OpenAPI configuration
-        node.openapiTitle = config.openapiTitle || 'API Gateway';
-        node.openapiDescription = config.openapiDescription || '';
-        node.openapiContactName = config.openapiContactName || '';
-        node.openapiContactEmail = config.openapiContactEmail || '';
-        node.openapiContactUrl = config.openapiContactUrl || '';
-        node.openapiLicenseName = config.openapiLicenseName || '';
-        node.openapiLicenseUrl = config.openapiLicenseUrl || '';
-        node.openapiTermsOfService = config.openapiTermsOfService || '';
+        node.openapiTitle = config.openapiTitle || "API Gateway";
+        node.openapiDescription = config.openapiDescription || "";
+        node.openapiContactName = config.openapiContactName || "";
+        node.openapiContactEmail = config.openapiContactEmail || "";
+        node.openapiContactUrl = config.openapiContactUrl || "";
+        node.openapiLicenseName = config.openapiLicenseName || "";
+        node.openapiLicenseUrl = config.openapiLicenseUrl || "";
+        node.openapiTermsOfService = config.openapiTermsOfService || "";
 
         // Logging configuration
         node.loggingEnabled = config.loggingEnabled !== false;  // Enabled by default
-        node.logLevel = config.logLevel || 'info';
-        node.logOutput = config.logOutput || 'console';
+        node.logLevel = config.logLevel || "info";
+        node.logOutput = config.logOutput || "console";
         node.logPrettyPrint = config.logPrettyPrint === true;
-        node.logFilePath = config.logFilePath || '';
+        node.logFilePath = config.logFilePath || "";
         node.logRedactHeaders = config.logRedactHeaders !== false;  // Enabled by default
         node.logIncludeUserContext = config.logIncludeUserContext !== false;  // Enabled by default
 
@@ -259,18 +256,18 @@ module.exports = function(RED) {
          * @returns {string} Full base path (e.g., "/api/v1" or "/api")
          */
         node.getFullBasePath = function() {
-            let basePath = node.apiBasePath || '';
+            let basePath = node.apiBasePath || "";
             // Ensure basePath starts with /
-            if (basePath && !basePath.startsWith('/')) {
-                basePath = '/' + basePath;
+            if (basePath && !basePath.startsWith("/")) {
+                basePath = "/" + basePath;
             }
             // Remove trailing slash
-            if (basePath.endsWith('/')) {
+            if (basePath.endsWith("/")) {
                 basePath = basePath.slice(0, -1);
             }
             // Add version if configured
             if (node.apiVersionInPath && node.apiVersion) {
-                basePath = basePath + '/' + node.apiVersion;
+                basePath = basePath + "/" + node.apiVersion;
             }
             return basePath;
         };
@@ -281,8 +278,8 @@ module.exports = function(RED) {
          */
         node.getOpenApiInfo = function() {
             const info = {
-                title: node.openapiTitle || 'API Gateway',
-                version: node.apiVersion || '1.0.0'
+                title: node.openapiTitle || "API Gateway",
+                version: node.apiVersion || "1.0.0"
             };
 
             // Add description if provided
@@ -455,7 +452,7 @@ module.exports = function(RED) {
          */
         node.setPoolFactory = function(factory) {
             if (!node.connectionPool) {
-                throw new Error('Connection pool not initialized');
+                throw new Error("Connection pool not initialized");
             }
             node.connectionPool.setFactory(factory);
         };
@@ -466,7 +463,7 @@ module.exports = function(RED) {
          */
         node.initializePool = async function() {
             if (!node.connectionPool) {
-                throw new Error('Connection pool not initialized');
+                throw new Error("Connection pool not initialized");
             }
             await node.connectionPool.initialize();
         };
@@ -478,7 +475,7 @@ module.exports = function(RED) {
          */
         node.acquireConnection = async function(timeout) {
             if (!node.connectionPool) {
-                throw new Error('Connection pool not initialized');
+                throw new Error("Connection pool not initialized");
             }
             return node.connectionPool.acquire(timeout);
         };
@@ -489,7 +486,7 @@ module.exports = function(RED) {
          */
         node.releaseConnection = async function(connection) {
             if (!node.connectionPool) {
-                throw new Error('Connection pool not initialized');
+                throw new Error("Connection pool not initialized");
             }
             await node.connectionPool.release(connection);
         };
@@ -499,7 +496,7 @@ module.exports = function(RED) {
          * @returns {boolean}
          */
         node.isSqlServerReady = function() {
-            return node.dbType === 'mssql' && node.mssqlPool && node.mssqlPool.connected;
+            return node.dbType === "mssql" && node.mssqlPool && node.mssqlPool.connected;
         };
 
         /**
@@ -510,10 +507,10 @@ module.exports = function(RED) {
          */
         node.executeQuery = async function(query, params = {}) {
             if (!node.mssqlPool) {
-                throw new Error('SQL Server not configured');
+                throw new Error("SQL Server not configured");
             }
             if (!node.mssqlPool.connected) {
-                throw new Error('SQL Server not connected');
+                throw new Error("SQL Server not connected");
             }
 
             const sql = getMssql();
@@ -523,13 +520,13 @@ module.exports = function(RED) {
             for (const [name, value] of Object.entries(params)) {
                 if (value === null || value === undefined) {
                     request.input(name, sql.NVarChar, null);
-                } else if (typeof value === 'number') {
+                } else if (typeof value === "number") {
                     if (Number.isInteger(value)) {
                         request.input(name, sql.Int, value);
                     } else {
                         request.input(name, sql.Decimal(18, 4), value);
                     }
-                } else if (typeof value === 'boolean') {
+                } else if (typeof value === "boolean") {
                     request.input(name, sql.Bit, value);
                 } else if (value instanceof Date) {
                     request.input(name, sql.DateTime, value);
@@ -556,7 +553,7 @@ module.exports = function(RED) {
          */
         node.executeCrudOperation = async function(operation, sqlTemplate, context = {}) {
             if (!sqlTemplate || !sqlTemplate.sql) {
-                throw new Error('Invalid SQL template');
+                throw new Error("Invalid SQL template");
             }
 
             const params = {};
@@ -567,42 +564,76 @@ module.exports = function(RED) {
 
             // Build parameters based on operation
             switch (operation) {
-                case 'list':
-                    // Pagination params with defaults (required for SQL Server OFFSET/FETCH)
-                    params.limit = parseInt(query.limit, 10) || 10;
-                    params.offset = parseInt(query.offset, 10) || 0;
+            case "list":
+                // Pagination params with defaults (required for SQL Server OFFSET/FETCH)
+                params.limit = parseInt(query.limit, 10) || 10;
+                params.offset = parseInt(query.offset, 10) || 0;
 
-                    // Handle filtering - inject WHERE clause before ORDER BY
-                    if (filtering && filtering.whereClause && filtering.whereClause.clause) {
-                        // Add filter params
-                        for (const [key, value] of Object.entries(filtering.whereClause.params || {})) {
-                            params[key] = value;
-                        }
-
-                        // Inject WHERE clause into SQL (before ORDER BY)
-                        const orderByIndex = sql.indexOf('ORDER BY');
-                        if (orderByIndex > -1) {
-                            sql = sql.slice(0, orderByIndex) + filtering.whereClause.clause + ' ' + sql.slice(orderByIndex);
-                        } else {
-                            sql = sql + ' ' + filtering.whereClause.clause;
-                        }
+                // Handle filtering - inject WHERE clause before ORDER BY
+                if (filtering && filtering.whereClause && filtering.whereClause.clause) {
+                    // Add filter params
+                    for (const [key, value] of Object.entries(filtering.whereClause.params || {})) {
+                        params[key] = value;
                     }
 
-                    // Handle custom sorting if provided
-                    if (sorting && sorting.orderByClause) {
-                        // Replace existing ORDER BY with custom sorting
-                        const orderByMatch = sql.match(/ORDER BY [^O]+(?=OFFSET|$)/i);
-                        if (orderByMatch) {
-                            sql = sql.replace(orderByMatch[0], sorting.orderByClause + ' ');
-                        }
+                    // Inject WHERE clause into SQL (before ORDER BY)
+                    const orderByIndex = sql.indexOf("ORDER BY");
+                    if (orderByIndex > -1) {
+                        sql = sql.slice(0, orderByIndex) + filtering.whereClause.clause + " " + sql.slice(orderByIndex);
+                    } else {
+                        sql = sql + " " + filtering.whereClause.clause;
                     }
-                    break;
+                }
 
-                case 'get': {
-                    // Bind primary-key parameter. Prefer urlParams[primaryKey];
-                    // fall back to the sole path param when paths use a
-                    // differently-named placeholder (e.g. :idCota vs PK id_cota);
-                    // legacy fallback to urlParams.id for paths that still use :id.
+                // Handle custom sorting if provided
+                if (sorting && sorting.orderByClause) {
+                    // Replace existing ORDER BY with custom sorting
+                    const orderByMatch = sql.match(/ORDER BY [^O]+(?=OFFSET|$)/i);
+                    if (orderByMatch) {
+                        sql = sql.replace(orderByMatch[0], sorting.orderByClause + " ");
+                    }
+                }
+                break;
+
+            case "get": {
+                // Bind primary-key parameter. Prefer urlParams[primaryKey];
+                // fall back to the sole path param when paths use a
+                // differently-named placeholder (e.g. :idCota vs PK id_cota);
+                // legacy fallback to urlParams.id for paths that still use :id.
+                const pkCol = sqlTemplate.primaryKey;
+                let pkVal = pkCol ? urlParams[pkCol] : undefined;
+                if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
+                    pkVal = urlParams[context.paramNames[0]];
+                }
+                if (pkVal === undefined) pkVal = urlParams.id;
+                if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
+                break;
+            }
+
+            case "create":
+                // Insert body fields - build actual INSERT SQL from template.
+                // Column identifiers are bracket-quoted (so names with special
+                // chars like % are legal); parameter names are positional
+                // (col0, col1, ...) and thus decoupled from the column names,
+                // since a column name may be an invalid SQL parameter token.
+                {
+                    const columns = Object.keys(body);
+                    const identifiers = columns.map(quoteIdentifierPart);
+                    const placeholders = columns.map((c, i) => `@col${i}`);
+                    // Replace @columns and @values placeholders with actual values
+                    sql = sql.replace("@columns", identifiers.join(", "));
+                    sql = sql.replace("@values", placeholders.join(", "));
+                    // Add OUTPUT clause to return inserted row (SQL Server)
+                    sql = sql.replace(") VALUES", ") OUTPUT INSERTED.* VALUES");
+                    columns.forEach((c, i) => {
+                        params[`col${i}`] = body[c];
+                    });
+                }
+                break;
+
+            case "update":
+                // Update by primary key with body fields - build actual UPDATE SQL
+                {
                     const pkCol = sqlTemplate.primaryKey;
                     let pkVal = pkCol ? urlParams[pkCol] : undefined;
                     if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
@@ -610,69 +641,35 @@ module.exports = function(RED) {
                     }
                     if (pkVal === undefined) pkVal = urlParams.id;
                     if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
-                    break;
+                    // Bracket-quote column identifiers; use positional param
+                    // names (col0, col1, ...) decoupled from column names so
+                    // special-character columns bind to valid SQL parameters.
+                    const columns = Object.keys(body);
+                    const assignments = columns.map((c, i) => `${quoteIdentifierPart(c)} = @col${i}`);
+                    // Replace @assignments placeholder with actual SET clause
+                    sql = sql.replace("@assignments", assignments.join(", "));
+                    // Add OUTPUT clause to return updated row (SQL Server)
+                    const whereIndex = sql.indexOf("WHERE");
+                    if (whereIndex > -1) {
+                        sql = sql.slice(0, whereIndex) + "OUTPUT INSERTED.* " + sql.slice(whereIndex);
+                    }
+                    columns.forEach((c, i) => {
+                        params[`col${i}`] = body[c];
+                    });
                 }
+                break;
 
-                case 'create':
-                    // Insert body fields - build actual INSERT SQL from template.
-                    // Column identifiers are bracket-quoted (so names with special
-                    // chars like % are legal); parameter names are positional
-                    // (col0, col1, ...) and thus decoupled from the column names,
-                    // since a column name may be an invalid SQL parameter token.
-                    {
-                        const columns = Object.keys(body);
-                        const identifiers = columns.map(quoteIdentifierPart);
-                        const placeholders = columns.map((c, i) => `@col${i}`);
-                        // Replace @columns and @values placeholders with actual values
-                        sql = sql.replace('@columns', identifiers.join(', '));
-                        sql = sql.replace('@values', placeholders.join(', '));
-                        // Add OUTPUT clause to return inserted row (SQL Server)
-                        sql = sql.replace(') VALUES', ') OUTPUT INSERTED.* VALUES');
-                        columns.forEach((c, i) => {
-                            params[`col${i}`] = body[c];
-                        });
-                    }
-                    break;
-
-                case 'update':
-                    // Update by primary key with body fields - build actual UPDATE SQL
-                    {
-                        const pkCol = sqlTemplate.primaryKey;
-                        let pkVal = pkCol ? urlParams[pkCol] : undefined;
-                        if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
-                            pkVal = urlParams[context.paramNames[0]];
-                        }
-                        if (pkVal === undefined) pkVal = urlParams.id;
-                        if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
-                        // Bracket-quote column identifiers; use positional param
-                        // names (col0, col1, ...) decoupled from column names so
-                        // special-character columns bind to valid SQL parameters.
-                        const columns = Object.keys(body);
-                        const assignments = columns.map((c, i) => `${quoteIdentifierPart(c)} = @col${i}`);
-                        // Replace @assignments placeholder with actual SET clause
-                        sql = sql.replace('@assignments', assignments.join(', '));
-                        // Add OUTPUT clause to return updated row (SQL Server)
-                        const whereIndex = sql.indexOf('WHERE');
-                        if (whereIndex > -1) {
-                            sql = sql.slice(0, whereIndex) + 'OUTPUT INSERTED.* ' + sql.slice(whereIndex);
-                        }
-                        columns.forEach((c, i) => {
-                            params[`col${i}`] = body[c];
-                        });
-                    }
-                    break;
-
-                case 'delete': {
-                    // Delete by primary key (see 'get' for fallback chain).
-                    const pkCol = sqlTemplate.primaryKey;
-                    let pkVal = pkCol ? urlParams[pkCol] : undefined;
-                    if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
-                        pkVal = urlParams[context.paramNames[0]];
-                    }
-                    if (pkVal === undefined) pkVal = urlParams.id;
-                    if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
-                    break;
+            case "delete": {
+                // Delete by primary key (see 'get' for fallback chain).
+                const pkCol = sqlTemplate.primaryKey;
+                let pkVal = pkCol ? urlParams[pkCol] : undefined;
+                if (pkVal === undefined && Array.isArray(context.paramNames) && context.paramNames.length === 1) {
+                    pkVal = urlParams[context.paramNames[0]];
                 }
+                if (pkVal === undefined) pkVal = urlParams.id;
+                if (pkVal !== undefined && pkCol) params[pkCol] = pkVal;
+                break;
+            }
             }
 
             // Execute the query
@@ -764,9 +761,9 @@ module.exports = function(RED) {
             if (node.mssqlPool) {
                 try {
                     await node.mssqlPool.close();
-                    node.log('SQL Server connection pool closed');
+                    node.log("SQL Server connection pool closed");
                 } catch (err) {
-                    node.error('Error closing SQL Server pool: ' + err.message);
+                    node.error("Error closing SQL Server pool: " + err.message);
                 }
                 node.mssqlPool = null;
             }
@@ -777,7 +774,7 @@ module.exports = function(RED) {
                     await node.connectionPool.shutdown(30000);
                 } catch (err) {
                     // Log error but continue shutdown
-                    node.error('Error shutting down connection pool: ' + err.message);
+                    node.error("Error shutting down connection pool: " + err.message);
                 }
                 node.connectionPool = null;
             }

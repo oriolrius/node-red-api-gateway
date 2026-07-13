@@ -1,58 +1,50 @@
-'use strict';
+"use strict";
 
 const {
-    HTTP_METHODS,
-    isValidMethod,
     normalizeMethod,
     validatePath,
     extractParamNames,
     extractParams,
     normalizePath
-} = require('../lib/path-utils');
+} = require("../lib/path-utils");
 
 const {
-    SchemaValidator,
     validateBody,
     validateQuery,
     validateParams,
     validateResponse,
-    createParamSchema,
     parseSchema,
     parseResponseSchemas,
     ValidationResult
-} = require('../lib/schema-validator');
+} = require("../lib/schema-validator");
 
 const {
-    TransformationResult,
     validateExpression,
-    compileExpression,
     transformRequest,
     transformResponse,
     parseFieldMapping,
     applyFieldMapping
-} = require('../lib/request-response-transform');
+} = require("../lib/request-response-transform");
 
 const {
     RATE_LIMIT_KEY_TYPES,
     RATE_LIMIT_DEFAULTS,
     RateLimiter,
     validateRateLimitConfig,
-    extractRateLimitKey,
     generateRateLimitHeaders,
     createRateLimitError
-} = require('../lib/rate-limiter');
+} = require("../lib/rate-limiter");
 
 const {
     CACHE_KEY_STRATEGIES,
     CACHE_DEFAULTS,
     ResponseCache,
     validateCacheConfig,
-    generateCacheKey,
     generateETag,
     checkConditionalRequest,
     generateCacheHeaders,
     parseVaryHeaders
-} = require('../lib/response-cache');
+} = require("../lib/response-cache");
 
 const {
     ERROR_FORMATS,
@@ -63,18 +55,18 @@ const {
     validateErrorConfig,
     parseErrorCodeMappings,
     fromError
-} = require('../lib/error-handler');
+} = require("../lib/error-handler");
 
 const {
     generateRequestId,
     createTimer,
     createRequestLogger
-} = require('../lib/logger');
+} = require("../lib/logger");
 
 const {
     parseScopes,
     checkScopes
-} = require('../lib/authorization');
+} = require("../lib/authorization");
 
 const {
     PAGINATION_STYLES,
@@ -82,28 +74,23 @@ const {
     validatePaginationConfig,
     parsePaginationParams,
     generatePaginationMetadata
-} = require('../lib/pagination');
+} = require("../lib/pagination");
 
 const {
-    SORT_DIRECTIONS,
-    FILTER_SORT_DEFAULTS,
     parseFieldList,
-    validateFieldName,
     parseFilterParams,
     parseSortParams,
     generateWhereClause,
     generateOrderByClause
-} = require('../lib/filtering-sorting');
+} = require("../lib/filtering-sorting");
 
 const {
-    CRUD_OPERATIONS,
-    CRUD_METHOD_MAPPING,
     validateCrudOperation,
     validateTableName,
     validateColumnName,
     generateCrudSql,
     getDefaultStatusDescription
-} = require('../lib/crud-generator');
+} = require("../lib/crud-generator");
 
 module.exports = function(RED) {
     function ApiEndpointNode(config) {
@@ -112,8 +99,8 @@ module.exports = function(RED) {
 
         // Store configuration
         node.name = config.name;
-        node.path = normalizePath(config.path || '/');
-        node.method = normalizeMethod(config.method || 'GET');
+        node.path = normalizePath(config.path || "/");
+        node.method = normalizeMethod(config.method || "GET");
 
         // Schema validation configuration
         node.validationEnabled = config.validationEnabled !== false;
@@ -124,17 +111,17 @@ module.exports = function(RED) {
         // Response schema configuration
         node.responseSchemas = {};  // Map of status code to schema
         node.successStatusCode = parseInt(config.successStatusCode, 10) || 200;
-        node.responseContentType = config.responseContentType || 'application/json';
+        node.responseContentType = config.responseContentType || "application/json";
         node.validateResponseEnabled = config.validateResponseEnabled === true;  // Dev mode only
 
         // Authorization scope configuration
         node.requiredScopes = parseScopes(config.requiredScopes);
-        node.scopeOperator = config.scopeOperator === 'OR' ? 'OR' : 'AND';  // Default to AND (requires all scopes)
+        node.scopeOperator = config.scopeOperator === "OR" ? "OR" : "AND";  // Default to AND (requires all scopes)
 
         // CRUD operation mapping configuration
         node.crudOperation = validateCrudOperation(config.crudOperation);
-        node.tableName = (config.tableName || '').trim();
-        node.primaryKey = (config.primaryKey || 'id').trim();
+        node.tableName = (config.tableName || "").trim();
+        node.primaryKey = (config.primaryKey || "id").trim();
         node.autoGenerateSql = config.autoGenerateSql === true;
         node.useFlowOutput = config.useFlowOutput !== false;  // Default to true (delegate to flow)
 
@@ -165,10 +152,10 @@ module.exports = function(RED) {
         // Sorting configuration
         node.sortingEnabled = config.sortingEnabled === true;
         node.sortableFields = parseFieldList(config.sortableFields);
-        node.defaultSortField = (config.defaultSortField || '').trim() || null;
-        node.defaultSortDirection = ['asc', 'desc'].includes(config.defaultSortDirection)
+        node.defaultSortField = (config.defaultSortField || "").trim() || null;
+        node.defaultSortDirection = ["asc", "desc"].includes(config.defaultSortDirection)
             ? config.defaultSortDirection
-            : 'asc';
+            : "asc";
 
         // Transformation configuration
         node.transformationEnabled = config.transformationEnabled === true;
@@ -183,7 +170,7 @@ module.exports = function(RED) {
         node.rateLimitKeyType = RATE_LIMIT_KEY_TYPES.includes(config.rateLimitKeyType)
             ? config.rateLimitKeyType
             : RATE_LIMIT_DEFAULTS.keyType;
-        node.rateLimitCustomKeyPath = (config.rateLimitCustomKeyPath || '').trim() || null;
+        node.rateLimitCustomKeyPath = (config.rateLimitCustomKeyPath || "").trim() || null;
         node.rateLimiter = null;
 
         // Initialize rate limiter if enabled
@@ -215,7 +202,7 @@ module.exports = function(RED) {
         node.cacheKeyStrategy = CACHE_KEY_STRATEGIES.includes(config.cacheKeyStrategy)
             ? config.cacheKeyStrategy
             : CACHE_DEFAULTS.keyStrategy;
-        node.cacheKeyExpression = (config.cacheKeyExpression || '').trim() || null;
+        node.cacheKeyExpression = (config.cacheKeyExpression || "").trim() || null;
         node.cacheVaryHeaders = parseVaryHeaders(config.cacheVaryHeaders);
         node.cachePrivate = config.cachePrivate === true;
         node.responseCache = null;
@@ -317,7 +304,7 @@ module.exports = function(RED) {
         }
 
         // Validate CRUD configuration if operation is set
-        if (node.crudOperation !== 'none') {
+        if (node.crudOperation !== "none") {
             if (node.autoGenerateSql) {
                 const tableValidation = validateTableName(node.tableName);
                 if (!tableValidation.valid) {
@@ -381,11 +368,11 @@ module.exports = function(RED) {
             node.serverNode = RED.nodes.getNode(node.server);
             if (node.serverNode) {
                 // Register this endpoint with the server
-                if (typeof node.serverNode.registerEndpoint === 'function') {
+                if (typeof node.serverNode.registerEndpoint === "function") {
                     node.serverNode.registerEndpoint(node);
                 }
             } else {
-                node.warn('API Server configuration not found');
+                node.warn("API Server configuration not found");
             }
         }
 
@@ -413,7 +400,7 @@ module.exports = function(RED) {
                 if (!result.valid) {
                     errors.push(...result.errors.map(e => ({
                         ...e,
-                        location: 'body'
+                        location: "body"
                     })));
                 }
             }
@@ -424,7 +411,7 @@ module.exports = function(RED) {
                 if (!result.valid) {
                     errors.push(...result.errors.map(e => ({
                         ...e,
-                        location: 'query'
+                        location: "query"
                     })));
                 }
             }
@@ -435,7 +422,7 @@ module.exports = function(RED) {
                 if (!result.valid) {
                     errors.push(...result.errors.map(e => ({
                         ...e,
-                        location: 'params'
+                        location: "params"
                     })));
                 }
             }
@@ -449,7 +436,7 @@ module.exports = function(RED) {
 
         // Method to validate response data (for dev mode debugging)
         node.validateResponseData = function(statusCode, data) {
-            const schema = node.responseSchemas[statusCode] || node.responseSchemas['default'];
+            const schema = node.responseSchemas[statusCode] || node.responseSchemas["default"];
             if (!schema) {
                 // No schema defined for this status code
                 return ValidationResult.success(data);
@@ -459,7 +446,7 @@ module.exports = function(RED) {
 
         // Method to get response schema for a status code
         node.getResponseSchema = function(statusCode) {
-            return node.responseSchemas[statusCode] || node.responseSchemas['default'] || null;
+            return node.responseSchemas[statusCode] || node.responseSchemas["default"] || null;
         };
 
         // Method to check authorization based on scopes
@@ -469,7 +456,7 @@ module.exports = function(RED) {
 
         // Method to get CRUD SQL template (if auto-generate is enabled)
         node.getCrudSql = function() {
-            if (node.crudOperation === 'none' || !node.autoGenerateSql) {
+            if (node.crudOperation === "none" || !node.autoGenerateSql) {
                 return null;
             }
             return generateCrudSql(node.crudOperation, node.tableName, node.primaryKey);
@@ -483,7 +470,7 @@ module.exports = function(RED) {
                 primaryKey: node.primaryKey,
                 autoGenerateSql: node.autoGenerateSql,
                 useFlowOutput: node.useFlowOutput,
-                hasCrudOperation: node.crudOperation !== 'none'
+                hasCrudOperation: node.crudOperation !== "none"
             };
         };
 
@@ -720,7 +707,7 @@ module.exports = function(RED) {
         // Method to get cache headers
         node.getCacheHeaders = function() {
             if (!node.cachingEnabled) {
-                return { 'Cache-Control': 'no-store' };
+                return { "Cache-Control": "no-store" };
             }
             return generateCacheHeaders({
                 ttl: node.cacheTTL,
@@ -750,7 +737,7 @@ module.exports = function(RED) {
                         error: apiError.code,
                         message: apiError.message
                     },
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { "Content-Type": "application/json" }
                 };
             }
             return node.errorHandler.handle(error, context);
@@ -781,7 +768,7 @@ module.exports = function(RED) {
         // Method to send error response (helper for message handling)
         node.sendErrorResponse = function(res, error, context = {}) {
             const result = node.handleError(error, context);
-            if (res && typeof res.status === 'function') {
+            if (res && typeof res.status === "function") {
                 for (const [name, value] of Object.entries(result.headers)) {
                     res.set(name, value);
                 }
@@ -818,7 +805,7 @@ module.exports = function(RED) {
                 primaryKey: node.primaryKey,
                 autoGenerateSql: node.autoGenerateSql,
                 useFlowOutput: node.useFlowOutput,
-                hasCrudOperation: node.crudOperation !== 'none',
+                hasCrudOperation: node.crudOperation !== "none",
                 // Pagination configuration
                 paginationEnabled: node.paginationEnabled,
                 defaultPageSize: node.defaultPageSize,
@@ -878,7 +865,7 @@ module.exports = function(RED) {
                     description: getDefaultStatusDescription(node.successStatusCode),
                     content: {
                         [node.responseContentType]: {
-                            schema: { type: 'object' }
+                            schema: { type: "object" }
                         }
                     }
                 };
@@ -912,7 +899,7 @@ module.exports = function(RED) {
 
                 if (baseLogger) {
                     // Generate or use existing request ID
-                    requestId = msg.req?.headers?.['x-request-id'] ||
+                    requestId = msg.req?.headers?.["x-request-id"] ||
                                 msg.req?.id ||
                                 generateRequestId();
 
@@ -929,8 +916,8 @@ module.exports = function(RED) {
                     });
 
                     // Add request ID to response headers
-                    if (msg.res && typeof msg.res.set === 'function') {
-                        msg.res.set('x-request-id', requestId);
+                    if (msg.res && typeof msg.res.set === "function") {
+                        msg.res.set("x-request-id", requestId);
                     }
 
                     // Store logger and request info on message for downstream use
@@ -939,11 +926,11 @@ module.exports = function(RED) {
                     msg._requestTimer = requestTimer;
 
                     requestLogger.debug({
-                        event: 'endpoint_request_start',
-                        body: msg.req?.body ? '[present]' : '[absent]',
+                        event: "endpoint_request_start",
+                        body: msg.req?.body ? "[present]" : "[absent]",
                         query: msg.req?.query,
                         params: msg.req?.params
-                    }, 'Processing endpoint request');
+                    }, "Processing endpoint request");
                 }
 
                 // Add endpoint metadata to message
@@ -1015,7 +1002,7 @@ module.exports = function(RED) {
                 }
 
                 // Add CRUD context if operation is configured
-                if (node.crudOperation !== 'none') {
+                if (node.crudOperation !== "none") {
                     msg.crud = {
                         operation: node.crudOperation,
                         tableName: node.tableName,
@@ -1072,16 +1059,16 @@ module.exports = function(RED) {
 
                     if (requestLogger) {
                         requestLogger.debug({
-                            event: 'rate_limit_check',
+                            event: "rate_limit_check",
                             allowed: rateLimitResult.allowed,
                             limit: rateLimitResult.limit,
                             remaining: rateLimitResult.remaining,
                             key: rateLimitResult.key
-                        }, rateLimitResult.allowed ? 'Rate limit check passed' : 'Rate limit exceeded');
+                        }, rateLimitResult.allowed ? "Rate limit check passed" : "Rate limit exceeded");
                     }
 
                     // Add rate limit headers to response
-                    if (msg.res && typeof msg.res.set === 'function') {
+                    if (msg.res && typeof msg.res.set === "function") {
                         const headers = generateRateLimitHeaders(rateLimitResult);
                         for (const [name, value] of Object.entries(headers)) {
                             msg.res.set(name, value);
@@ -1102,7 +1089,7 @@ module.exports = function(RED) {
                         const rateLimitError = createRateLimitError(rateLimitResult, rateLimitResult.key);
                         msg.rateLimitError = rateLimitError;
 
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(429).json(rateLimitError);
                             if (done) {
                                 done();
@@ -1120,20 +1107,20 @@ module.exports = function(RED) {
                 }
 
                 // Perform cache check if enabled (only for cacheable methods)
-                if (node.cachingEnabled && msg.req && (msg.req.method === 'GET' || msg.req.method === 'HEAD')) {
+                if (node.cachingEnabled && msg.req && (msg.req.method === "GET" || msg.req.method === "HEAD")) {
                     const cacheResult = node.checkCache(msg.req);
 
                     if (requestLogger) {
                         requestLogger.debug({
-                            event: 'cache_check',
+                            event: "cache_check",
                             hit: cacheResult.hit,
                             key: cacheResult.key,
                             age: cacheResult.age
-                        }, cacheResult.hit ? 'Cache hit' : 'Cache miss');
+                        }, cacheResult.hit ? "Cache hit" : "Cache miss");
                     }
 
                     // Add cache headers to response
-                    if (msg.res && typeof msg.res.set === 'function') {
+                    if (msg.res && typeof msg.res.set === "function") {
                         const cacheHeaders = node.getCacheHeaders();
                         for (const [name, value] of Object.entries(cacheHeaders)) {
                             msg.res.set(name, value);
@@ -1151,8 +1138,8 @@ module.exports = function(RED) {
                         // Check for conditional request (If-None-Match)
                         if (cacheResult.etag && node.checkConditionalRequest(msg.req, cacheResult.etag)) {
                             // Return 304 Not Modified
-                            if (msg.res && typeof msg.res.status === 'function') {
-                                msg.res.set('ETag', cacheResult.etag);
+                            if (msg.res && typeof msg.res.status === "function") {
+                                msg.res.set("ETag", cacheResult.etag);
                                 msg.res.status(304).end();
                                 if (done) {
                                     done();
@@ -1162,12 +1149,12 @@ module.exports = function(RED) {
                         }
 
                         // Return cached response
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             if (cacheResult.etag) {
-                                msg.res.set('ETag', cacheResult.etag);
+                                msg.res.set("ETag", cacheResult.etag);
                             }
-                            msg.res.set('X-Cache', 'HIT');
-                            msg.res.set('Age', String(Math.floor((cacheResult.age || 0) / 1000)));
+                            msg.res.set("X-Cache", "HIT");
+                            msg.res.set("Age", String(Math.floor((cacheResult.age || 0) / 1000)));
                             msg.res.status(cacheResult.statusCode || 200).json(cacheResult.data);
                             if (done) {
                                 done();
@@ -1183,8 +1170,8 @@ module.exports = function(RED) {
                         };
                     } else {
                         // Cache miss - add header for downstream
-                        if (msg.res && typeof msg.res.set === 'function') {
-                            msg.res.set('X-Cache', 'MISS');
+                        if (msg.res && typeof msg.res.set === "function") {
+                            msg.res.set("X-Cache", "MISS");
                         }
                     }
                 }
@@ -1209,8 +1196,8 @@ module.exports = function(RED) {
                     if (!isAuthenticated) {
                         const authError = {
                             statusCode: 401,
-                            error: 'Unauthorized',
-                            message: 'Authentication required',
+                            error: "Unauthorized",
+                            message: "Authentication required",
                             details: {
                                 requiredScopes: node.requiredScopes,
                                 scopeOperator: node.scopeOperator
@@ -1218,7 +1205,7 @@ module.exports = function(RED) {
                         };
                         msg.authorizationError = authError;
 
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(401).json(authError);
                             if (done) {
                                 done();
@@ -1238,22 +1225,22 @@ module.exports = function(RED) {
 
                     if (requestLogger) {
                         requestLogger.info({
-                            event: 'authorization_check',
+                            event: "authorization_check",
                             authorized: authResult.authorized,
                             requiredScopes: node.requiredScopes,
                             providedScopes: tokenScopes,
                             scopeOperator: node.scopeOperator,
                             missingScopes: authResult.missingScopes
-                        }, authResult.authorized ? 'Authorization successful' : 'Authorization failed');
+                        }, authResult.authorized ? "Authorization successful" : "Authorization failed");
                     }
 
                     if (!authResult.authorized) {
                         const authError = {
                             statusCode: 403,
-                            error: 'Forbidden',
-                            message: node.scopeOperator === 'AND'
-                                ? 'Missing required scopes'
-                                : 'None of the required scopes present',
+                            error: "Forbidden",
+                            message: node.scopeOperator === "AND"
+                                ? "Missing required scopes"
+                                : "None of the required scopes present",
                             details: {
                                 requiredScopes: node.requiredScopes,
                                 scopeOperator: node.scopeOperator,
@@ -1263,7 +1250,7 @@ module.exports = function(RED) {
                         };
                         msg.authorizationError = authError;
 
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(403).json(authError);
                             if (done) {
                                 done();
@@ -1295,8 +1282,8 @@ module.exports = function(RED) {
                         // Add transformation error to message
                         const transformError = {
                             statusCode: 400,
-                            error: 'Bad Request',
-                            message: 'Request transformation failed',
+                            error: "Bad Request",
+                            message: "Request transformation failed",
                             details: {
                                 error: transformResult.error
                             }
@@ -1304,7 +1291,7 @@ module.exports = function(RED) {
                         msg.transformationError = transformError;
 
                         // Send error response if res object is available
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(400).json(transformError);
                             if (done) {
                                 done();
@@ -1333,11 +1320,11 @@ module.exports = function(RED) {
 
                     if (requestLogger) {
                         requestLogger.debug({
-                            event: 'request_validation',
+                            event: "request_validation",
                             valid: validationResult.valid,
                             errorCount: validationResult.errors?.length || 0,
                             errors: validationResult.valid ? undefined : validationResult.errors
-                        }, validationResult.valid ? 'Request validation passed' : 'Request validation failed');
+                        }, validationResult.valid ? "Request validation passed" : "Request validation failed");
                     }
 
                     if (!validationResult.valid) {
@@ -1345,7 +1332,7 @@ module.exports = function(RED) {
                         msg.validationError = validationResult.toHttpError();
 
                         // Send error response if res object is available
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             const errorResponse = msg.validationError;
                             msg.res.status(errorResponse.statusCode).json(errorResponse);
                             if (done) {
@@ -1361,7 +1348,7 @@ module.exports = function(RED) {
                 }
 
                 // Auto-execute SQL if configured (autoGenerateSql=true, useFlowOutput=false)
-                if (node.autoGenerateSql && !node.useFlowOutput && node.crudOperation !== 'none' && msg.crud?.sql) {
+                if (node.autoGenerateSql && !node.useFlowOutput && node.crudOperation !== "none" && msg.crud?.sql) {
                     const configNode = node.serverNode?.configNode;
 
                     if (configNode && configNode.isSqlServerReady && configNode.isSqlServerReady()) {
@@ -1377,7 +1364,7 @@ module.exports = function(RED) {
 
                             if (requestLogger) {
                                 requestLogger.debug({
-                                    event: 'crud_sql_execute',
+                                    event: "crud_sql_execute",
                                     operation: node.crudOperation,
                                     table: node.tableName,
                                     sql: msg.crud.sql.sql,
@@ -1397,69 +1384,69 @@ module.exports = function(RED) {
                             let statusCode = parseInt(node.successStatusCode, 10) || 200;
 
                             switch (node.crudOperation) {
-                                case 'list':
+                            case "list":
+                                responseData = {
+                                    data: result.data,
+                                    total: result.data.length,
+                                    limit: context.query.limit ? parseInt(context.query.limit, 10) : 10,
+                                    offset: context.query.offset ? parseInt(context.query.offset, 10) : 0
+                                };
+                                break;
+
+                            case "get":
+                                if (result.data.length === 0) {
+                                    statusCode = 404;
                                     responseData = {
-                                        data: result.data,
-                                        total: result.data.length,
-                                        limit: context.query.limit ? parseInt(context.query.limit, 10) : 10,
-                                        offset: context.query.offset ? parseInt(context.query.offset, 10) : 0
+                                        type: "https://api.example.com/errors/not-found",
+                                        title: "Not Found",
+                                        status: 404,
+                                        detail: `${node.tableName} not found`
                                     };
-                                    break;
+                                } else {
+                                    responseData = result.data[0];
+                                }
+                                break;
 
-                                case 'get':
-                                    if (result.data.length === 0) {
-                                        statusCode = 404;
-                                        responseData = {
-                                            type: 'https://api.example.com/errors/not-found',
-                                            title: 'Not Found',
-                                            status: 404,
-                                            detail: `${node.tableName} not found`
-                                        };
-                                    } else {
-                                        responseData = result.data[0];
-                                    }
-                                    break;
+                            case "create":
+                                statusCode = 201;
+                                responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
+                                break;
 
-                                case 'create':
-                                    statusCode = 201;
+                            case "update":
+                                if (result.rowsAffected === 0) {
+                                    statusCode = 404;
+                                    responseData = {
+                                        type: "https://api.example.com/errors/not-found",
+                                        title: "Not Found",
+                                        status: 404,
+                                        detail: `${node.tableName} not found`
+                                    };
+                                } else {
                                     responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
-                                    break;
+                                }
+                                break;
 
-                                case 'update':
-                                    if (result.rowsAffected === 0) {
-                                        statusCode = 404;
-                                        responseData = {
-                                            type: 'https://api.example.com/errors/not-found',
-                                            title: 'Not Found',
-                                            status: 404,
-                                            detail: `${node.tableName} not found`
-                                        };
-                                    } else {
-                                        responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
-                                    }
-                                    break;
+                            case "delete":
+                                if (result.rowsAffected === 0) {
+                                    statusCode = 404;
+                                    responseData = {
+                                        type: "https://api.example.com/errors/not-found",
+                                        title: "Not Found",
+                                        status: 404,
+                                        detail: `${node.tableName} not found`
+                                    };
+                                } else {
+                                    statusCode = 204;
+                                    responseData = null;
+                                }
+                                break;
 
-                                case 'delete':
-                                    if (result.rowsAffected === 0) {
-                                        statusCode = 404;
-                                        responseData = {
-                                            type: 'https://api.example.com/errors/not-found',
-                                            title: 'Not Found',
-                                            status: 404,
-                                            detail: `${node.tableName} not found`
-                                        };
-                                    } else {
-                                        statusCode = 204;
-                                        responseData = null;
-                                    }
-                                    break;
-
-                                default:
-                                    responseData = result.data;
+                            default:
+                                responseData = result.data;
                             }
 
                             // Send response directly
-                            if (msg.res && typeof msg.res.status === 'function') {
+                            if (msg.res && typeof msg.res.status === "function") {
                                 if (statusCode === 204) {
                                     msg.res.status(204).end();
                                 } else {
@@ -1469,7 +1456,7 @@ module.exports = function(RED) {
                                 if (requestLogger && requestTimer) {
                                     const duration = requestTimer.elapsed();
                                     requestLogger.info({
-                                        event: 'crud_sql_complete',
+                                        event: "crud_sql_complete",
                                         operation: node.crudOperation,
                                         duration: duration,
                                         durationMs: `${duration}ms`,
@@ -1486,7 +1473,7 @@ module.exports = function(RED) {
                         } catch (sqlErr) {
                             if (requestLogger) {
                                 requestLogger.error({
-                                    event: 'crud_sql_error',
+                                    event: "crud_sql_error",
                                     operation: node.crudOperation,
                                     error: sqlErr.message,
                                     stack: sqlErr.stack
@@ -1494,10 +1481,10 @@ module.exports = function(RED) {
                             }
 
                             // Send error response
-                            if (msg.res && typeof msg.res.status === 'function') {
+                            if (msg.res && typeof msg.res.status === "function") {
                                 msg.res.status(500).json({
-                                    type: 'https://api.example.com/errors/database-error',
-                                    title: 'Database Error',
+                                    type: "https://api.example.com/errors/database-error",
+                                    title: "Database Error",
                                     status: 500,
                                     detail: sqlErr.message
                                 });
@@ -1510,12 +1497,12 @@ module.exports = function(RED) {
                         }
                     } else if (!node.useFlowOutput) {
                         // Database not ready but useFlowOutput is false - return error
-                        if (msg.res && typeof msg.res.status === 'function') {
+                        if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(503).json({
-                                type: 'https://api.example.com/errors/service-unavailable',
-                                title: 'Service Unavailable',
+                                type: "https://api.example.com/errors/service-unavailable",
+                                title: "Service Unavailable",
                                 status: 503,
-                                detail: 'Database connection not available'
+                                detail: "Database connection not available"
                             });
 
                             if (done) {
@@ -1530,7 +1517,7 @@ module.exports = function(RED) {
                 if (requestLogger && requestTimer) {
                     const duration = requestTimer.elapsed();
                     requestLogger.info({
-                        event: 'endpoint_request_complete',
+                        event: "endpoint_request_complete",
                         duration: duration,
                         durationMs: `${duration}ms`,
                         statusCode: msg.validationError ? 400 : (msg.endpoint?.successStatusCode || 200)
@@ -1545,7 +1532,7 @@ module.exports = function(RED) {
                 // Log error
                 if (msg._logger) {
                     msg._logger.error({
-                        event: 'endpoint_request_error',
+                        event: "endpoint_request_error",
                         error: err.message,
                         stack: err.stack,
                         code: err.code,
@@ -1563,7 +1550,7 @@ module.exports = function(RED) {
 
         node.on("close", function(removed, done) {
             // Unregister from server if connected
-            if (node.serverNode && typeof node.serverNode.unregisterEndpoint === 'function') {
+            if (node.serverNode && typeof node.serverNode.unregisterEndpoint === "function") {
                 node.serverNode.unregisterEndpoint(node);
             }
 

@@ -20,8 +20,8 @@
   "scripts": {
     "test": "mocha \"tests/unit/**/*_spec.js\" --exit",
     "test:watch": "mocha \"tests/unit/**/*_spec.js\" --watch",
-    "lint": "eslint nodes/ tests/",
-    "lint:fix": "eslint nodes/ tests/ --fix",
+    "lint": "eslint nodes/ lib/ tests/",
+    "lint:fix": "eslint nodes/ lib/ tests/ --fix",
     "dev:nodered": "node tests/launcher/launch.js",
     "docker:e2e:up": "docker compose -f tests/e2e/docker-compose.yml up -d",
     "docker:e2e:down": "docker compose -f tests/e2e/docker-compose.yml down -v",

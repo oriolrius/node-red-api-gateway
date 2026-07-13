@@ -1,7 +1,6 @@
 const helper = require("node-red-node-test-helper");
 const apiServerNode = require("../../nodes/api-server.js");
 const apiConfigNode = require("../../nodes/api-config.js");
-const apiEndpointNode = require("../../nodes/api-endpoint.js");
 
 helper.init(require.resolve("node-red"));
 

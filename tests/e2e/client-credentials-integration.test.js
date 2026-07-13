@@ -56,42 +56,42 @@
  * - 1: Tests failed or services unavailable
  */
 
-const http = require('http');
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+const http = require("http");
+const https = require("https");
+const fs = require("fs");
+const path = require("path");
+const { execSync } = require("child_process");
 
 // Configuration
 const CONFIG = {
-    apiBaseUrl: 'http://localhost:3200',
-    keycloakUrl: 'http://localhost:8080',
-    keycloakRealm: 'my-realm',
+    apiBaseUrl: "http://localhost:3200",
+    keycloakUrl: "http://localhost:8080",
+    keycloakRealm: "my-realm",
     requestTimeout: 10000,
     // Service account clients
     clients: {
         // Standard service account with user-level access
         userService: {
-            clientId: 'my-api-client',
-            clientSecret: 'my-client-secret',
-            expectedRoles: ['user'],
-            expectedClientRoles: ['api:read', 'api:write']
+            clientId: "my-api-client",
+            clientSecret: "my-client-secret",
+            expectedRoles: ["user"],
+            expectedClientRoles: ["api:read", "api:write"]
         },
         // Admin service account with full access
         adminService: {
-            clientId: 'my-admin-service',
-            clientSecret: 'admin-service-secret',
-            expectedRoles: ['admin'],
-            expectedClientRoles: ['api:read', 'api:write', 'api:delete', 'api:admin']
+            clientId: "my-admin-service",
+            clientSecret: "admin-service-secret",
+            expectedRoles: ["admin"],
+            expectedClientRoles: ["api:read", "api:write", "api:delete", "api:admin"]
         }
     },
     // Docker configuration
-    dockerComposeFile: path.join(__dirname, 'docker-compose.yml'),
-    dockerComposeProfile: 'nodered',
+    dockerComposeFile: path.join(__dirname, "docker-compose.yml"),
+    dockerComposeProfile: "nodered",
     startupTimeout: 120000,  // 2 minutes max for services to start
     startupPollInterval: 3000,  // Check every 3 seconds
-    skipDockerSetup: process.env.SKIP_DOCKER_SETUP === '1',
-    skipDockerTeardown: process.env.SKIP_DOCKER_TEARDOWN === '1'
+    skipDockerSetup: process.env.SKIP_DOCKER_SETUP === "1",
+    skipDockerTeardown: process.env.SKIP_DOCKER_TEARDOWN === "1"
 };
 
 // Track if we started Docker (so we know whether to tear down)
@@ -111,22 +111,22 @@ const results = {
 function httpRequest(options, postData = null) {
     return new Promise((resolve, reject) => {
         const urlObj = new URL(options.url);
-        const isHttps = urlObj.protocol === 'https:';
+        const isHttps = urlObj.protocol === "https:";
         const client = isHttps ? https : http;
 
         const reqOptions = {
             hostname: urlObj.hostname,
             port: urlObj.port || (isHttps ? 443 : 80),
             path: urlObj.pathname + urlObj.search,
-            method: options.method || 'GET',
+            method: options.method || "GET",
             headers: options.headers || {},
             timeout: options.timeout || CONFIG.requestTimeout
         };
 
         const req = client.request(reqOptions, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
+            let data = "";
+            res.on("data", chunk => data += chunk);
+            res.on("end", () => {
                 try {
                     const json = data ? JSON.parse(data) : null;
                     resolve({ status: res.statusCode, headers: res.headers, data: json, raw: data });
@@ -136,14 +136,14 @@ function httpRequest(options, postData = null) {
             });
         });
 
-        req.on('error', reject);
-        req.on('timeout', () => {
+        req.on("error", reject);
+        req.on("timeout", () => {
             req.destroy();
-            reject(new Error('Request timeout'));
+            reject(new Error("Request timeout"));
         });
 
         if (postData) {
-            req.write(typeof postData === 'string' ? postData : JSON.stringify(postData));
+            req.write(typeof postData === "string" ? postData : JSON.stringify(postData));
         }
 
         req.end();
@@ -162,14 +162,14 @@ async function getClientCredentialsToken(clientId, clientSecret) {
     const body = new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
-        grant_type: 'client_credentials'
+        grant_type: "client_credentials"
     }).toString();
 
     const response = await httpRequest({
         url: tokenUrl,
-        method: 'POST',
+        method: "POST",
         headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+            "Content-Type": "application/x-www-form-urlencoded"
         }
     }, body);
 
@@ -188,11 +188,11 @@ async function getClientCredentialsToken(clientId, clientSecret) {
  * @returns {object} Decoded payload
  */
 function decodeJwt(token) {
-    const parts = token.split('.');
+    const parts = token.split(".");
     if (parts.length !== 3) {
-        throw new Error('Invalid JWT format');
+        throw new Error("Invalid JWT format");
     }
-    const payload = Buffer.from(parts[1], 'base64url').toString('utf8');
+    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
     return JSON.parse(payload);
 }
 
@@ -203,16 +203,16 @@ async function apiRequest(path, options = {}) {
     const headers = options.headers || {};
 
     if (options.token) {
-        headers['Authorization'] = `Bearer ${options.token}`;
+        headers["Authorization"] = `Bearer ${options.token}`;
     }
 
-    if (options.body && !headers['Content-Type']) {
-        headers['Content-Type'] = 'application/json';
+    if (options.body && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
     }
 
     return httpRequest({
         url: `${CONFIG.apiBaseUrl}${path}`,
-        method: options.method || 'GET',
+        method: options.method || "GET",
         headers
     }, options.body);
 }
@@ -220,7 +220,7 @@ async function apiRequest(path, options = {}) {
 /**
  * Record test result
  */
-function recordTest(name, passed, details = '', skipped = false) {
+function recordTest(name, passed, details = "", skipped = false) {
     results.tests.push({ name, passed, details, skipped });
     if (skipped) {
         results.skipped++;
@@ -260,8 +260,8 @@ async function isServiceAvailable(url, timeout = 3000) {
  * Copy flows.json to .nodered directory for Docker mount
  */
 function copyFlowsToNodeRed() {
-    const sourcePath = path.join(__dirname, 'flows.json');
-    const targetPath = path.join(__dirname, '.nodered', 'flows.json');
+    const sourcePath = path.join(__dirname, "flows.json");
+    const targetPath = path.join(__dirname, ".nodered", "flows.json");
 
     try {
         if (!fs.existsSync(sourcePath)) {
@@ -270,7 +270,7 @@ function copyFlowsToNodeRed() {
         }
 
         fs.copyFileSync(sourcePath, targetPath);
-        console.log('  [OK] Copied flows.json to .nodered/');
+        console.log("  [OK] Copied flows.json to .nodered/");
         return true;
     } catch (error) {
         console.error(`  [FAIL] Failed to copy flows.json: ${error.message}`);
@@ -282,7 +282,7 @@ function copyFlowsToNodeRed() {
  * Start Docker stack
  */
 function startDockerStack() {
-    console.log('  Starting Docker stack...');
+    console.log("  Starting Docker stack...");
 
     // Copy flows to Node-RED data directory before starting
     if (!copyFlowsToNodeRed()) {
@@ -292,9 +292,9 @@ function startDockerStack() {
     try {
         execSync(
             `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} up -d`,
-            { stdio: 'inherit', cwd: __dirname }
+            { stdio: "inherit", cwd: __dirname }
         );
-        console.log('  [OK] Docker stack started');
+        console.log("  [OK] Docker stack started");
         return true;
     } catch (error) {
         console.error(`  [FAIL] Failed to start Docker stack: ${error.message}`);
@@ -306,14 +306,14 @@ function startDockerStack() {
  * Stop Docker stack
  */
 function stopDockerStack() {
-    console.log('\nStopping Docker stack...');
+    console.log("\nStopping Docker stack...");
 
     try {
         execSync(
             `docker compose -f "${CONFIG.dockerComposeFile}" --profile ${CONFIG.dockerComposeProfile} down -v`,
-            { stdio: 'inherit', cwd: __dirname }
+            { stdio: "inherit", cwd: __dirname }
         );
-        console.log('  [OK] Docker stack stopped');
+        console.log("  [OK] Docker stack stopped");
         return true;
     } catch (error) {
         console.error(`  [WARN] Failed to stop Docker stack: ${error.message}`);
@@ -325,7 +325,7 @@ function stopDockerStack() {
  * Wait for all services to be ready
  */
 async function waitForServices() {
-    console.log('  Waiting for services to be ready...');
+    console.log("  Waiting for services to be ready...");
 
     const startTime = Date.now();
     let keycloakReady = false;
@@ -341,7 +341,7 @@ async function waitForServices() {
                 });
                 if (response.status === 200) {
                     keycloakReady = true;
-                    console.log('  [OK] Keycloak is ready');
+                    console.log("  [OK] Keycloak is ready");
                 }
             } catch {
                 // Not ready yet
@@ -357,7 +357,7 @@ async function waitForServices() {
                 });
                 if (response.status === 200) {
                     apiServerReady = true;
-                    console.log('  [OK] API Server is ready');
+                    console.log("  [OK] API Server is ready");
                 }
             } catch {
                 // Not ready yet
@@ -371,16 +371,16 @@ async function waitForServices() {
         }
 
         // Progress indicator
-        process.stdout.write('.');
+        process.stdout.write(".");
 
         // Wait before next poll
         await new Promise(resolve => setTimeout(resolve, CONFIG.startupPollInterval));
     }
 
-    console.log('');
+    console.log("");
     console.error(`  [FAIL] Services did not become ready within ${CONFIG.startupTimeout / 1000}s`);
-    console.error(`    Keycloak: ${keycloakReady ? 'ready' : 'not ready'}`);
-    console.error(`    API Server: ${apiServerReady ? 'ready' : 'not ready'}`);
+    console.error(`    Keycloak: ${keycloakReady ? "ready" : "not ready"}`);
+    console.error(`    API Server: ${apiServerReady ? "ready" : "not ready"}`);
     return false;
 }
 
@@ -395,16 +395,16 @@ async function ensureInfrastructure() {
     const apiAvailable = await isServiceAvailable(`${CONFIG.apiBaseUrl}/api/v1/public/health`);
 
     if (keycloakAvailable && apiAvailable) {
-        console.log('  [OK] Services are already running\n');
+        console.log("  [OK] Services are already running\n");
         return true;
     }
 
     if (CONFIG.skipDockerSetup) {
-        console.error('  [FAIL] Services not running and SKIP_DOCKER_SETUP=1\n');
+        console.error("  [FAIL] Services not running and SKIP_DOCKER_SETUP=1\n");
         return false;
     }
 
-    console.log('  Services not running, starting Docker stack...\n');
+    console.log("  Services not running, starting Docker stack...\n");
 
     if (!startDockerStack()) {
         return false;
@@ -422,8 +422,8 @@ function cleanup() {
     if (dockerStartedByUs && !CONFIG.skipDockerTeardown) {
         stopDockerStack();
     } else if (dockerStartedByUs && CONFIG.skipDockerTeardown) {
-        console.log('\nDocker teardown skipped (SKIP_DOCKER_TEARDOWN=1)');
-        console.log('To stop the stack manually: npm run docker:e2e:down\n');
+        console.log("\nDocker teardown skipped (SKIP_DOCKER_TEARDOWN=1)");
+        console.log("To stop the stack manually: npm run docker:e2e:down\n");
     }
 }
 
@@ -432,19 +432,19 @@ function cleanup() {
 // ============================================================================
 
 async function checkServicesReady() {
-    console.log('Checking services availability...\n');
+    console.log("Checking services availability...\n");
 
     const ready = await ensureInfrastructure();
 
     if (!ready) {
-        console.error('\n  Make sure Docker is installed and running.');
-        console.error('  You can also start the stack manually:');
-        console.error('    npm run docker:e2e:up');
-        console.error('    # or: cd tests/e2e && docker compose --profile nodered up -d\n');
+        console.error("\n  Make sure Docker is installed and running.");
+        console.error("  You can also start the stack manually:");
+        console.error("    npm run docker:e2e:up");
+        console.error("    # or: cd tests/e2e && docker compose --profile nodered up -d\n");
         process.exit(1);
     }
 
-    console.log('All services are ready.\n');
+    console.log("All services are ready.\n");
 }
 
 // ============================================================================
@@ -452,32 +452,32 @@ async function checkServicesReady() {
 // ============================================================================
 
 async function testClientCredentialsTokenAcquisition() {
-    console.log('TEST: Client credentials token acquisition');
+    console.log("TEST: Client credentials token acquisition");
 
     try {
         const client = CONFIG.clients.userService;
         const tokenData = await getClientCredentialsToken(client.clientId, client.clientSecret);
 
-        assert(tokenData.access_token, 'Expected access_token in response');
-        assert(tokenData.token_type === 'Bearer', `Expected token_type "Bearer", got "${tokenData.token_type}"`);
-        assert(typeof tokenData.expires_in === 'number', 'Expected expires_in to be a number');
-        assert(tokenData.expires_in > 0, 'Expected expires_in to be positive');
+        assert(tokenData.access_token, "Expected access_token in response");
+        assert(tokenData.token_type === "Bearer", `Expected token_type "Bearer", got "${tokenData.token_type}"`);
+        assert(typeof tokenData.expires_in === "number", "Expected expires_in to be a number");
+        assert(tokenData.expires_in > 0, "Expected expires_in to be positive");
 
-        console.log('  [PASS] Token acquired successfully');
+        console.log("  [PASS] Token acquired successfully");
         console.log(`         Token type: ${tokenData.token_type}`);
         console.log(`         Expires in: ${tokenData.expires_in}s\n`);
 
-        recordTest('Client credentials token acquisition', true);
+        recordTest("Client credentials token acquisition", true);
         return tokenData.access_token;
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Client credentials token acquisition', false, error.message);
+        recordTest("Client credentials token acquisition", false, error.message);
         return null;
     }
 }
 
 async function testTokenContainsServiceAccountClaims() {
-    console.log('TEST: Token contains service account claims');
+    console.log("TEST: Token contains service account claims");
 
     try {
         const client = CONFIG.clients.userService;
@@ -485,30 +485,30 @@ async function testTokenContainsServiceAccountClaims() {
         const decoded = decodeJwt(tokenData.access_token);
 
         // Service account tokens should have specific claims
-        assert(decoded.sub, 'Expected sub claim');
-        assert(decoded.iss, 'Expected iss (issuer) claim');
-        assert(decoded.exp, 'Expected exp (expiration) claim');
-        assert(decoded.iat, 'Expected iat (issued at) claim');
+        assert(decoded.sub, "Expected sub claim");
+        assert(decoded.iss, "Expected iss (issuer) claim");
+        assert(decoded.exp, "Expected exp (expiration) claim");
+        assert(decoded.iat, "Expected iat (issued at) claim");
         assert(decoded.azp === client.clientId, `Expected azp to be "${client.clientId}", got "${decoded.azp}"`);
 
         // For client credentials flow, Keycloak uses 'azp' (authorized party) to identify the client
         // The 'azp' claim is already checked above, so this is just a documentation note
         // Some OAuth2 providers use 'client_id' claim, but Keycloak uses 'azp'
 
-        console.log('  [PASS] Token contains expected service account claims');
+        console.log("  [PASS] Token contains expected service account claims");
         console.log(`         Subject: ${decoded.sub}`);
         console.log(`         Issuer: ${decoded.iss}`);
         console.log(`         Client ID: ${decoded.azp}\n`);
 
-        recordTest('Token contains service account claims', true);
+        recordTest("Token contains service account claims", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Token contains service account claims', false, error.message);
+        recordTest("Token contains service account claims", false, error.message);
     }
 }
 
 async function testTokenContainsRoles() {
-    console.log('TEST: Token contains assigned roles');
+    console.log("TEST: Token contains assigned roles");
 
     try {
         const client = CONFIG.clients.userService;
@@ -517,18 +517,18 @@ async function testTokenContainsRoles() {
 
         // Check realm roles
         const realmRoles = decoded.realm_access?.roles || decoded.roles || [];
-        const hasUserRole = realmRoles.includes('user') ||
+        const hasUserRole = realmRoles.includes("user") ||
             client.expectedRoles.some(r => realmRoles.includes(r));
 
         assert(hasUserRole, `Expected user role in token. Found roles: ${JSON.stringify(realmRoles)}`);
 
-        console.log('  [PASS] Token contains expected roles');
+        console.log("  [PASS] Token contains expected roles");
         console.log(`         Realm roles: ${JSON.stringify(realmRoles)}\n`);
 
-        recordTest('Token contains assigned roles', true);
+        recordTest("Token contains assigned roles", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Token contains assigned roles', false, error.message);
+        recordTest("Token contains assigned roles", false, error.message);
     }
 }
 
@@ -537,60 +537,60 @@ async function testTokenContainsRoles() {
 // ============================================================================
 
 async function testInvalidClientIdRejected() {
-    console.log('TEST: Invalid client ID is rejected');
+    console.log("TEST: Invalid client ID is rejected");
 
     try {
-        await getClientCredentialsToken('invalid-client-id', 'some-secret');
-        console.log('  [FAIL] Expected token request to fail\n');
-        recordTest('Invalid client ID is rejected', false, 'Token request should have failed');
+        await getClientCredentialsToken("invalid-client-id", "some-secret");
+        console.log("  [FAIL] Expected token request to fail\n");
+        recordTest("Invalid client ID is rejected", false, "Token request should have failed");
     } catch (error) {
         if (error.response && error.response.status === 401) {
-            console.log('  [PASS] Invalid client ID correctly rejected with 401\n');
-            recordTest('Invalid client ID is rejected', true);
+            console.log("  [PASS] Invalid client ID correctly rejected with 401\n");
+            recordTest("Invalid client ID is rejected", true);
         } else if (error.response && error.response.status === 400) {
             // Keycloak may return 400 for invalid client
-            console.log('  [PASS] Invalid client ID correctly rejected with 400\n');
-            recordTest('Invalid client ID is rejected', true);
+            console.log("  [PASS] Invalid client ID correctly rejected with 400\n");
+            recordTest("Invalid client ID is rejected", true);
         } else {
             console.log(`  [FAIL] Unexpected error: ${error.message}\n`);
-            recordTest('Invalid client ID is rejected', false, error.message);
+            recordTest("Invalid client ID is rejected", false, error.message);
         }
     }
 }
 
 async function testInvalidClientSecretRejected() {
-    console.log('TEST: Invalid client secret is rejected');
+    console.log("TEST: Invalid client secret is rejected");
 
     try {
         const client = CONFIG.clients.userService;
-        await getClientCredentialsToken(client.clientId, 'wrong-secret');
-        console.log('  [FAIL] Expected token request to fail\n');
-        recordTest('Invalid client secret is rejected', false, 'Token request should have failed');
+        await getClientCredentialsToken(client.clientId, "wrong-secret");
+        console.log("  [FAIL] Expected token request to fail\n");
+        recordTest("Invalid client secret is rejected", false, "Token request should have failed");
     } catch (error) {
         if (error.response && error.response.status === 401) {
-            console.log('  [PASS] Invalid client secret correctly rejected with 401\n');
-            recordTest('Invalid client secret is rejected', true);
+            console.log("  [PASS] Invalid client secret correctly rejected with 401\n");
+            recordTest("Invalid client secret is rejected", true);
         } else {
             console.log(`  [FAIL] Unexpected error: ${error.message}\n`);
-            recordTest('Invalid client secret is rejected', false, error.message);
+            recordTest("Invalid client secret is rejected", false, error.message);
         }
     }
 }
 
 async function testEmptyCredentialsRejected() {
-    console.log('TEST: Empty credentials are rejected');
+    console.log("TEST: Empty credentials are rejected");
 
     try {
-        await getClientCredentialsToken('', '');
-        console.log('  [FAIL] Expected token request to fail\n');
-        recordTest('Empty credentials are rejected', false, 'Token request should have failed');
+        await getClientCredentialsToken("", "");
+        console.log("  [FAIL] Expected token request to fail\n");
+        recordTest("Empty credentials are rejected", false, "Token request should have failed");
     } catch (error) {
         if (error.response && (error.response.status === 400 || error.response.status === 401)) {
             console.log(`  [PASS] Empty credentials correctly rejected with ${error.response.status}\n`);
-            recordTest('Empty credentials are rejected', true);
+            recordTest("Empty credentials are rejected", true);
         } else {
             console.log(`  [FAIL] Unexpected error: ${error.message}\n`);
-            recordTest('Empty credentials are rejected', false, error.message);
+            recordTest("Empty credentials are rejected", false, error.message);
         }
     }
 }
@@ -600,83 +600,83 @@ async function testEmptyCredentialsRejected() {
 // ============================================================================
 
 async function testServiceAccountAccessUserEndpoint() {
-    console.log('TEST: Service account can access user-level endpoint');
+    console.log("TEST: Service account can access user-level endpoint");
 
     try {
         const client = CONFIG.clients.userService;
         const tokenData = await getClientCredentialsToken(client.clientId, client.clientSecret);
-        const response = await apiRequest('/api/v1/user/profile', { token: tokenData.access_token });
+        const response = await apiRequest("/api/v1/user/profile", { token: tokenData.access_token });
 
         assert(response.status === 200, `Expected status 200, got ${response.status}`);
 
-        console.log('  [PASS] Service account can access user endpoint\n');
-        recordTest('Service account can access user-level endpoint', true);
+        console.log("  [PASS] Service account can access user endpoint\n");
+        recordTest("Service account can access user-level endpoint", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Service account can access user-level endpoint', false, error.message);
+        recordTest("Service account can access user-level endpoint", false, error.message);
     }
 }
 
 async function testUserServiceCannotAccessAdminEndpoint() {
-    console.log('TEST: User-level service account cannot access admin endpoint');
+    console.log("TEST: User-level service account cannot access admin endpoint");
 
     try {
         const client = CONFIG.clients.userService;
         const tokenData = await getClientCredentialsToken(client.clientId, client.clientSecret);
-        const response = await apiRequest('/api/v1/admin/users', { token: tokenData.access_token });
+        const response = await apiRequest("/api/v1/admin/users", { token: tokenData.access_token });
 
         assert(response.status === 403, `Expected status 403, got ${response.status}`);
 
-        console.log('  [PASS] User-level service correctly denied access to admin endpoint\n');
-        recordTest('User-level service account cannot access admin endpoint', true);
+        console.log("  [PASS] User-level service correctly denied access to admin endpoint\n");
+        recordTest("User-level service account cannot access admin endpoint", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('User-level service account cannot access admin endpoint', false, error.message);
+        recordTest("User-level service account cannot access admin endpoint", false, error.message);
     }
 }
 
 async function testAdminServiceCanAccessAdminEndpoint() {
-    console.log('TEST: Admin service account can access admin endpoint');
+    console.log("TEST: Admin service account can access admin endpoint");
 
     try {
         const client = CONFIG.clients.adminService;
         const tokenData = await getClientCredentialsToken(client.clientId, client.clientSecret);
-        const response = await apiRequest('/api/v1/admin/users', { token: tokenData.access_token });
+        const response = await apiRequest("/api/v1/admin/users", { token: tokenData.access_token });
 
         assert(response.status === 200, `Expected status 200, got ${response.status}`);
 
-        console.log('  [PASS] Admin service account can access admin endpoint\n');
-        recordTest('Admin service account can access admin endpoint', true);
+        console.log("  [PASS] Admin service account can access admin endpoint\n");
+        recordTest("Admin service account can access admin endpoint", true);
     } catch (error) {
-        if (error.message.includes('Failed to get token')) {
-            console.log('  [SKIP] Admin service client not configured in Keycloak\n');
-            recordTest('Admin service account can access admin endpoint', false, 'Admin service client not configured', true);
+        if (error.message.includes("Failed to get token")) {
+            console.log("  [SKIP] Admin service client not configured in Keycloak\n");
+            recordTest("Admin service account can access admin endpoint", false, "Admin service client not configured", true);
         } else {
             console.log(`  [FAIL] ${error.message}\n`);
-            recordTest('Admin service account can access admin endpoint', false, error.message);
+            recordTest("Admin service account can access admin endpoint", false, error.message);
         }
     }
 }
 
 async function testAdminServiceCanAccessUserEndpoint() {
-    console.log('TEST: Admin service account can access user-level endpoint');
+    console.log("TEST: Admin service account can access user-level endpoint");
 
     try {
         const client = CONFIG.clients.adminService;
         const tokenData = await getClientCredentialsToken(client.clientId, client.clientSecret);
-        const response = await apiRequest('/api/v1/user/profile', { token: tokenData.access_token });
+        const response = await apiRequest("/api/v1/user/profile", { token: tokenData.access_token });
 
         assert(response.status === 200, `Expected status 200, got ${response.status}`);
 
-        console.log('  [PASS] Admin service account can access user endpoint\n');
-        recordTest('Admin service account can access user-level endpoint', true);
+        console.log("  [PASS] Admin service account can access user endpoint\n");
+        recordTest("Admin service account can access user-level endpoint", true);
     } catch (error) {
-        if (error.message.includes('Failed to get token')) {
-            console.log('  [SKIP] Admin service client not configured in Keycloak\n');
-            recordTest('Admin service account can access user-level endpoint', false, 'Admin service client not configured', true);
+        if (error.message.includes("Failed to get token")) {
+            console.log("  [SKIP] Admin service client not configured in Keycloak\n");
+            recordTest("Admin service account can access user-level endpoint", false, "Admin service client not configured", true);
         } else {
             console.log(`  [FAIL] ${error.message}\n`);
-            recordTest('Admin service account can access user-level endpoint', false, error.message);
+            recordTest("Admin service account can access user-level endpoint", false, error.message);
         }
     }
 }
@@ -686,7 +686,7 @@ async function testAdminServiceCanAccessUserEndpoint() {
 // ============================================================================
 
 async function testTokenExpirationIsReasonable() {
-    console.log('TEST: Token expiration is within expected range');
+    console.log("TEST: Token expiration is within expected range");
 
     try {
         const client = CONFIG.clients.userService;
@@ -699,39 +699,39 @@ async function testTokenExpirationIsReasonable() {
         const lifetime = expiresAt - issuedAt;
 
         // Token should expire in the future
-        assert(expiresAt > now, 'Token should not be expired');
+        assert(expiresAt > now, "Token should not be expired");
 
         // Token lifetime should be reasonable (between 1 minute and 1 hour typically)
         assert(lifetime >= 60, `Token lifetime too short: ${lifetime}s`);
         assert(lifetime <= 3600, `Token lifetime too long: ${lifetime}s`);
 
-        console.log('  [PASS] Token expiration is reasonable');
+        console.log("  [PASS] Token expiration is reasonable");
         console.log(`         Lifetime: ${lifetime}s`);
         console.log(`         Expires at: ${new Date(expiresAt * 1000).toISOString()}\n`);
 
-        recordTest('Token expiration is within expected range', true);
+        recordTest("Token expiration is within expected range", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Token expiration is within expected range', false, error.message);
+        recordTest("Token expiration is within expected range", false, error.message);
     }
 }
 
 async function testExpiredTokenRejected() {
-    console.log('TEST: Expired token is rejected (simulated with invalid token)');
+    console.log("TEST: Expired token is rejected (simulated with invalid token)");
 
     try {
         // We can't easily create an expired token, so we use a malformed one
         // that simulates what happens when a token is no longer valid
-        const expiredToken = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjB9.invalid';
-        const response = await apiRequest('/api/v1/user/profile', { token: expiredToken });
+        const expiredToken = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjB9.invalid";
+        const response = await apiRequest("/api/v1/user/profile", { token: expiredToken });
 
         assert(response.status === 401, `Expected status 401, got ${response.status}`);
 
-        console.log('  [PASS] Invalid/expired token correctly rejected with 401\n');
-        recordTest('Expired token is rejected', true);
+        console.log("  [PASS] Invalid/expired token correctly rejected with 401\n");
+        recordTest("Expired token is rejected", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Expired token is rejected', false, error.message);
+        recordTest("Expired token is rejected", false, error.message);
     }
 }
 
@@ -740,7 +740,7 @@ async function testExpiredTokenRejected() {
 // ============================================================================
 
 async function testServiceAccountScopes() {
-    console.log('TEST: Service account token contains expected scopes');
+    console.log("TEST: Service account token contains expected scopes");
 
     try {
         const client = CONFIG.clients.userService;
@@ -748,15 +748,15 @@ async function testServiceAccountScopes() {
         const decoded = decodeJwt(tokenData.access_token);
 
         // Check for scope claim
-        const scopes = decoded.scope ? decoded.scope.split(' ') : [];
+        const scopes = decoded.scope ? decoded.scope.split(" ") : [];
 
-        console.log('  [PASS] Token scopes retrieved');
-        console.log(`         Scopes: ${scopes.length > 0 ? scopes.join(', ') : '(none)'}\n`);
+        console.log("  [PASS] Token scopes retrieved");
+        console.log(`         Scopes: ${scopes.length > 0 ? scopes.join(", ") : "(none)"}\n`);
 
-        recordTest('Service account token contains expected scopes', true);
+        recordTest("Service account token contains expected scopes", true);
     } catch (error) {
         console.log(`  [FAIL] ${error.message}\n`);
-        recordTest('Service account token contains expected scopes', false, error.message);
+        recordTest("Service account token contains expected scopes", false, error.message);
     }
 }
 
@@ -765,18 +765,18 @@ async function testServiceAccountScopes() {
 // ============================================================================
 
 async function runTests() {
-    console.log('='.repeat(70));
-    console.log('OAuth2 Client Credentials Flow Integration Tests');
-    console.log('='.repeat(70));
+    console.log("=".repeat(70));
+    console.log("OAuth2 Client Credentials Flow Integration Tests");
+    console.log("=".repeat(70));
     console.log();
 
     try {
         // Check service availability (starts Docker if needed)
         await checkServicesReady();
 
-        console.log('-'.repeat(70));
-        console.log('TOKEN ACQUISITION TESTS');
-        console.log('-'.repeat(70));
+        console.log("-".repeat(70));
+        console.log("TOKEN ACQUISITION TESTS");
+        console.log("-".repeat(70));
         console.log();
 
         await testClientCredentialsTokenAcquisition();
@@ -784,18 +784,18 @@ async function runTests() {
         await testTokenContainsRoles();
         await testServiceAccountScopes();
 
-        console.log('-'.repeat(70));
-        console.log('INVALID CREDENTIALS TESTS');
-        console.log('-'.repeat(70));
+        console.log("-".repeat(70));
+        console.log("INVALID CREDENTIALS TESTS");
+        console.log("-".repeat(70));
         console.log();
 
         await testInvalidClientIdRejected();
         await testInvalidClientSecretRejected();
         await testEmptyCredentialsRejected();
 
-        console.log('-'.repeat(70));
-        console.log('PROTECTED ENDPOINT ACCESS TESTS');
-        console.log('-'.repeat(70));
+        console.log("-".repeat(70));
+        console.log("PROTECTED ENDPOINT ACCESS TESTS");
+        console.log("-".repeat(70));
         console.log();
 
         await testServiceAccountAccessUserEndpoint();
@@ -803,18 +803,18 @@ async function runTests() {
         await testAdminServiceCanAccessAdminEndpoint();
         await testAdminServiceCanAccessUserEndpoint();
 
-        console.log('-'.repeat(70));
-        console.log('TOKEN EXPIRATION TESTS');
-        console.log('-'.repeat(70));
+        console.log("-".repeat(70));
+        console.log("TOKEN EXPIRATION TESTS");
+        console.log("-".repeat(70));
         console.log();
 
         await testTokenExpirationIsReasonable();
         await testExpiredTokenRejected();
 
         // Print summary
-        console.log('='.repeat(70));
-        console.log('TEST SUMMARY');
-        console.log('='.repeat(70));
+        console.log("=".repeat(70));
+        console.log("TEST SUMMARY");
+        console.log("=".repeat(70));
         console.log();
         console.log(`  Passed:  ${results.passed}`);
         console.log(`  Failed:  ${results.failed}`);
@@ -823,7 +823,7 @@ async function runTests() {
         console.log();
 
         if (results.failed > 0) {
-            console.log('FAILED TESTS:');
+            console.log("FAILED TESTS:");
             results.tests
                 .filter(t => !t.passed && !t.skipped)
                 .forEach(t => console.log(`  - ${t.name}: ${t.details}`));
@@ -840,7 +840,7 @@ async function runTests() {
 
 // Run tests
 runTests().catch(error => {
-    console.error('Test runner error:', error);
+    console.error("Test runner error:", error);
     cleanup();
     process.exit(1);
 });

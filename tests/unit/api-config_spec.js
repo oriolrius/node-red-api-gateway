@@ -686,7 +686,7 @@ describe("api-config Node", function () {
                     // Subscribe to shutdown events to verify they fire
                     let shutdownCount = 0;
                     for (const manager of Object.values(c1.connectionManagers)) {
-                        manager.on('shutdown', function() {
+                        manager.on("shutdown", function() {
                             shutdownCount++;
                         });
                     }
@@ -737,7 +737,7 @@ describe("api-config Node", function () {
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    c1.healthCheckManager._healthChecks.has('database').should.be.true();
+                    c1.healthCheckManager._healthChecks.has("database").should.be.true();
                     done();
                 } catch (err) {
                     done(err);
@@ -756,7 +756,7 @@ describe("api-config Node", function () {
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    c1.healthCheckManager._healthChecks.has('keycloak').should.be.true();
+                    c1.healthCheckManager._healthChecks.has("keycloak").should.be.true();
                     done();
                 } catch (err) {
                     done(err);
@@ -775,7 +775,7 @@ describe("api-config Node", function () {
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    c1.healthCheckManager._healthChecks.has('opa').should.be.true();
+                    c1.healthCheckManager._healthChecks.has("opa").should.be.true();
                     done();
                 } catch (err) {
                     done(err);
@@ -818,10 +818,10 @@ describe("api-config Node", function () {
                 const c1 = helper.getNode("c1");
                 try {
                     const status = c1.getHealthStatus();
-                    status.should.have.property('status');
-                    status.should.have.property('timestamp');
-                    status.should.have.property('services');
-                    status.should.have.property('config');
+                    status.should.have.property("status");
+                    status.should.have.property("timestamp");
+                    status.should.have.property("services");
+                    status.should.have.property("config");
                     done();
                 } catch (err) {
                     done(err);
@@ -843,9 +843,9 @@ describe("api-config Node", function () {
                     const c1 = helper.getNode("c1");
                     try {
                         const report = await c1.checkHealth();
-                        report.should.have.property('status');
-                        report.should.have.property('services');
-                        report.services.should.have.property('database');
+                        report.should.have.property("status");
+                        report.should.have.property("services");
+                        report.services.should.have.property("database");
                         resolve();
                     } catch (err) {
                         reject(err);
@@ -999,15 +999,15 @@ describe("api-config Node", function () {
                 const c1 = helper.getNode("c1");
                 try {
                     const stats = c1.getPoolStatistics();
-                    stats.should.have.property('pool', 'database');
-                    stats.should.have.property('state');
-                    stats.should.have.property('config');
-                    stats.should.have.property('current');
-                    stats.should.have.property('cumulative');
-                    stats.should.have.property('peaks');
+                    stats.should.have.property("pool", "database");
+                    stats.should.have.property("state");
+                    stats.should.have.property("config");
+                    stats.should.have.property("current");
+                    stats.should.have.property("cumulative");
+                    stats.should.have.property("peaks");
 
-                    stats.config.should.have.property('minConnections', 2);
-                    stats.config.should.have.property('maxConnections', 10);
+                    stats.config.should.have.property("minConnections", 2);
+                    stats.config.should.have.property("maxConnections", 10);
                     done();
                 } catch (err) {
                     done(err);
@@ -1026,11 +1026,11 @@ describe("api-config Node", function () {
                 const c1 = helper.getNode("c1");
                 try {
                     const status = c1.getPoolStatus();
-                    status.should.have.property('state');
-                    status.should.have.property('available');
-                    status.should.have.property('borrowed');
-                    status.should.have.property('pending');
-                    status.should.have.property('total');
+                    status.should.have.property("state");
+                    status.should.have.property("available");
+                    status.should.have.property("borrowed");
+                    status.should.have.property("pending");
+                    status.should.have.property("total");
                     done();
                 } catch (err) {
                     done(err);
@@ -1074,9 +1074,9 @@ describe("api-config Node", function () {
                     const c1 = helper.getNode("c1");
                     try {
                         await c1.initializePool();
-                        reject(new Error('Expected error'));
+                        reject(new Error("Expected error"));
                     } catch (err) {
-                        err.message.should.containEql('not initialized');
+                        err.message.should.containEql("not initialized");
                         resolve();
                     }
                 });
@@ -1096,9 +1096,9 @@ describe("api-config Node", function () {
                     const c1 = helper.getNode("c1");
                     try {
                         await c1.acquireConnection();
-                        reject(new Error('Expected error'));
+                        reject(new Error("Expected error"));
                     } catch (err) {
-                        err.message.should.containEql('not initialized');
+                        err.message.should.containEql("not initialized");
                         resolve();
                     }
                 });
@@ -1118,9 +1118,9 @@ describe("api-config Node", function () {
                     const c1 = helper.getNode("c1");
                     try {
                         await c1.releaseConnection({});
-                        reject(new Error('Expected error'));
+                        reject(new Error("Expected error"));
                     } catch (err) {
-                        err.message.should.containEql('not initialized');
+                        err.message.should.containEql("not initialized");
                         resolve();
                     }
                 });

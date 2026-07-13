@@ -1,6 +1,5 @@
 const helper = require("node-red-node-test-helper");
 const apiEndpointNode = require("../../nodes/api-endpoint.js");
-const apiServerNode = require("../../nodes/api-server.js");
 
 helper.init(require.resolve("node-red"));
 
@@ -470,7 +469,6 @@ describe("api-endpoint Node", function () {
                 path: "/users/:123invalid"
             }];
 
-            let warnCalled = false;
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 // Check that warn was called by examining the node
@@ -4061,7 +4059,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const result = n1.checkRateLimit({ headers: { 'x-forwarded-for': '192.168.1.1' } });
+                    const result = n1.checkRateLimit({ headers: { "x-forwarded-for": "192.168.1.1" } });
                     result.should.have.property("allowed", true);
                     done();
                 } catch (err) {
@@ -4083,7 +4081,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const req = { headers: { 'x-forwarded-for': '192.168.1.1' } };
+                    const req = { headers: { "x-forwarded-for": "192.168.1.1" } };
                     const result = n1.checkRateLimit(req);
                     result.should.have.property("allowed", true);
                     result.should.have.property("remaining", 4);
@@ -4109,7 +4107,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const req = { headers: { 'x-forwarded-for': '192.168.1.1' } };
+                    const req = { headers: { "x-forwarded-for": "192.168.1.1" } };
                     // Exhaust limit
                     for (let i = 0; i < 3; i++) {
                         n1.checkRateLimit(req);
@@ -4148,7 +4146,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
             });
         });
 
@@ -4180,10 +4178,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 const n2 = helper.getNode("n2");
-                let messageCount = 0;
-
                 n2.on("input", function (msg) {
-                    messageCount++;
                     if (msg.rateLimitError) {
                         try {
                             msg.rateLimitError.should.have.property("statusCode", 429);
@@ -4196,10 +4191,10 @@ describe("api-endpoint Node", function () {
                 });
 
                 // First two should pass
-                n1.receive({ payload: "test1", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
-                n1.receive({ payload: "test2", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test1", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
+                n1.receive({ payload: "test2", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
                 // Third should be rate limited
-                n1.receive({ payload: "test3", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test3", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
             });
         });
 
@@ -4223,7 +4218,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
             });
         });
 
@@ -4255,11 +4250,11 @@ describe("api-endpoint Node", function () {
                 });
 
                 // Send two from IP1
-                n1.receive({ payload: "test1", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
-                n1.receive({ payload: "test2", req: { headers: { 'x-forwarded-for': '192.168.1.1' } } });
+                n1.receive({ payload: "test1", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
+                n1.receive({ payload: "test2", req: { headers: { "x-forwarded-for": "192.168.1.1" } } });
                 // Send two from IP2 (should have fresh limit)
-                n1.receive({ payload: "test3", req: { headers: { 'x-forwarded-for': '192.168.1.2' } } });
-                n1.receive({ payload: "test4", req: { headers: { 'x-forwarded-for': '192.168.1.2' } } });
+                n1.receive({ payload: "test3", req: { headers: { "x-forwarded-for": "192.168.1.2" } } });
+                n1.receive({ payload: "test4", req: { headers: { "x-forwarded-for": "192.168.1.2" } } });
             });
         });
     });
@@ -4469,7 +4464,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const result = n1.checkCache({ method: 'GET', path: '/users' });
+                    const result = n1.checkCache({ method: "GET", path: "/users" });
                     result.should.have.property("hit", false);
                     done();
                 } catch (err) {
@@ -4490,7 +4485,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const req = { method: 'GET', path: '/users' };
+                    const req = { method: "GET", path: "/users" };
                     const { key, etag } = n1.storeInCache(req, { users: [] }, 200);
                     key.should.be.a.String();
                     etag.should.startWith('W/"');
@@ -4526,7 +4521,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { method: 'GET', path: '/users', headers: {} } });
+                n1.receive({ payload: "test", req: { method: "GET", path: "/users", headers: {} } });
             });
         });
 
@@ -4546,7 +4541,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { method: 'POST', path: '/users', headers: {} } });
+                n1.receive({ payload: "test", req: { method: "POST", path: "/users", headers: {} } });
             });
         });
 
@@ -4569,7 +4564,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { method: 'GET', path: '/users', headers: {} } });
+                n1.receive({ payload: "test", req: { method: "GET", path: "/users", headers: {} } });
             });
         });
     });
@@ -4770,7 +4765,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createError('VALIDATION_ERROR', 'Invalid input');
+                    const error = n1.createError("VALIDATION_ERROR", "Invalid input");
                     const result = n1.handleError(error);
 
                     result.should.have.property("statusCode", 400);
@@ -4797,7 +4792,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const result = n1.handleError(new Error('Something went wrong'));
+                    const result = n1.handleError(new Error("Something went wrong"));
 
                     result.should.have.property("statusCode", 500);
                     result.body.should.have.property("detail", "Something went wrong");
@@ -4818,7 +4813,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createError('VALIDATION_ERROR', 'Invalid input');
+                    const error = n1.createError("VALIDATION_ERROR", "Invalid input");
                     const result = n1.handleError(error);
 
                     result.should.have.property("statusCode", 400);
@@ -4838,12 +4833,12 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createValidationError('Invalid input', [{ field: 'email', message: 'Invalid email' }]);
+                    const error = n1.createValidationError("Invalid input", [{ field: "email", message: "Invalid email" }]);
                     const result = n1.handleError(error);
 
                     result.statusCode.should.equal(400);
                     result.body.errors.should.be.Array();
-                    result.body.errors[0].field.should.equal('email');
+                    result.body.errors[0].field.should.equal("email");
                     done();
                 } catch (err) {
                     done(err);
@@ -4856,7 +4851,7 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createNotFoundError('User', '123');
+                    const error = n1.createNotFoundError("User", "123");
                     const result = n1.handleError(error);
 
                     result.statusCode.should.equal(404);
@@ -4873,11 +4868,11 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createAuthenticationError('Invalid token');
+                    const error = n1.createAuthenticationError("Invalid token");
                     const result = n1.handleError(error);
 
                     result.statusCode.should.equal(401);
-                    result.body.detail.should.equal('Invalid token');
+                    result.body.detail.should.equal("Invalid token");
                     done();
                 } catch (err) {
                     done(err);
@@ -4890,11 +4885,11 @@ describe("api-endpoint Node", function () {
             helper.load(apiEndpointNode, flow, function () {
                 const n1 = helper.getNode("n1");
                 try {
-                    const error = n1.createAuthorizationError('Access denied', ['admin']);
+                    const error = n1.createAuthorizationError("Access denied", ["admin"]);
                     const result = n1.handleError(error);
 
                     result.statusCode.should.equal(403);
-                    result.body.missingScopes.should.containEql('admin');
+                    result.body.missingScopes.should.containEql("admin");
                     done();
                 } catch (err) {
                     done(err);
@@ -4923,7 +4918,7 @@ describe("api-endpoint Node", function () {
                         done(err);
                     }
                 });
-                n1.receive({ payload: "test", req: { method: 'GET', path: '/users' } });
+                n1.receive({ payload: "test", req: { method: "GET", path: "/users" } });
             });
         });
     });
