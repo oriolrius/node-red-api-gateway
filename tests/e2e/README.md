@@ -122,15 +122,38 @@ http://localhost:8080/realms/api-gateway/protocol/openid-connect/certs
 
 ## OPA Configuration
 
+> **This containerised OPA is a TEST FIXTURE, not the reference architecture.**
+> In a real deployment the gateway talks to a **central, shared OPA service**
+> over TLS with its own bearer token (decision-001 D1/D7). The throwaway
+> container here exists only so the e2e suite has something to enforce against.
+
 ### Policy Structure
 
 Policies are mounted from `./policies/`:
 
 ```
 policies/
-├── authz.rego    # Authorization policy
+├── authz.rego    # Authorization policy, exposed at v1/data/gateway/decision
 └── data.json     # Static data (roles, rate limits)
 ```
+
+`authz.rego` is written against the gateway's canonical input (package
+`gateway`, rule `decision`) and is the path the e2e flow's Policy Path points
+at (`v1/data/gateway/decision`).
+
+### Real enforcement test
+
+Real per-request enforcement (allow → 200, deny → 403) and the D1/D7
+non-decision paths (OPA_HTTP_401 → 503, TLS failure → NETWORK 503, OPA
+unreachable → breaker opens then recovers) are verified without the full
+container stack — only an `opa` binary is needed — by:
+
+```bash
+npm run test:opa-enforcement     # OPA_BIN=/path/to/opa if not on PATH
+```
+
+The full-stack containerised harness (`npm run test:opa`) uses the `nodered`
+compose profile, which starts the network, Keycloak, OPA and Node-RED services.
 
 ### Test Authorization
 

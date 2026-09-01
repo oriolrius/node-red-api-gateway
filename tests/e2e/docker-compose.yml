@@ -30,6 +30,7 @@ services:
     restart: unless-stopped
     profiles:
       - all
+      - nodered
     # Only expose ports from the base container
     ports:
       - "8080:8080"   # Keycloak
@@ -54,6 +55,7 @@ services:
     profiles:
       - keycloak
       - all
+      - nodered
     depends_on:
       network_base:
         condition: service_healthy
@@ -85,6 +87,7 @@ services:
     profiles:
       - opa
       - all
+      - nodered
     depends_on:
       network_base:
         condition: service_healthy
@@ -177,3 +180,4 @@ services:
     restart: "no"
     profiles:
       - all
+      - nodered

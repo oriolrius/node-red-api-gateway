@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 
 /**
- * OPA (Open Policy Agent) Integration Tests for Node-RED API Gateway
+ * OPA (Open Policy Agent) Full-Stack Integration FIXTURE for Node-RED API Gateway
  *
- * These tests verify the policy-based access control using OPA
- * for the API endpoints defined in the opa-protected-api example flow.
+ * This is the containerised full-stack harness (network + Keycloak + OPA +
+ * Node-RED). The containerised OPA here is a TEST FIXTURE, not the reference
+ * architecture — in a real deployment OPA is a central, shared service
+ * (decision-001 D1).
+ *
+ * Real per-request policy ENFORCEMENT (allow -> 200, deny -> 403) and the D1/D7
+ * non-decision paths (OPA_HTTP_401 -> 503, TLS failure -> NETWORK 503, OPA
+ * unreachable -> breaker opens then recovers) are verified, without needing the
+ * full container stack, by `tests/e2e/opa-enforcement.test.js`
+ * (`npm run test:opa-enforcement`), which drives the real gateway against a real
+ * OPA process evaluating `tests/e2e/policies/authz.rego`.
+ *
+ * The compose profile used below is `nodered`, which now selects exactly the
+ * network, Keycloak, OPA and Node-RED services; and `authz.rego` is served at
+ * `v1/data/gateway/decision`, the path the flow queries.
  *
  * ============================================================================
  * SETUP INSTRUCTIONS
