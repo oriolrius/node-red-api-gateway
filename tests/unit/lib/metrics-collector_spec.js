@@ -331,6 +331,20 @@ describe("metrics-collector", function() {
                 const metrics = await collector.getMetrics();
                 metrics.should.containEql("test_opa_circuit_breaker_state 2");
             });
+
+            it("should map the OpaClient half_open state (underscore) to gauge value 1", async function() {
+                // CircuitState.HALF_OPEN is "half_open"; the collector must
+                // normalise it rather than report it as CLOSED (task-075).
+                collector.setOpaCircuitState("half_open");
+                const metrics = await collector.getMetrics();
+                metrics.should.containEql("test_opa_circuit_breaker_state 1");
+            });
+
+            it("should still accept the hyphenated half-open spelling", async function() {
+                collector.setOpaCircuitState("half-open");
+                const metrics = await collector.getMetrics();
+                metrics.should.containEql("test_opa_circuit_breaker_state 1");
+            });
         });
 
         describe("rate limiter metrics", function() {

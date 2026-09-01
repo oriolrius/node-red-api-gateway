@@ -862,4 +862,225 @@ describe("OpaClient", function() {
             leadingSlashClient.shutdown();
         });
     });
+
+    describe("retry classification (task-072)", function() {
+        function makeClient(overrides) {
+            return new OpaClient(Object.assign({
+                opaUrl: "http://localhost:8181",
+                policyPath: "v1/data/authz/allow",
+                fetchFn: mockFetch,
+                retryAttempts: 1,
+                initialBackoff: 1,
+                maxBackoff: 5,
+                circuitBreakerEnabled: false
+            }, overrides || {}));
+        }
+
+        function netError(message, code) {
+            return Object.assign(new Error(message), { code });
+        }
+
+        // One case per classification row (decision-001 D8). The injected
+        // fetchFn's callCount is the observable that proves classification.
+        const retryableCases = [
+            { name: "connection refused", err: () => netError("connect ECONNREFUSED", "ECONNREFUSED") },
+            { name: "connection reset", err: () => netError("read ECONNRESET", "ECONNRESET") },
+            { name: "DNS failure", err: () => netError("getaddrinfo ENOTFOUND opa", "ENOTFOUND") },
+            { name: "socket hang-up", err: () => netError("socket hang up", "ECONNRESET") },
+            { name: "TLS handshake failure", err: () => netError("write EPROTO ssl handshake failure", "EPROTO") },
+            { name: "HTTP 500", http: 500 },
+            { name: "HTTP 502", http: 502 },
+            { name: "HTTP 503", http: 503 },
+            { name: "HTTP 504", http: 504 }
+        ];
+
+        retryableCases.forEach(function(tc) {
+            it(`retries once (2 attempts total) on ${tc.name}`, async function() {
+                const c = makeClient();
+                if (tc.http) {
+                    mockFetch.resolves({ ok: false, status: tc.http });
+                } else {
+                    mockFetch.rejects(tc.err());
+                }
+                try {
+                    await c.evaluate({ user: "alice" });
+                } catch (err) { /* expected */ }
+                mockFetch.callCount.should.equal(2);
+                c.shutdown();
+            });
+        });
+
+        const nonRetryableCases = [
+            { name: "HTTP 400", http: 400 },
+            { name: "HTTP 401", http: 401 },
+            { name: "HTTP 403", http: 403 },
+            { name: "HTTP 404", http: 404 },
+            { name: "HTTP 429", http: 429 },
+            { name: "POLICY_UNDEFINED", err: () => netError("policy result is undefined", "POLICY_UNDEFINED") }
+        ];
+
+        nonRetryableCases.forEach(function(tc) {
+            it(`does not retry (exactly 1 attempt) on ${tc.name}`, async function() {
+                const c = makeClient();
+                if (tc.http) {
+                    mockFetch.resolves({ ok: false, status: tc.http });
+                } else {
+                    mockFetch.rejects(tc.err());
+                }
+                try {
+                    await c.evaluate({ user: "alice" });
+                } catch (err) { /* expected */ }
+                mockFetch.callCount.should.equal(1);
+                c.shutdown();
+            });
+        });
+
+        it("starts a second attempt after a TIMEOUT when it fits inside the deadline", async function() {
+            const c = makeClient({ timeout: 2000, deadline: 3000 });
+            const abortError = new Error("Aborted");
+            abortError.name = "AbortError";
+            mockFetch.rejects(abortError);
+            try {
+                await c.evaluate({ user: "alice" });
+            } catch (err) {
+                err.code.should.equal("TIMEOUT");
+            }
+            mockFetch.callCount.should.equal(2);
+            c.shutdown();
+        });
+
+        it("surfaces DEADLINE with no second attempt when a retry cannot fit", async function() {
+            const c = makeClient({ timeout: 2000, deadline: 2000 });
+            const abortError = new Error("Aborted");
+            abortError.name = "AbortError";
+            mockFetch.rejects(abortError);
+            let caught;
+            try {
+                await c.evaluate({ user: "alice" });
+            } catch (err) {
+                caught = err;
+            }
+            should.exist(caught);
+            caught.code.should.equal("DEADLINE");
+            mockFetch.callCount.should.equal(1);
+            c.shutdown();
+        });
+
+        it("classifies CONFIG_INVALID as non-retryable (it never reaches the wire)", function() {
+            // CONFIG_INVALID is caught pre-flight by the node before any request
+            // is built; the predicate must never treat it as transient.
+            const c = makeClient();
+            c._isRetryable(netError("invalid config", "CONFIG_INVALID")).should.be.false();
+            c.shutdown();
+        });
+    });
+
+    describe("circuit breaker accounting (task-073)", function() {
+        function makeCbClient(overrides) {
+            return new OpaClient(Object.assign({
+                opaUrl: "http://localhost:8181",
+                policyPath: "v1/data/authz/allow",
+                fetchFn: mockFetch,
+                retryAttempts: 1,
+                initialBackoff: 1,
+                maxBackoff: 5,
+                circuitBreakerThreshold: 5
+            }, overrides || {}));
+        }
+
+        it("records exactly one breaker failure for a two-attempt evaluation that fails", async function() {
+            // Regression guard: if _recordFailure() moved back inside the attempt
+            // loop, two attempts would record two failures and this would be 2.
+            const c = makeCbClient();
+            mockFetch.rejects(new Error("Service down"));
+            try {
+                await c.evaluate({ user: "alice" });
+            } catch (err) { /* expected */ }
+            mockFetch.callCount.should.equal(2);
+            c._failureCount.should.equal(1);
+            c.shutdown();
+        });
+
+        it("records a success and zero breaker failures when a retry ultimately succeeds", async function() {
+            const c = makeCbClient();
+            mockFetch
+                .onFirstCall().rejects(new Error("transient"))
+                .onSecondCall().resolves({ ok: true, json: async () => ({ result: true }) });
+            await c.evaluate({ user: "alice" });
+            c._failureCount.should.equal(0);
+            c._successCount.should.equal(1);
+            c.shutdown();
+        });
+
+        it("opens after five consecutive failed evaluations, not four", async function() {
+            const c = makeCbClient();
+            mockFetch.rejects(new Error("down"));
+            for (let i = 0; i < 4; i++) {
+                try {
+                    await c.evaluate({ user: "u", i });
+                } catch (err) { /* expected */ }
+            }
+            c.circuitState.should.equal(CircuitState.CLOSED);
+            try {
+                await c.evaluate({ user: "u", i: 4 });
+            } catch (err) { /* expected */ }
+            c.circuitState.should.equal(CircuitState.OPEN);
+            c.shutdown();
+        });
+
+        it("needs the same number of failed evaluations to open regardless of retryAttempts", async function() {
+            async function evalsToOpen(retryAttempts) {
+                const c = makeCbClient({ retryAttempts });
+                mockFetch.rejects(new Error("down"));
+                let n = 0;
+                while (c.circuitState === CircuitState.CLOSED && n < 20) {
+                    n++;
+                    try {
+                        await c.evaluate({ user: "u", n });
+                    } catch (err) { /* expected */ }
+                }
+                c.shutdown();
+                return n;
+            }
+            const withoutRetries = await evalsToOpen(0);
+            const withRetries = await evalsToOpen(3);
+            withoutRetries.should.equal(5);
+            withRetries.should.equal(5);
+        });
+    });
+
+    describe("decision_id (task-074)", function() {
+        it("returns decision_id when OPA includes one in the response body", async function() {
+            mockFetch.resolves({ ok: true, json: async () => ({ result: true, decision_id: "abc-123" }) });
+            const out = await client.evaluate({ user: "alice" });
+            out.should.have.property("decision_id", "abc-123");
+            out.allowed.should.be.true();
+        });
+
+        it("omits decision_id (key absent, not null) when OPA does not supply one", async function() {
+            mockFetch.resolves({ ok: true, json: async () => ({ result: true }) });
+            const out = await client.evaluate({ user: "alice" });
+            out.should.not.have.property("decision_id");
+        });
+
+        it("captures decision_id identically for DENY responses", async function() {
+            mockFetch.resolves({
+                ok: true,
+                json: async () => ({ result: { allowed: false, reason: "nope" }, decision_id: "deny-9" })
+            });
+            const out = await client.evaluate({ user: "guest" });
+            out.allowed.should.be.false();
+            out.should.have.property("decision_id", "deny-9");
+        });
+
+        it("does not let decision_id enter the cache key or a cache-hit result", async function() {
+            mockFetch.resolves({ ok: true, json: async () => ({ result: true, decision_id: "first" }) });
+            const first = await client.evaluate({ user: "alice" });
+            const second = await client.evaluate({ user: "alice" }); // identical input -> cache hit
+            mockFetch.calledOnce.should.be.true();
+            first.should.have.property("decision_id", "first");
+            second.cached.should.be.true();
+            second.should.not.have.property("decision_id");
+        });
+    });
 });
