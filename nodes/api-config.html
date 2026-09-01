@@ -28,13 +28,22 @@
             jwtAudience: { value: "" },
             jwtClockTolerance: { value: 0 },
             jwtAlgorithms: { value: "RS256" },
-            // OPA configuration
+            // OPA configuration (defaults per decision-001 config-mapping table)
             opaEnabled: { value: false },
-            opaUrl: { value: "http://localhost:8181" },
+            opaUrl: { value: "" },
             opaPolicyPath: { value: "" },
+            opaMode: { value: "enforce" },
+            opaFailOpen: { value: false },
             opaCacheTTL: { value: 60 },
-            opaTimeout: { value: 5000 },
-            opaRetryAttempts: { value: 3 },
+            opaTimeout: { value: 2000 },
+            opaRetryAttempts: { value: 1 },
+            opaDeadline: { value: 3000 },
+            opaCacheMaxSize: { value: 5000 },
+            opaCircuitBreakerThreshold: { value: 5 },
+            opaCircuitBreakerTimeout: { value: 30000 },
+            opaTokenMode: { value: "full" },
+            opaTokenClaims: { value: "" },
+            opaIncludeAuditFields: { value: false },
             // TLS configuration
             tlsEnabled: { value: false },
             tlsRejectUnauthorized: { value: true },
@@ -67,12 +76,16 @@
         credentials: {
             dbUser: { type: "text" },
             dbPassword: { type: "password" },
-            keycloakClientSecret: { type: "password" }
+            keycloakClientSecret: { type: "password" },
+            opaToken: { type: "password" }
         },
         label: function() {
             return this.name || "API Config";
         },
         oneditprepare: function() {
+            // Captured so admin (Test) requests post the real config-node id
+            // rather than `undefined` (decision-001 editor notes).
+            var node = this;
             // Toggle database credentials visibility
             $("#node-config-input-dbType").on("change", function() {
                 var dbType = $(this).val();
@@ -122,14 +135,76 @@
                 }
             }).trigger("change");
 
-            // Toggle OPA section visibility
+            // Toggle OPA section visibility. Showing reveals every .opa-config-row
+            // (including the conditional hint/nested rows), so re-trigger the
+            // child handlers to reconcile nested visibility.
             $("#node-config-input-opaEnabled").on("change", function() {
                 if ($(this).is(":checked")) {
                     $(".opa-config-row").show();
+                    $("#node-config-input-opaMode").trigger("change");
+                    $("#node-config-input-opaTokenMode").trigger("change");
+                    $("#node-config-input-opaUrl").trigger("change");
+                    $("#node-config-input-opaToken").trigger("change");
                 } else {
                     $(".opa-config-row").hide();
                 }
             }).trigger("change");
+
+            // OPA: amber TLS warning when the URL is not https://
+            $("#node-config-input-opaUrl").on("input change", function() {
+                var v = ($(this).val() || "").trim().toLowerCase();
+                $(".opa-url-warning").toggle(v.length > 0 && v.indexOf("https://") !== 0);
+            }).trigger("change");
+
+            // OPA: amber warning when the gateway service token is empty
+            $("#node-config-input-opaToken").on("input change", function() {
+                $(".opa-token-warning").toggle(($(this).val() || "").length === 0);
+            }).trigger("change");
+
+            // OPA: enforcement mode -> monitor hint + fail-open row
+            $("#node-config-input-opaMode").on("change", function() {
+                var mode = $(this).val();
+                $(".opa-monitor-hint").toggle(mode === "monitor");
+                $(".opa-enforce-row").toggle(mode !== "off");
+                updateOpaBudget();
+            }).trigger("change");
+
+            // OPA: token mode -> claims row
+            $("#node-config-input-opaTokenMode").on("change", function() {
+                $(".opa-token-claims-row").toggle($(this).val() === "claims");
+                $("#node-config-input-opaTokenClaims").trigger("input");
+            }).trigger("change");
+
+            // OPA: live chip preview of the selected claims
+            $("#node-config-input-opaTokenClaims").on("input change", function() {
+                var claims = ($(this).val() || "").split(",")
+                    .map(function(s) { return s.trim(); })
+                    .filter(function(s) { return s.length > 0; });
+                $("#opa-token-claims-preview").text(claims.length ? ("Sending: " + claims.join(" · ")) : "");
+            }).trigger("change");
+
+            // OPA: live worst-case latency + breaker budget callout
+            function updateOpaBudget() {
+                function num(id, dflt) {
+                    var n = parseInt($(id).val(), 10);
+                    return isNaN(n) ? dflt : n;
+                }
+                var timeout = num("#node-config-input-opaTimeout", 2000);
+                var retries = num("#node-config-input-opaRetryAttempts", 1);
+                var deadline = num("#node-config-input-opaDeadline", 3000);
+                var threshold = num("#node-config-input-opaCircuitBreakerThreshold", 5);
+                var worst = Math.min(deadline, (retries + 1) * timeout);
+                $("#opa-budget-text").html(
+                    "Worst-case added latency: <b>" + (worst / 1000).toFixed(1) +
+                    " s</b> (bounded by the deadline; only retryable failures retry). " +
+                    "Breaker opens after <b>" + threshold + "</b> consecutive failed requests. " +
+                    "Keep the deadline well under your client timeout."
+                );
+            }
+            $("#node-config-input-opaTimeout, #node-config-input-opaRetryAttempts, " +
+              "#node-config-input-opaDeadline, #node-config-input-opaCircuitBreakerThreshold")
+                .on("input change", updateOpaBudget);
+            updateOpaBudget();
 
             // Toggle TLS section visibility
             $("#node-config-input-tlsEnabled").on("change", function() {
@@ -326,25 +401,131 @@
         </label>
         <input type="checkbox" id="node-config-input-opaEnabled" style="width: auto; margin-left: 5px;">
     </div>
+    <!-- Connection -->
+    <div class="form-row opa-config-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-plug"></i> Connection</label>
+    </div>
     <div class="form-row opa-config-row">
         <label for="node-config-input-opaUrl"><i class="fa fa-link"></i> OPA URL</label>
-        <input type="text" id="node-config-input-opaUrl" placeholder="http://localhost:8181">
+        <input type="text" id="node-config-input-opaUrl" placeholder="https://opa.example.internal">
+    </div>
+    <div class="form-row opa-config-row opa-url-warning" style="display:none; margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="color:#f0ad4e; font-size:0.9em;"><i class="fa fa-exclamation-triangle"></i> Policy input carries JWT claims — use TLS (https://).</span>
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaToken"><i class="fa fa-key"></i> OPA Token <span style="color:#999;">(required)</span></label>
+        <input type="password" id="node-config-input-opaToken" placeholder="gateway service token">
+    </div>
+    <div class="form-row opa-config-row" style="margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="color:#666; font-size:0.85em;">This gateway's own service token for calling OPA. Not a user token — API callers keep authenticating exactly as they do now.</span>
+    </div>
+    <div class="form-row opa-config-row opa-token-warning" style="display:none; margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="color:#f0ad4e; font-size:0.9em;"><i class="fa fa-exclamation-triangle"></i> No OPA token set — required for an OPA started with token authentication.</span>
     </div>
     <div class="form-row opa-config-row">
         <label for="node-config-input-opaPolicyPath"><i class="fa fa-file-code-o"></i> Policy Path</label>
-        <input type="text" id="node-config-input-opaPolicyPath" placeholder="v1/data/policy/allow">
+        <input type="text" id="node-config-input-opaPolicyPath" placeholder="v1/data/&lt;your-package&gt;/&lt;rule&gt;">
+    </div>
+    <div class="form-row opa-config-row" style="margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span class="form-tips" style="font-size:0.85em;">The path is supplied by whoever administers your OPA. It must resolve to a document that returns a decision — use Test to confirm before deploying. A blank path disables enforcement.</span>
+    </div>
+
+    <!-- Enforcement -->
+    <div class="form-row opa-config-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-gavel"></i> Enforcement</label>
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaMode"><i class="fa fa-gavel"></i> Mode</label>
+        <select id="node-config-input-opaMode" style="width:70%;">
+            <option value="enforce">Enforce — deny on policy denial</option>
+            <option value="monitor">Monitor — evaluate &amp; log, never deny (debugging)</option>
+            <option value="off">Off — do not evaluate</option>
+        </select>
+    </div>
+    <div class="form-row opa-config-row opa-monitor-hint" style="display:none; margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="color:#f0ad4e; font-size:0.9em;"><i class="fa fa-exclamation-triangle"></i> Requests are NOT authorized in this mode.</span>
+    </div>
+    <div class="form-row opa-config-row opa-enforce-row">
+        <label for="node-config-input-opaFailOpen"><i class="fa fa-chain-broken"></i> Fail Open</label>
+        <input type="checkbox" id="node-config-input-opaFailOpen" style="width:auto; margin-left:5px;">
+        <span style="margin-left:10px; color:#666; font-size:0.9em;">Allow requests when OPA cannot be reached (default: fail closed → 503).</span>
+    </div>
+
+    <!-- Policy input -->
+    <div class="form-row opa-config-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-sign-in"></i> Policy input</label>
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaTokenMode"><i class="fa fa-id-card"></i> Token Claims</label>
+        <select id="node-config-input-opaTokenMode" style="width:70%;">
+            <option value="full">Full — send all verified claims</option>
+            <option value="claims">Selected claims only</option>
+            <option value="none">None — omit token from input</option>
+        </select>
+    </div>
+    <div class="form-row opa-config-row opa-token-claims-row">
+        <label for="node-config-input-opaTokenClaims"><i class="fa fa-list"></i> Claims</label>
+        <input type="text" id="node-config-input-opaTokenClaims" placeholder="sub, scope, realm_access">
+    </div>
+    <div class="form-row opa-config-row opa-token-claims-row" style="margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span id="opa-token-claims-preview" style="font-size:0.85em; color:#666;"></span>
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaIncludeAuditFields"><i class="fa fa-clipboard"></i> Audit Fields</label>
+        <input type="checkbox" id="node-config-input-opaIncludeAuditFields" style="width:auto; margin-left:5px;">
+        <span style="margin-left:10px; color:#f0ad4e; font-size:0.9em;">Adds request_id/source_ip — disables decision caching.</span>
+    </div>
+
+    <!-- Performance & resilience -->
+    <div class="form-row opa-config-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-tachometer"></i> Performance &amp; resilience</label>
     </div>
     <div class="form-row opa-config-row">
         <label for="node-config-input-opaCacheTTL"><i class="fa fa-clock-o"></i> Cache TTL (s)</label>
         <input type="number" id="node-config-input-opaCacheTTL" placeholder="60" min="0" style="width: 100px;">
+        <span style="margin-left:10px; color:#666; font-size:0.9em;">Seconds. 0 disables caching — every request then makes a network call to OPA.</span>
     </div>
     <div class="form-row opa-config-row">
         <label for="node-config-input-opaTimeout"><i class="fa fa-hourglass-half"></i> Timeout (ms)</label>
-        <input type="number" id="node-config-input-opaTimeout" placeholder="5000" min="0" style="width: 100px;">
+        <input type="number" id="node-config-input-opaTimeout" placeholder="2000" min="0" style="width: 100px;">
     </div>
     <div class="form-row opa-config-row">
         <label for="node-config-input-opaRetryAttempts"><i class="fa fa-repeat"></i> Retry Attempts</label>
-        <input type="number" id="node-config-input-opaRetryAttempts" placeholder="3" min="0" max="10" style="width: 70px;">
+        <input type="number" id="node-config-input-opaRetryAttempts" placeholder="1" min="0" max="10" style="width: 70px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaDeadline"><i class="fa fa-hourglass-end"></i> Deadline (ms)</label>
+        <input type="number" id="node-config-input-opaDeadline" placeholder="3000" min="0" style="width: 100px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaCacheMaxSize"><i class="fa fa-database"></i> Cache Max Size</label>
+        <input type="number" id="node-config-input-opaCacheMaxSize" placeholder="5000" min="1" style="width: 100px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaCircuitBreakerThreshold"><i class="fa fa-exclamation-circle"></i> Breaker Threshold</label>
+        <input type="number" id="node-config-input-opaCircuitBreakerThreshold" placeholder="5" min="1" style="width: 70px;">
+    </div>
+    <div class="form-row opa-config-row">
+        <label for="node-config-input-opaCircuitBreakerTimeout"><i class="fa fa-history"></i> Breaker Timeout (ms)</label>
+        <input type="number" id="node-config-input-opaCircuitBreakerTimeout" placeholder="30000" min="0" style="width: 100px;">
+    </div>
+    <div class="form-row opa-config-row" style="margin-top: 10px; padding: 10px; background-color: #f5f5f5; border-radius: 4px;">
+        <p style="margin: 0; font-size: 0.9em; color: #666;">
+            <i class="fa fa-info-circle"></i> <span id="opa-budget-text"></span>
+        </p>
+    </div>
+
+    <!-- Test -->
+    <div class="form-row opa-config-row" style="margin-top: 10px;">
+        <button type="button" class="red-ui-button red-ui-button-small" id="opa-test-button"><i class="fa fa-flask"></i> Test policy</button>
+        <div id="opa-test-success" style="display:none; margin-top:8px; padding:8px; background:#eafaea; border-radius:4px; font-size:0.9em;"></div>
+        <div id="opa-test-error" style="display:none; margin-top:8px; padding:8px; background:#fbeaea; border-radius:4px; font-size:0.9em;"></div>
     </div>
 
     <!-- TLS/SSL Configuration Section -->
@@ -575,13 +756,33 @@
     </ul>
 
     <h3>OPA Configuration</h3>
-    <p>Configure Open Policy Agent for authorization:</p>
+    <p>Configure Open Policy Agent as the authorization authority for API endpoints. When
+    OPA is active for an endpoint, the policy decision <b>is</b> the authorization decision —
+    the gateway does not also run its own Required Scopes check.</p>
+    <p><b>Connection</b></p>
     <ul>
-        <li><b>OPA URL</b> - URL of the OPA server (default: http://localhost:8181)</li>
-        <li><b>Policy Path</b> - Path to the authorization policy (e.g., v1/data/policy/allow)</li>
-        <li><b>Cache TTL</b> - Time in seconds to cache authorization decisions (default: 60)</li>
-        <li><b>Timeout</b> - Request timeout in milliseconds (default: 5000)</li>
-        <li><b>Retry Attempts</b> - Number of retry attempts on failure (default: 3)</li>
+        <li><b>OPA URL</b> - HTTPS URL of the central OPA service. No default: an unset URL disables enforcement rather than pointing at localhost.</li>
+        <li><b>OPA Token</b> - <b>Required.</b> The gateway's own service token for calling OPA (a credential, never serialised into the flow). This is NOT a user token and is never derived from one.</li>
+        <li><b>Policy Path</b> - Supplied by whoever administers your OPA (e.g. v1/data/&lt;package&gt;/&lt;rule&gt;). Must resolve to a document that returns a decision. Blank disables enforcement.</li>
+    </ul>
+    <p><b>Enforcement</b></p>
+    <ul>
+        <li><b>Mode</b> - <b>Enforce</b> (default) denies on a policy denial; <b>Monitor</b> evaluates and logs but never denies (debugging); <b>Off</b> does not evaluate.</li>
+        <li><b>Fail Open</b> - When OPA cannot be reached, allow the request. Default is fail closed (503). An endpoint may tighten this but never loosen it.</li>
+    </ul>
+    <p><b>Policy input</b></p>
+    <ul>
+        <li><b>Token Claims</b> - <b>Full</b> sends all verified claims, <b>Selected claims only</b> sends the listed claims, <b>None</b> omits the token.</li>
+        <li><b>Audit Fields</b> - Adds request_id/source_ip to the input; forces decision caching off.</li>
+    </ul>
+    <p><b>Performance &amp; resilience</b> (network numbers — every cache miss is a TLS call to a shared service)</p>
+    <ul>
+        <li><b>Cache TTL</b> - Seconds. 0 disables caching (a network call per request). Bound the TTL for time-based policies.</li>
+        <li><b>Timeout</b> - Per-attempt timeout, ms (default: 2000).</li>
+        <li><b>Retry Attempts</b> - Retries for transient failures only (default: 1).</li>
+        <li><b>Deadline</b> - Wall-clock budget the API client actually feels, ms (default: 3000).</li>
+        <li><b>Cache Max Size</b> - Size ≈ distinct concurrent tokens × routes (default: 5000).</li>
+        <li><b>Breaker Threshold / Timeout</b> - Consecutive failed requests before the breaker opens, and how long it stays open (defaults: 5 / 30000 ms).</li>
     </ul>
 
     <h3>TLS/SSL Configuration</h3>

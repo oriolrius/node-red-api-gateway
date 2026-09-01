@@ -124,14 +124,11 @@ module.exports = function(RED) {
             });
         }
 
-        // Create connection manager for OPA if enabled
-        if (config.opaEnabled) {
-            node.connectionManagers.opa = new ConnectionStateManager("opa", {
-                initialBackoff: config.opaTimeout || 5000,
-                maxBackoff: 30000,
-                maxRetries: config.opaRetryAttempts || 3
-            });
-        }
+        // Note: no ConnectionStateManager is created for OPA. The OpaClient
+        // (constructed on the apigw-server node) already owns retry, timeout and
+        // circuit-breaker behaviour for the policy call; a second manager here
+        // would be a third, uncoordinated retry mechanism over the same request
+        // (decision-001, "Lifecycle").
 
         // Initialize health check manager
         node.healthCheckManager = new HealthCheckManager({
@@ -164,12 +161,22 @@ module.exports = function(RED) {
                 opaPolicyPath: config.opaPolicyPath,
                 opaTimeout: config.opaTimeout
             }));
-            // OPA is configured and health-checked, but request-time policy
-            // evaluation is not yet wired into the endpoint pipeline. Warn loudly
-            // so operators don't assume requests are being authorized by policy
-            // (it would otherwise fail open silently). Endpoint scope checks
-            // (requiredScopes) still apply.
-            node.warn("OPA is enabled but policy enforcement is NOT active in this version — requests are NOT evaluated against OPA policies. Use endpoint scope checks (requiredScopes) for authorization.");
+            // Mode-aware, truthful messaging about what OPA will actually do
+            // (decision-001 D5). Enforcement itself happens on the apigw-server
+            // node; this reflects the config-node default mode so an operator is
+            // never misled about whether requests are authorized.
+            const opaMode = config.opaMode || "enforce";
+            const opaPolicyPath = (config.opaPolicyPath || "").trim();
+            if (!opaPolicyPath) {
+                node.log("OPA is enabled but the policy path is blank — policy evaluation is disabled until a path is configured.");
+            } else if (opaMode === "off") {
+                node.log("OPA is enabled but mode is 'off' — policy evaluation is disabled for this gateway.");
+            } else if (opaMode === "monitor") {
+                // Monitor is an opt-OUT of protection, so warn rather than log.
+                node.warn("OPA is in MONITOR mode — requests are evaluated and logged but NOT enforced (debugging mode). No request is denied by policy in this mode.");
+            } else {
+                node.log(`OPA enforcement active (mode=enforce, failOpen=${config.opaFailOpen ? "true" : "false"}). Endpoints inherit this unless overridden.`);
+            }
         }
 
         // Store configuration properties
@@ -289,13 +296,28 @@ module.exports = function(RED) {
         node.jwtClockTolerance = toInt(config.jwtClockTolerance, 0);
         node.jwtAlgorithms = config.jwtAlgorithms;
 
-        // OPA (Open Policy Agent) configuration
+        // OPA (Open Policy Agent) configuration.
+        // Defaults follow the decision-001 config-mapping table. These are
+        // "editor units" (opaCacheTTL in seconds; timeouts in ms); the unit
+        // conversions and 0-means-disabled handling happen at the boundary in
+        // the apigw-server node's initializeOpaClient(), not here.
         node.opaEnabled = config.opaEnabled;
+        // No built-in default for opaUrl: an unset URL must fail validation on
+        // the server node rather than silently pointing at localhost:8181 (D7).
         node.opaUrl = config.opaUrl;
         node.opaPolicyPath = config.opaPolicyPath;
-        node.opaCacheTTL = toInt(config.opaCacheTTL, 30);
-        node.opaTimeout = toInt(config.opaTimeout, 5000);
-        node.opaRetryAttempts = toInt(config.opaRetryAttempts, 3);
+        node.opaMode = config.opaMode || "enforce";            // enforce | monitor | off
+        node.opaFailOpen = config.opaFailOpen === true || config.opaFailOpen === "true";
+        node.opaCacheTTL = toInt(config.opaCacheTTL, 60);      // seconds; 0 disables caching
+        node.opaTimeout = toInt(config.opaTimeout, 2000);      // ms, per attempt
+        node.opaRetryAttempts = toInt(config.opaRetryAttempts, 1);
+        node.opaDeadline = toInt(config.opaDeadline, 3000);    // ms, wall-clock budget
+        node.opaCacheMaxSize = toInt(config.opaCacheMaxSize, 5000);
+        node.opaCbThreshold = toInt(config.opaCircuitBreakerThreshold, 5);
+        node.opaCbTimeout = toInt(config.opaCircuitBreakerTimeout, 30000);
+        node.opaTokenMode = config.opaTokenMode || "full";     // full | claims | none
+        node.opaTokenClaims = config.opaTokenClaims || "";
+        node.opaIncludeAuditFields = config.opaIncludeAuditFields === true || config.opaIncludeAuditFields === "true";
 
         // TLS/SSL configuration
         node.tlsEnabled = config.tlsEnabled;
@@ -1027,7 +1049,11 @@ module.exports = function(RED) {
         credentials: {
             dbUser: { type: "text" },
             dbPassword: { type: "password" },
-            keycloakClientSecret: { type: "password" }
+            keycloakClientSecret: { type: "password" },
+            // The gateway's OWN service token for calling OPA (D7). Stored as a
+            // credential so it is never serialised into the flow JSON. This is
+            // NOT a user token and is never derived from one.
+            opaToken: { type: "password" }
         }
     });
 };

@@ -554,21 +554,52 @@ describe("api-config Node", function () {
             });
         });
 
-        it("should create opa connection manager when opa is enabled", function (done) {
+        it("should NOT create an opa connection manager (OpaClient owns retries)", function (done) {
+            // decision-001: a ConnectionStateManager("opa") would be a third,
+            // uncoordinated retry mechanism over the OPA call, which the
+            // OpaClient (on the server node) already owns. It must not exist.
             const flow = [{
                 id: "c1",
                 type: "apigw-config",
                 name: "OPA Config",
                 opaEnabled: true,
-                opaUrl: "http://localhost:8181",
+                opaUrl: "https://opa.example.internal",
                 opaRetryAttempts: 5
             }];
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    c1.connectionManagers.should.have.property("opa");
-                    c1.connectionManagers.opa.serviceName.should.equal("opa");
-                    c1.connectionManagers.opa.config.maxRetries.should.equal(5);
+                    c1.connectionManagers.should.not.have.property("opa");
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should read the new OPA runtime settings with documented defaults", function (done) {
+            const flow = [{
+                id: "c1",
+                type: "apigw-config",
+                name: "OPA Defaults",
+                opaEnabled: true,
+                opaUrl: "https://opa.example.internal",
+                opaPolicyPath: "v1/data/gateway/decision"
+            }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    c1.should.have.property("opaMode", "enforce");
+                    c1.should.have.property("opaFailOpen", false);
+                    c1.should.have.property("opaCacheTTL", 60);
+                    c1.should.have.property("opaTimeout", 2000);
+                    c1.should.have.property("opaRetryAttempts", 1);
+                    c1.should.have.property("opaDeadline", 3000);
+                    c1.should.have.property("opaCacheMaxSize", 5000);
+                    c1.should.have.property("opaCbThreshold", 5);
+                    c1.should.have.property("opaCbTimeout", 30000);
+                    c1.should.have.property("opaTokenMode", "full");
+                    c1.should.have.property("opaIncludeAuditFields", false);
                     done();
                 } catch (err) {
                     done(err);
