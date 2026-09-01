@@ -2,7 +2,49 @@
 
 This directory contains starter Rego policy templates for common authorization patterns. Each template is designed to be customizable and can be used as a foundation for your API Gateway authorization needs.
 
+## Gateway integration & template compatibility
+
+The gateway builds a single **canonical input document** (see the node help and
+`backlog/decisions/decision-001`) and points its **Policy Path** at a rule that
+returns a decision. The compatibility of the shipped templates with that
+canonical input:
+
+| Template | Path | Verdict |
+|---|---|---|
+| `gateway.rego` | `v1/data/gateway/decision` | **Supported** — the reference policy, written against the canonical input; used by the example flows and the e2e harness |
+| `rbac.rego` | `v1/data/rbac/authorization` | **Supported** |
+| `time-based.rego` | `v1/data/timebased/authorization` | **Supported** (bound the cache TTL for temporal policies) |
+| `audit.rego` | `v1/data/audit/decision` | **Supported** (needs *Audit Fields*, which disables the decision cache) |
+| `abac.rego` | `v1/data/abac/authorization` | **Reference-only** — needs a real resource object a route-derived stub cannot provide |
+| `ownership.rego` | `v1/data/ownership/authorization` | **Reference-only** — needs a real resource object |
+
 ## Templates
+
+### 0. Gateway Reference Policy - `gateway.rego`
+
+The out-of-the-box policy for the gateway. Written against the canonical input,
+it reproduces the old gateway-side scope check: it authorizes the endpoint's
+declared `requiredScopes` against the caller's verified `token.scope` and
+returns **`allowed` and `reason` in one round trip**.
+
+**Use when:** You want scope-based authorization immediately, expressed in Rego
+(and extendable) rather than as a static per-endpoint scope list.
+
+```bash
+# Point the apigw-config "Policy Path" at:
+v1/data/gateway/decision
+
+# Returns, e.g.:
+#   { "allowed": true,  "reason": "allow" }
+#   { "allowed": false, "reason": "missing_token" }
+#   { "allowed": false, "reason": "insufficient_scope" }
+```
+
+Key behaviours: `default allow := false`; a caller is authenticated only when
+`input.token` is present (the gateway omits it entirely for anonymous requests —
+never `null`); a token with no `scope` claim is denied rather than accidentally
+satisfying a subset test; `input.endpoint.operator` selects AND (require all) or
+OR (require any) semantics.
 
 ### 1. RBAC (Role-Based Access Control) - `rbac.rego`
 
@@ -169,6 +211,7 @@ Each template has accompanying tests in the `tests/` directory:
 opa test policies/templates/ -v
 
 # Run specific template tests
+opa test policies/templates/gateway.rego policies/templates/tests/gateway_test.rego -v
 opa test policies/templates/rbac.rego policies/templates/tests/rbac_test.rego -v
 opa test policies/templates/abac.rego policies/templates/tests/abac_test.rego -v
 opa test policies/templates/ownership.rego policies/templates/tests/ownership_test.rego -v
@@ -209,18 +252,26 @@ decision := audit.decision
 
 ## Integration with Node-RED API Gateway
 
-These policies integrate with the OPA client module in `lib/opa-client.js`:
+You do not call OPA from your own code — the gateway does it for you. Configure
+it on the **apigw-config** node:
 
-```javascript
-const OpaClient = require('./lib/opa-client');
+1. Enable OPA and set the **OPA URL** (`https://…`) and the gateway's **OPA
+   Token** (its own service credential — never a user token).
+2. Set the **Policy Path** to the rule that returns your decision, e.g.
+   `v1/data/gateway/decision` for the reference policy above.
+3. Choose the **Mode** (`enforce` denies on a policy denial; `monitor` evaluates
+   and logs but never denies).
 
-const opa = new OpaClient({
-    opaUrl: 'http://localhost:8181',
-    policyPath: 'v1/data/rbac/allow', // or abac, ownership, timebased, audit
-});
+The gateway then builds the canonical input from the verified request, calls OPA
+with its own bearer token over TLS, and enforces the decision in a Fastify
+`preHandler` before your flow runs. When OPA is active for an endpoint, the
+policy is the **single authority** — the gateway does not also run its own
+Required Scopes check (it sends `requiredScopes` to the policy as
+`input.endpoint.requiredScopes` context instead).
 
-const allowed = await opa.isAllowed(user, method, path, body);
-```
+> **Note:** `OpaClient.isAllowed()` in `lib/opa-client.js` is **deprecated** and
+> must not be wired into a flow — its input shape matches none of these
+> templates. The node uses `lib/opa-input.js` + `evaluate()` internally.
 
 ## Best Practices
 

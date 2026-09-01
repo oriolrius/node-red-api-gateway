@@ -22,6 +22,7 @@
     "lib/",
     "resources/",
     "policies/templates/*.rego",
+    "policies/templates/tests/",
     "policies/templates/README.md",
     "examples/",
     "CHANGELOG.md"
@@ -29,6 +30,7 @@
   "scripts": {
     "test": "mocha \"tests/unit/**/*_spec.js\" --exit",
     "test:watch": "mocha \"tests/unit/**/*_spec.js\" --watch",
+    "test:opa-policies": "opa test policies/templates/ -v",
     "lint": "eslint nodes/ lib/ tests/",
     "lint:fix": "eslint nodes/ lib/ tests/ --fix",
     "dev:nodered": "node tests/launcher/launch.js",
