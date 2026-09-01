@@ -206,6 +206,55 @@
                 .on("input change", updateOpaBudget);
             updateOpaBudget();
 
+            // OPA: Test button. Posts to a RELATIVE admin URL (respects
+            // httpAdminRoot); opaUrl and the gateway token are resolved
+            // server-side from the STORED config node (no SSRF, task-082).
+            function esc(v) { return $("<div>").text(v == null ? "" : String(v)).html(); }
+            $("#opa-test-button").on("click", function() {
+                $("#opa-test-success, #opa-test-error").hide().empty();
+                var $btn = $(this).prop("disabled", true);
+                var original = $btn.html();
+                $btn.html('<i class="fa fa-spinner fa-spin"></i> Testing…');
+                $.ajax({
+                    url: "api-gateway/test-opa",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ config: node.id }),
+                    success: function(result) {
+                        if (!result || result.success === false) {
+                            $("#opa-test-error").text((result && result.error) || "Test failed").show();
+                            return;
+                        }
+                        var lines = [];
+                        lines.push((result.reachable ? "OK" : "FAIL") + " — reachable" +
+                            (result.healthMessage ? " (" + esc(result.healthMessage) + ")" : ""));
+                        lines.push((result.policyDefined ? "OK" : "FAIL") + " — policy defined" +
+                            (result.policyDefined ? "" : " (the path returns an undefined document)"));
+                        if (result.errorCode) {
+                            lines.push("FAIL — evaluation error: " + esc(result.errorCode) +
+                                (result.evalError ? " (" + esc(result.evalError) + ")" : ""));
+                        } else {
+                            lines.push("Sample decision: allowed=" + esc(result.allowed) +
+                                ", reason=" + esc(result.reason) +
+                                (result.decisionId ? ", decision_id=" + esc(result.decisionId) : ""));
+                        }
+                        var html = lines.join("<br>");
+                        html += "<br><br><b>Input document sent to OPA:</b><pre style=\"white-space:pre-wrap; margin:4px 0 0;\">" +
+                            esc(JSON.stringify(result.input, null, 2)) + "</pre>";
+                        var ok = result.reachable && result.policyDefined && !result.errorCode;
+                        $(ok ? "#opa-test-success" : "#opa-test-error").html(html).show();
+                    },
+                    error: function(xhr) {
+                        var msg = "Test request failed";
+                        if (xhr.responseJSON && xhr.responseJSON.error) { msg = xhr.responseJSON.error; }
+                        $("#opa-test-error").text(msg).show();
+                    },
+                    complete: function() {
+                        $btn.prop("disabled", false).html(original);
+                    }
+                });
+            });
+
             // Toggle TLS section visibility
             $("#node-config-input-tlsEnabled").on("change", function() {
                 if ($(this).is(":checked")) {

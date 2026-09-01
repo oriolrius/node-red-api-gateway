@@ -1723,4 +1723,118 @@ module.exports = function(RED) {
             });
         }
     });
+
+    // OPA test route (decision-001, task-082). Reports three things an operator
+    // needs BEFORE deploying a policy: reachability (GET /health), whether the
+    // configured policy path is actually DEFINED (via a real evaluate(), which
+    // catches the configured-but-nonexistent policy that the health check reports
+    // healthy), and a sample decision with the exact production input document.
+    //
+    // SSRF-safe: opaUrl and the policy path come from the STORED config node, and
+    // the gateway token is read server-side via getCredentials — never from the
+    // request body. A throwaway client (no cache, no retry, no breaker) means a
+    // test can neither pollute the live cache nor trip the live breaker.
+    RED.httpAdmin.post("/api-gateway/test-opa", RED.auth.needsPermission("flows.read"), async function(req, res) {
+        try {
+            const configId = req.body && req.body.config;
+            if (!configId) {
+                return res.status(400).json({ success: false, error: "No config node id provided" });
+            }
+            const configNode = RED.nodes.getNode(configId);
+            if (!configNode) {
+                return res.status(400).json({ success: false, error: "Config node not found — deploy the flow before testing." });
+            }
+            if (!configNode.opaEnabled) {
+                return res.status(400).json({ success: false, error: "OPA is not enabled on this config node." });
+            }
+
+            // opaUrl and policy path from the STORED config only (no SSRF).
+            const opaUrl = (configNode.opaUrl || "").trim();
+            const policyPath = (configNode.opaPolicyPath || "").trim();
+            if (!opaUrl) {
+                return res.status(400).json({ success: false, error: "OPA URL is not configured on this config node." });
+            }
+            if (!policyPath) {
+                return res.status(400).json({ success: false, error: "Policy Path is blank — policy evaluation is disabled." });
+            }
+
+            // Token read server-side; handle the __PWRD__ unchanged-password sentinel.
+            const creds = RED.nodes.getCredentials(configId) || {};
+            let opaToken = creds.opaToken;
+            if (opaToken === "__PWRD__") {
+                opaToken = undefined;
+            }
+
+            const fetchFn = (url, options = {}) => {
+                const headers = Object.assign({}, options.headers);
+                if (opaToken) {
+                    headers["Authorization"] = `Bearer ${opaToken}`;
+                }
+                return globalThis.fetch(url, Object.assign({}, options, { headers }));
+            };
+
+            // Throwaway client — cannot touch the live cache or breaker.
+            const client = new OpaClient({
+                opaUrl,
+                policyPath,
+                timeout: parseInt(configNode.opaTimeout, 10) || 2000,
+                cacheEnabled: false,
+                retryAttempts: 0,
+                circuitBreakerEnabled: false,
+                fetchFn
+            });
+
+            const result = { success: true, reachable: false, policyDefined: false };
+            try {
+                const health = await client.getHealthStatus();
+                result.reachable = health.healthy === true;
+                result.healthMessage = health.message;
+
+                // The exact production input document, from the shared builder.
+                const sample = (req.body && req.body.sample) || {};
+                const input = buildOpaInput({
+                    method: sample.method || "GET",
+                    path: sample.path || "/api/v1/sample",
+                    route: sample.route || sample.path || "/api/v1/sample",
+                    params: sample.params || {},
+                    query: sample.query || {},
+                    headers: sample.headers || {},
+                    auth: sample.token ? { authenticated: true, token: sample.token } : { authenticated: false },
+                    endpoint: {
+                        requiredScopes: sample.requiredScopes || [],
+                        operator: sample.operator || "AND"
+                    },
+                    tokenMode: configNode.opaTokenMode || "full",
+                    tokenClaims: (configNode.opaTokenClaims || "").split(",").map(s => s.trim()).filter(Boolean),
+                    includeAuditFields: configNode.opaIncludeAuditFields === true
+                });
+                result.input = input;
+
+                // A REAL evaluate() — an undefined document (HTTP 200 {}) here is
+                // the configured-but-nonexistent policy the health check misses.
+                const decision = await client.evaluate(input);
+                result.policyDefined = !isUndefinedDecision(decision.result);
+                result.allowed = decision.allowed;
+                result.reason = extractReasonFromResult(decision.result) || (decision.allowed ? "allow" : "policy_denied");
+                if (decision.decision_id !== undefined) {
+                    result.decisionId = decision.decision_id;
+                }
+            } catch (evalErr) {
+                result.evalError = evalErr.message;
+                result.errorCode = classifyOpaError(evalErr);
+            } finally {
+                client.shutdown();
+            }
+
+            res.json(result);
+        } catch (err) {
+            res.status(400).json({ success: false, error: err.message });
+        }
+    });
 };
+
+// Shared with the request-path builder — reason extraction from an OPA result.
+function extractReasonFromResult(result) {
+    if (!result || typeof result !== "object") return null;
+    return result.reason || result.decision_reason || null;
+}
