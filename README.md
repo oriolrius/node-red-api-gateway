@@ -7,7 +7,7 @@ A comprehensive Node-RED node package for building enterprise-grade REST APIs wi
 - **API Server**: Fastify-powered HTTP server with automatic OpenAPI spec generation
 - **Endpoint Definition**: Declarative API endpoint configuration with JSON Schema validation
 - **Authentication**: OAuth2/OpenID Connect via Keycloak integration
-- **Authorization**: Role/scope-based access control with OPA (Open Policy Agent) support
+- **Authorization**: OPA (Open Policy Agent) policy enforcement at request time — when OPA is active it is the single authority; scope/role rules are expressed in Rego. Static `requiredScopes` checks remain available for non-OPA endpoints.
 - **Validation**: Request/response validation with JSON Schema
 - **Pagination**: Offset-based and cursor-based pagination
 - **Filtering & Sorting**: Configurable field filtering and sorting with SQL clause generation
@@ -104,9 +104,13 @@ Configuration node for centralized settings shared across apigw-server and apigw
 - JWT validation settings (issuer, audience, clock tolerance)
 
 **OPA Configuration:**
-- OPA server URL
-- Policy path
-- Cache TTL and timeout settings
+- OPA server URL (HTTPS) and the gateway's own OPA service token (credential)
+- Policy path (supplied by the OPA administrator) and mode (enforce / monitor / off)
+- Fail-open toggle (default fail-closed → 503), token-claim projection, audit fields
+- Cache TTL (seconds; 0 disables), timeout, retry, deadline, cache size and circuit-breaker settings
+- A Test button that probes reachability, whether the policy path is defined, and a sample decision
+
+When OPA is active for an endpoint, the policy decision is the authorization decision — enabling it is a deployment decision that is invisible to API callers (they authenticate exactly as before).
 
 **API Settings:**
 - Version string and base path

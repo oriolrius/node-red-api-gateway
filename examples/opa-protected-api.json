@@ -4,7 +4,7 @@
         "type": "tab",
         "label": "OPA Protected API Example",
         "disabled": false,
-        "info": "## OPA (Open Policy Agent) Protected API Example\n\nThis flow demonstrates policy-based access control using Open Policy Agent.\n\n### What is OPA?\n\nOpen Policy Agent (OPA) is a general-purpose policy engine that enables fine-grained, context-aware access control. Unlike simple role-based access control, OPA policies can consider:\n\n- User attributes (role, department, location)\n- Resource attributes (owner, classification, type)\n- Environmental context (time of day, request origin)\n- Complex business rules\n\n### Prerequisites\n\n1. **OPA Server**: Running OPA instance (e.g., `docker run -p 8181:8181 openpolicyagent/opa run --server`)\n2. **Policy**: Load the example policy (see below)\n\n### Example OPA Policy (Rego)\n\n```rego\npackage api.authz\n\nimport future.keywords.if\nimport future.keywords.in\n\ndefault allow = false\n\n# Allow access to own resources\nallow if {\n    input.method == \"GET\"\n    input.path[0] == \"documents\"\n    input.resource.owner == input.user.sub\n}\n\n# Allow managers to access all department documents\nallow if {\n    input.method == \"GET\"\n    input.path[0] == \"documents\"\n    input.user.role == \"manager\"\n    input.resource.department == input.user.department\n}\n\n# Allow admins to access everything\nallow if {\n    input.user.role == \"admin\"\n}\n\n# Rate limit policy - returns remaining requests\nrate_limit = result if {\n    input.user.role == \"admin\"\n    result := {\"limit\": 1000, \"window\": \"1m\"}\n}\n\nrate_limit = result if {\n    input.user.role == \"user\"\n    result := {\"limit\": 100, \"window\": \"1m\"}\n}\n```\n\n### Endpoints\n\n| Method | Path | Description | OPA Policy |\n|--------|------|-------------|------------|\n| GET | /api/v1/documents | List documents | Filtered by policy |\n| GET | /api/v1/documents/:id | Get document | Owner/Manager/Admin |\n| POST | /api/v1/documents | Create document | Any authenticated |\n| DELETE | /api/v1/documents/:id | Delete document | Admin only |\n\n### Testing\n\n```bash\n# Assuming you have an access token\nTOKEN=\"your-bearer-token\"\n\n# List documents (returns only accessible ones)\ncurl -H \"Authorization: Bearer $TOKEN\" \\\n  http://localhost:3202/api/v1/documents\n\n# Get a specific document (policy checks ownership)\ncurl -H \"Authorization: Bearer $TOKEN\" \\\n  http://localhost:3202/api/v1/documents/doc-123\n```"
+        "info": "## OPA (Open Policy Agent) Protected API Example\n\nThis flow demonstrates policy-based access control using Open Policy Agent.\nOPA is enforced by the gateway itself in a Fastify preHandler — a denied\nrequest never reaches the flow, and allowed requests carry the decision on\n`msg.opa`.\n\n### Prerequisites\n\n1. **OPA server** with the reference policy loaded:\n   `opa run --server policies/templates/gateway.rego`\n2. On the config node: OPA enabled, URL `http://localhost:8181`, **Policy\n   Path** `v1/data/gateway/decision`, and the gateway's **OPA Token** set\n   (its own service credential — not a user token).\n\n### The policy\n\n`gateway.rego` authorizes each endpoint's declared `requiredScopes` against the\ncaller's verified `input.token.scope`. The `List Documents` endpoint below\ndeclares the `user` scope, so a token whose scope contains `user` is allowed\n(200) and one without it is denied (403) — both decided by OPA, not the flow.\n\n### Testing\n\n```bash\nTOKEN=\"your-bearer-token\"   # a token whose scope includes 'user'\ncurl -H \"Authorization: Bearer $TOKEN\" http://localhost:3200/api/v1/documents/doc-1\n# 200 with the document and _opa; a token lacking the scope gets 403 from the gateway\n```"
     },
     {
         "id": "opa-api-config",
@@ -33,10 +33,11 @@
         "jwtAlgorithms": "RS256",
         "opaEnabled": true,
         "opaUrl": "http://localhost:8181",
-        "opaPolicyPath": "/v1/data/api/authz",
-        "opaCacheTTL": 60000,
-        "opaTimeout": 5000,
-        "opaRetryAttempts": 3,
+        "opaPolicyPath": "v1/data/gateway/decision",
+        "opaMode": "enforce",
+        "opaCacheTTL": 60,
+        "opaTimeout": 2000,
+        "opaRetryAttempts": 1,
         "tlsEnabled": false,
         "tlsRejectUnauthorized": true,
         "tlsMinVersion": "TLSv1.2",
@@ -78,7 +79,9 @@
         "metricsPath": "/metrics",
         "x": 190,
         "y": 80,
-        "wires": [[]]
+        "wires": [
+            []
+        ]
     },
     {
         "id": "list-documents-endpoint",
@@ -136,7 +139,11 @@
         "customErrorCodes": "",
         "x": 160,
         "y": 200,
-        "wires": [["list-documents-handler"]]
+        "wires": [
+            [
+                "list-documents-handler"
+            ]
+        ]
     },
     {
         "id": "list-documents-handler",
@@ -152,7 +159,9 @@
         "libs": [],
         "x": 470,
         "y": 200,
-        "wires": [[]]
+        "wires": [
+            []
+        ]
     },
     {
         "id": "get-document-endpoint",
@@ -210,14 +219,18 @@
         "customErrorCodes": "",
         "x": 160,
         "y": 300,
-        "wires": [["get-document-handler"]]
+        "wires": [
+            [
+                "get-document-handler"
+            ]
+        ]
     },
     {
         "id": "get-document-handler",
         "type": "function",
         "z": "opa-protected-flow",
         "name": "Handle Get Document with OPA Check",
-        "func": "// This handler demonstrates OPA-based access control for a specific resource\n\nconst auth = msg.req.auth || {};\nconst documentId = msg.req.params.id;\n\n// Mock document database\nconst documents = {\n    'doc-1': {\n        id: 'doc-1',\n        title: 'Public Report Q1',\n        content: 'This is a public quarterly report...',\n        classification: 'public',\n        department: 'sales',\n        owner: 'user-1',\n        metadata: { createdAt: '2024-01-15', version: 1 }\n    },\n    'doc-2': {\n        id: 'doc-2',\n        title: 'Internal Memo',\n        content: 'Internal HR communication...',\n        classification: 'internal',\n        department: 'hr',\n        owner: 'user-2',\n        metadata: { createdAt: '2024-02-20', version: 2 }\n    },\n    'doc-3': {\n        id: 'doc-3',\n        title: 'Confidential Budget',\n        content: 'Budget allocations for next fiscal year...',\n        classification: 'confidential',\n        department: 'finance',\n        owner: 'user-3',\n        metadata: { createdAt: '2024-03-10', version: 1 }\n    }\n};\n\nconst document = documents[documentId];\n\nif (!document) {\n    msg.res.status(404).json({\n        type: 'https://api.example.com/errors/not-found',\n        title: 'Document Not Found',\n        status: 404,\n        detail: `Document with ID '${documentId}' was not found`\n    });\n    return null;\n}\n\n// Build OPA input for policy evaluation\nconst opaInput = {\n    method: 'GET',\n    path: ['documents', documentId],\n    user: {\n        sub: auth.sub || 'anonymous',\n        roles: auth.roles || [],\n        department: auth.payload?.department || 'unknown'\n    },\n    resource: {\n        id: document.id,\n        owner: document.owner,\n        classification: document.classification,\n        department: document.department\n    }\n};\n\n// Simulate OPA policy decision\n// In production, this would call: POST http://localhost:8181/v1/data/api/authz/allow\nfunction evaluatePolicy(input) {\n    const { user, resource } = input;\n    \n    // Admin has full access\n    if (user.roles.includes('admin')) {\n        return { allow: true, reason: 'admin_access' };\n    }\n    \n    // Owner has full access to their documents\n    if (resource.owner === user.sub) {\n        return { allow: true, reason: 'owner_access' };\n    }\n    \n    // Public documents are accessible to all authenticated users\n    if (resource.classification === 'public') {\n        return { allow: true, reason: 'public_document' };\n    }\n    \n    // Managers can access internal docs in their department\n    if (user.roles.includes('manager') &&\n        resource.classification === 'internal' &&\n        resource.department === user.department) {\n        return { allow: true, reason: 'manager_department_access' };\n    }\n    \n    // Department heads have broader access\n    if (user.roles.includes('department_head') &&\n        ['internal', 'confidential'].includes(resource.classification) &&\n        resource.department === user.department) {\n        return { allow: true, reason: 'department_head_access' };\n    }\n    \n    return {\n        allow: false,\n        reason: 'insufficient_permissions',\n        requiredConditions: [\n            'Be the document owner',\n            'Have admin role',\n            'Have manager role for department internal docs',\n            'Have department_head role for confidential docs'\n        ]\n    };\n}\n\nconst policyDecision = evaluatePolicy(opaInput);\n\nif (!policyDecision.allow) {\n    msg.res.status(403).json({\n        type: 'https://api.example.com/errors/forbidden',\n        title: 'Access Denied by Policy',\n        status: 403,\n        detail: 'You do not have permission to access this document',\n        policyDecision: {\n            allowed: false,\n            reason: policyDecision.reason,\n            requiredConditions: policyDecision.requiredConditions,\n            resourceClassification: document.classification,\n            resourceDepartment: document.department\n        }\n    });\n    return null;\n}\n\n// Access granted - return document\nmsg.res.json({\n    ...document,\n    _policyDecision: {\n        allowed: true,\n        reason: policyDecision.reason\n    }\n});\n\nreturn null;",
+        "func": "// OPA authorized this request upstream in the Fastify preHandler\n// (policyPath v1/data/gateway/decision). This handler just returns the\n// requested document; the policy decision that let it through is on msg.opa.\nconst documentId = msg.req.params.id;\n\nconst documents = {\n    'doc-1': { id: 'doc-1', title: 'Public Report Q1', classification: 'public', department: 'sales', owner: 'user-1' },\n    'doc-2': { id: 'doc-2', title: 'Internal Memo', classification: 'internal', department: 'hr', owner: 'user-2' },\n    'doc-3': { id: 'doc-3', title: 'Confidential Budget', classification: 'confidential', department: 'finance', owner: 'user-3' }\n};\n\nconst document = documents[documentId];\nif (!document) {\n    msg.res.status(404).json({ status: 404, title: 'Document Not Found', detail: `Document '${documentId}' was not found` });\n    return null;\n}\n\n// msg.opa carries the OPA decision (allowed, reason, policyPath, decisionId, ...)\n// that allowed this request. A denied request never reaches this node.\nmsg.res.json(Object.assign({}, document, { _opa: msg.opa || null }));\nreturn null;",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -226,7 +239,9 @@
         "libs": [],
         "x": 470,
         "y": 300,
-        "wires": [[]]
+        "wires": [
+            []
+        ]
     },
     {
         "id": "create-document-endpoint",
@@ -284,7 +299,11 @@
         "customErrorCodes": "",
         "x": 170,
         "y": 400,
-        "wires": [["create-document-handler"]]
+        "wires": [
+            [
+                "create-document-handler"
+            ]
+        ]
     },
     {
         "id": "create-document-handler",
@@ -300,7 +319,9 @@
         "libs": [],
         "x": 450,
         "y": 400,
-        "wires": [[]]
+        "wires": [
+            []
+        ]
     },
     {
         "id": "delete-document-endpoint",
@@ -358,7 +379,11 @@
         "customErrorCodes": "",
         "x": 210,
         "y": 500,
-        "wires": [["delete-document-handler"]]
+        "wires": [
+            [
+                "delete-document-handler"
+            ]
+        ]
     },
     {
         "id": "delete-document-handler",
@@ -374,14 +399,16 @@
         "libs": [],
         "x": 510,
         "y": 500,
-        "wires": [[]]
+        "wires": [
+            []
+        ]
     },
     {
         "id": "opa-comment-1",
         "type": "comment",
         "z": "opa-protected-flow",
         "name": "OPA Configuration",
-        "info": "Open Policy Agent (OPA) is configured in api-config:\n\n- **OPA URL**: http://localhost:8181\n- **Policy Path**: /v1/data/api/authz\n- **Cache TTL**: 60 seconds (policy decisions cached)\n- **Timeout**: 5 seconds\n- **Retry Attempts**: 3\n\nOPA policies are written in Rego language and can implement:\n- Attribute-Based Access Control (ABAC)\n- Role-Based Access Control (RBAC)\n- Time-based access rules\n- Resource-based permissions\n- Custom business logic",
+        "info": "Open Policy Agent (OPA) is configured in api-config:\n\n- **OPA URL**: http://localhost:8181\n- **Policy Path**: v1/data/gateway/decision\n- **Cache TTL**: 60 seconds (policy decisions cached)\n- **Timeout: 2 seconds\n- **Retry Attempts: 1\n\nOPA policies are written in Rego language and can implement:\n- Attribute-Based Access Control (ABAC)\n- Role-Based Access Control (RBAC)\n- Time-based access rules\n- Resource-based permissions\n- Custom business logic",
         "x": 160,
         "y": 40,
         "wires": []

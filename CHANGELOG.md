@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### OPA Policy Enforcement v1 (2026-09-01)
+
+**BREAKING CHANGE:** enabling OPA now enforces policy at request time. `opaMode`
+defaults to `enforce`, so an endpoint on an OPA-enabled config node whose policy
+denies now returns **403** (previously OPA was configured but never consulted and
+every request was allowed). Set `opaMode` to `monitor` to evaluate and log
+without denying, or `off` to disable.
+
+- OPA is evaluated in a Fastify `preHandler` and is the **single authorization
+  authority** for an active endpoint: the gateway no longer also runs its own
+  Required Scopes check (scopes are sent to the policy as
+  `input.endpoint.requiredScopes` context instead).
+- The gateway calls OPA over TLS with its **own service token** (the `opaToken`
+  credential on `apigw-config`), never the user's token; verified claims travel
+  in `input.token`.
+- **Fail-closed** by default — no valid decision yields **503**; `opaFailOpen`
+  allows the request instead.
+- OPA client hardening: correct retry classification, per-logical-evaluation
+  circuit-breaker accounting, and `decision_id` traceability.
+- New `gateway.rego` reference policy (`v1/data/gateway/decision`) with CI `opa
+  test`; an SSRF-safe editor **Test** button; the `opa_policy_check` structured
+  log, a stable error taxonomy, Prometheus metrics and an alert set
+  (`docs/opa-observability.md`).
+- Editor: a config-node OPA section and a per-endpoint **Policy (OPA)** section
+  with a Help &amp; examples panel.
+- The `http://localhost:8181` `opaUrl` default is **removed** — an unset URL
+  disables enforcement instead of pointing at nothing. `opaCacheTTL` is now
+  **seconds** (0 disables caching). `OpaClient.isAllowed()` is deprecated.
+
+This supersedes the 0.8.2 note that request-time policy evaluation "is not
+implemented" and the known-limitation that OPA "is not enforced at request time".
+
 ## 0.8.2
 
 Hardening release: fixes the binary/LOB auto-CRUD failure ([#3]) plus a batch
@@ -81,8 +115,8 @@ and adds secret-scanning to CI/CD.
 - Duplicating (copy/paste) an endpoint together with its server node leaves the
   pasted endpoint bound to the original server (Node-RED remaps only typed
   config-node references); rebind the server manually after pasting.
-- OPA policy evaluation is configured/health-checked but not enforced at request
-  time (see Security note).
+- OPA policy evaluation, in this 0.8.2 build, is configured and health-checked
+  only. (Superseded in **Unreleased**: OPA is now enforced at request time.)
 
 [#3]: https://github.com/oriolrius/node-red-api-gateway/issues/3
 
