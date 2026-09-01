@@ -20,6 +20,11 @@
             // Authorization configuration
             requiredScopes: { value: "" },
             scopeOperator: { value: "AND" },
+            // Policy (OPA) per-endpoint overrides
+            opaMode: { value: "inherit" },
+            opaPolicyPath: { value: "" },
+            opaInputMappings: { value: "" },
+            opaIncludeBody: { value: false },
             // CRUD operation mapping
             crudOperation: { value: "none" },
             tableName: { value: "" },
@@ -169,6 +174,141 @@
 
             $('#node-input-requiredScopes').on('input change', updateScopeDisplay);
             $('#node-input-scopeOperator').on('change', updateScopeDisplay);
+
+            // ---- Policy (OPA) ----
+            // The section is config-node aware. apigw-server is a regular node
+            // whose `config` property points at the apigw-config node.
+            function getOpaConfigNode() {
+                var serverId = $('#node-input-server').val();
+                if (!serverId) { return null; }
+                var serverNode = RED.nodes.node(serverId);
+                if (!serverNode || !serverNode.config) { return null; }
+                return RED.nodes.node(serverNode.config) || null;
+            }
+
+            function resolvedOpaMode() {
+                var epMode = $('#node-input-opaMode').val() || 'inherit';
+                var cfg = getOpaConfigNode();
+                if (!cfg || !cfg.opaEnabled) { return 'off'; }
+                var mode = (epMode === 'inherit') ? (cfg.opaMode || 'enforce') : epMode;
+                var effPath = ($('#node-input-opaPolicyPath').val() || '').trim() || (cfg.opaPolicyPath || '').trim();
+                if (mode === 'off' || !effPath) { return 'off'; }
+                return mode;
+            }
+
+            function updateOpaVisibility() {
+                var cfg = getOpaConfigNode();
+                var opaEnabled = !!(cfg && cfg.opaEnabled);
+                $('#opa-disabled-notice').toggle(!opaEnabled);
+
+                // The inherit option shows the value it resolves to.
+                var inheritedMode = (cfg && cfg.opaMode) ? cfg.opaMode : 'enforce';
+                $('#node-input-opaMode option[value="inherit"]').text('Inherit from config (' + inheritedMode + ')');
+
+                // Effective policy path: endpoint override wins, else config.
+                var epPath = ($('#node-input-opaPolicyPath').val() || '').trim();
+                var cfgPath = (cfg && cfg.opaPolicyPath) ? cfg.opaPolicyPath : '';
+                $('#opa-effective-path').text(epPath || cfgPath || '(none — enforcement disabled)');
+
+                // D6 authority notice sits in the Authorization block.
+                var mode = resolvedOpaMode();
+                $('#opa-authority-notice').toggle(mode === 'enforce' || mode === 'monitor');
+            }
+
+            $('#node-input-server').on('change', updateOpaVisibility);
+            $('#node-input-opaMode').on('change', updateOpaVisibility);
+            $('#node-input-opaPolicyPath').on('input change', updateOpaVisibility);
+
+            // Extra Input: reuse the arrow-chip mapping UI verbatim, plus the
+            // OPA source-vocabulary validator.
+            function updateOpaMappings() {
+                var val = $('#node-input-opaInputMappings').val() || '';
+                var check = E.validateOpaMappings(val);
+                if (check.valid) {
+                    $('#opa-mapping-error').hide().find('span').text('');
+                    E.renderMappingBadges('#opa-mapping-display', E.parseFieldMappings(val));
+                } else {
+                    $('#opa-mapping-display').empty();
+                    $('#opa-mapping-error').show().find('span').text(check.error);
+                }
+            }
+            $('#node-input-opaInputMappings').on('input change', updateOpaMappings);
+
+            // Help & examples panel (inline, plain jQuery toggle — no modal).
+            $('#opa-help-btn').on('click', function() { $('#opa-help-panel').toggle(); });
+
+            // Copy buttons: clipboard API with a document.execCommand fallback.
+            $(document).off('click.opacopy').on('click.opacopy', '.opa-copy-btn', function() {
+                var code = $(this).closest('.opa-example').find('.opa-code').text();
+                var $btn = $(this);
+                function flash() { var t = $btn.text(); $btn.text('Copied'); setTimeout(function() { $btn.text(t); }, 1200); }
+                function fallback() {
+                    var ta = document.createElement('textarea');
+                    ta.value = code;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); flash(); } catch (e) { /* noop */ }
+                    document.body.removeChild(ta);
+                }
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code).then(flash, fallback);
+                } else {
+                    fallback();
+                }
+            });
+
+            // Preview input & test policy (uses the SSRF-safe admin route).
+            $('#opa-preview-btn').on('click', function() {
+                var cfg = getOpaConfigNode();
+                $('#opa-preview-result').hide().text('');
+                if (!cfg) {
+                    $('#opa-preview-result').show().text('Select a server whose config node has OPA enabled, then deploy, before testing.');
+                    return;
+                }
+                var $btn = $(this).prop('disabled', true);
+                var original = $btn.html();
+                $btn.html('<i class="fa fa-spinner fa-spin"></i> Testing…');
+                var sample = {
+                    method: $('#node-input-method').val() || 'GET',
+                    path: $('#node-input-path').val() || '/',
+                    route: $('#node-input-path').val() || '/',
+                    requiredScopes: E.parseScopes($('#node-input-requiredScopes').val()),
+                    operator: $('#node-input-scopeOperator').val() || 'AND'
+                };
+                $.ajax({
+                    url: 'api-gateway/test-opa',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ config: cfg.id, sample: sample }),
+                    success: function(result) {
+                        if (!result || result.success === false) {
+                            $('#opa-preview-result').show().text((result && result.error) || 'Test failed');
+                            return;
+                        }
+                        var lines = [];
+                        lines.push((result.reachable ? 'OK' : 'FAIL') + ' — reachable');
+                        lines.push((result.policyDefined ? 'OK' : 'FAIL') + ' — policy defined' + (result.policyDefined ? '' : ' (undefined document)'));
+                        if (result.errorCode) {
+                            lines.push('FAIL — ' + result.errorCode + (result.evalError ? ' (' + result.evalError + ')' : ''));
+                        } else {
+                            lines.push('Sample decision: allowed=' + result.allowed + ', reason=' + result.reason);
+                        }
+                        lines.push('');
+                        lines.push('Input document sent to OPA:');
+                        lines.push(JSON.stringify(result.input, null, 2));
+                        $('#opa-preview-result').show().text(lines.join('\n'));
+                    },
+                    error: function(xhr) {
+                        var m = 'Test request failed';
+                        if (xhr.responseJSON && xhr.responseJSON.error) { m = xhr.responseJSON.error; }
+                        $('#opa-preview-result').show().text(m);
+                    },
+                    complete: function() { $btn.prop('disabled', false).html(original); }
+                });
+            });
+
+            updateOpaVisibility();
+            updateOpaMappings();
 
             // CRUD visibility and SQL preview
             function updateCrudVisibility() {
@@ -577,6 +717,130 @@
             <option value="OR">OR (any required)</option>
         </select>
     </div>
+    <div class="form-row" id="opa-authority-notice" style="display:none; margin-top:-4px;">
+        <label>&nbsp;</label>
+        <span style="color:#f0ad4e; font-size:0.9em;"><i class="fa fa-exclamation-triangle"></i>
+        OPA is the authorization authority for this endpoint. Required Scopes are <b>not</b> checked by the gateway — express scope rules in your policy using <code>input.token.scope</code>. See Policy (OPA) &rarr; Help.</span>
+    </div>
+
+    <!-- Policy (OPA) Section -->
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-shield"></i> Policy (OPA)
+        </h4>
+    </div>
+    <div class="form-row" id="opa-disabled-notice" style="display:none; margin-top: 5px; padding: 8px; background:#f5f5f5; border-radius:4px;">
+        <span style="color:#666; font-size:0.9em;"><i class="fa fa-info-circle"></i> OPA is not enabled on the selected server's config node. These settings have no effect until you enable OPA there.</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-opaMode"><i class="fa fa-gavel"></i> Mode</label>
+        <select id="node-input-opaMode" style="width:70%;">
+            <option value="inherit">Inherit from config</option>
+            <option value="enforce">Enforce</option>
+            <option value="monitor">Monitor (evaluate &amp; log, never deny)</option>
+            <option value="off">Off</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-input-opaPolicyPath"><i class="fa fa-file-code-o"></i> Policy Path</label>
+        <input type="text" id="node-input-opaPolicyPath" placeholder="(inherit config path)">
+    </div>
+    <div class="form-row" style="margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="font-size:0.85em; color:#666;">Effective: <code id="opa-effective-path"></code></span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-opaInputMappings"><i class="fa fa-random"></i> Extra Input</label>
+        <input type="text" id="node-input-opaInputMappings" placeholder="resource.id -> params.id, resource.type -> 'document'">
+    </div>
+    <div class="form-row" style="margin-top:-6px;">
+        <label>&nbsp;</label>
+        <div id="opa-mapping-display" style="display:inline;"></div>
+    </div>
+    <div class="form-row" id="opa-mapping-error" style="display:none; margin-top:-6px;">
+        <label>&nbsp;</label>
+        <span style="color:#d9534f; font-size:0.85em;"></span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-opaIncludeBody"><i class="fa fa-file-text-o"></i> Include Body</label>
+        <input type="checkbox" id="node-input-opaIncludeBody" style="width:auto; margin-left:5px;">
+        <span style="margin-left:10px; color:#f0ad4e; font-size:0.9em;">Adds the request body to the policy input — reduces decision cache hit rate.</span>
+    </div>
+    <div class="form-row">
+        <button type="button" class="red-ui-button red-ui-button-small" id="opa-preview-btn"><i class="fa fa-flask"></i> Preview input &amp; test</button>
+        <button type="button" class="red-ui-button red-ui-button-small" id="opa-help-btn"><i class="fa fa-question-circle"></i> Help &amp; examples</button>
+        <div id="opa-preview-result" style="display:none; margin-top:8px; padding:8px; background:#f5f5f5; border-radius:4px; font-size:0.85em; white-space:pre-wrap;"></div>
+    </div>
+    <div class="form-row" id="opa-help-panel" style="display:none; margin-top:8px; padding:10px; background:#fbfbfb; border:1px solid #eee; border-radius:4px;">
+        <p style="margin-top:0;"><b>The canonical <code>input</code> document</b> (only the keys your policy is likely to read):</p>
+        <pre class="opa-code">{
+  "method": "GET",
+  "path":   "/api/v1/documents/doc-123",
+  "route":  "/api/v1/documents/:id",
+  "params": { "id": "doc-123" },
+  "query":  { "page": "1" },
+  "endpoint": { "requiredScopes": ["read:docs"], "operator": "AND" },
+  "token": { "sub": "...", "scope": "openid read:documents",
+             "realm_access": { "roles": ["user"] } }
+}</pre>
+        <p><b>Six things to know</b></p>
+        <ul style="font-size:0.9em;">
+            <li><code>input.token</code> is the gateway's <b>verified</b> claims — never a caller-supplied token.</li>
+            <li>Those claims travel as policy <b>data, not a credential</b>. The gateway authenticates to OPA with its <b>own separate</b> service token (two identities).</li>
+            <li><code>token</code> is <b>present only when authenticated</b> — omitted, never <code>null</code>. Test presence with <code>input.token</code>.</li>
+            <li><code>input.token.scope</code> is a <b>space-delimited string</b> — split it before any membership test.</li>
+            <li>Extra input is a <b>closed whitelist</b>: <code>token.*</code>, <code>user.*</code>, <code>method</code>, <code>path</code> and <code>route</code> cannot be written from request data.</li>
+            <li>When OPA is active, <b>OPA is the only authority</b> — Required Scopes is sent as <code>input.endpoint.requiredScopes</code> context but not checked by the gateway.</li>
+        </ul>
+        <p><b>Seven patterns</b> (each copyable)</p>
+        <div class="opa-example">
+            <div><b>1. Require a scope</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code">package gateway
+import rego.v1
+default allow := false
+token_scopes := {s | some s in split(input.token.scope, " ")}
+allow if "read:docs" in token_scopes</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>2. Require multiple scopes (AND)</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code">required := {"read:docs", "write:docs"}
+token_scopes := {s | some s in split(input.token.scope, " ")}
+allow if object.subset(token_scopes, required)</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>3. Require a role</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code"># Keycloak realm roles live at token.realm_access.roles;
+# client roles at token.resource_access.&lt;client&gt;.roles.
+allow if "admin" in input.token.realm_access.roles</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>4. Match the HTTP method</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code">allow if {
+    input.method == "GET"
+    input.token
+}</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>5. Match route (template) vs path (concrete)</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code"># input.route is the template; input.path is the concrete URL.
+allow if input.route == "/api/v1/documents/:id"</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>6. Use route params</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code"># NOTE: this compares a claim to a URL segment only — it is NOT true
+# ownership, which needs a resource lookup the gateway does not do in v1.
+allow if input.params.id == input.token.sub</pre>
+        </div>
+        <div class="opa-example">
+            <div><b>7. Anonymous vs authenticated</b> <button type="button" class="red-ui-button red-ui-button-small opa-copy-btn">Copy</button></div>
+            <pre class="opa-code">default allow := false
+is_authenticated if input.token   # true only when the key exists
+allow if {
+    is_authenticated
+    "read:docs" in {s | some s in split(input.token.scope, " ")}
+}</pre>
+        </div>
+    </div>
 
     <!-- CRUD Operation Section -->
     <div class="form-row" style="margin-top: 15px;">
@@ -888,6 +1152,8 @@
         .schema-section { margin-bottom: 10px; }
         .schema-section-header { cursor: pointer; }
         .schema-section-header:hover { background: #eee !important; }
+        .opa-code { background: #f5f5f5; border: 1px solid #eee; border-radius: 4px; padding: 8px; margin: 4px 0; font-family: monospace; font-size: 11px; white-space: pre; overflow-x: auto; }
+        .opa-example { margin: 8px 0; }
     </style>
 </script>
 
@@ -918,6 +1184,12 @@
         <dd>Rate limit status and remaining quota</dd>
         <dt>cache <span class="property-type">object</span></dt>
         <dd>Cache hit/miss status and key</dd>
+        <dt>opa <span class="property-type">object</span></dt>
+        <dd>OPA decision context (when OPA is active): <code>allowed</code>, <code>reason</code>,
+        <code>policyPath</code>, <code>mode</code>, <code>cached</code>, <code>durationMs</code>,
+        <code>decisionId</code>, <code>result</code>, <code>failOpen</code> and <code>error</code>.
+        A denied request never reaches the flow, so <code>msg.opa</code> is present only on allowed
+        (or monitor / fail-open) requests.</dd>
     </dl>
 
     <h3>Configuration</h3>
@@ -955,6 +1227,46 @@
 
     <h3>Authorization</h3>
     <p>Define required OAuth2 scopes with AND/OR operator logic.</p>
+
+    <h3>Policy (OPA)</h3>
+    <p>Per-endpoint overrides for OPA policy enforcement. When OPA is active for
+    this endpoint, the policy is the <b>single authority</b> — the gateway does
+    not also check Required Scopes (they are sent to the policy as
+    <code>input.endpoint.requiredScopes</code> context instead).</p>
+    <ul>
+        <li><b>Mode</b> — <code>inherit</code> uses the config-node default;
+        <code>enforce</code>/<code>monitor</code>/<code>off</code> override it. A blank
+        effective path or a disabled config forces <code>off</code>.</li>
+        <li><b>Policy Path</b> — a non-empty value overrides the config path and
+        creates its own client (its own cache and breaker).</li>
+        <li><b>Extra Input</b> — <code>target -&gt; source</code> pairs merged into the
+        policy input under a <b>closed whitelist</b>: writable targets are
+        <code>resource.*</code>, <code>environment.*</code>, <code>extra.*</code>,
+        <code>request_id</code>, <code>source_ip</code>; sources are
+        <code>params.*</code>, <code>query.*</code>, <code>headers.*</code>,
+        <code>body.*</code>, <code>auth.*</code>, <code>method</code>,
+        <code>path</code>, <code>route</code>, <code>ip</code> or a
+        <code>'literal'</code>. <code>token.*</code>, <code>user.*</code>,
+        <code>method</code>, <code>path</code> and <code>route</code> are not writable.</li>
+        <li><b>Include Body</b> — adds the request body to the input (reduces the
+        decision cache hit rate).</li>
+    </ul>
+    <p>The <b>canonical input</b> the policy receives:</p>
+    <pre class="opa-code">{
+  "method": "GET",
+  "path":   "/api/v1/documents/doc-123",
+  "route":  "/api/v1/documents/:id",
+  "params": { "id": "doc-123" },
+  "query":  { "page": "1" },
+  "endpoint": { "requiredScopes": ["read:docs"], "operator": "AND" },
+  "token": { "sub": "...", "scope": "openid read:documents",
+             "realm_access": { "roles": ["user"] } }
+}</pre>
+    <p>Key facts: <code>input.token</code> is the gateway's <b>verified</b> claims
+    (never a caller-supplied token); it is <b>present only when authenticated</b>
+    (omitted, never <code>null</code>); and <code>input.token.scope</code> is a
+    <b>space-delimited string</b> you split before membership tests. Use the
+    <b>Help &amp; examples</b> button for seven copyable Rego patterns.</p>
 
     <h3>CRUD Operations</h3>
     <p>Map endpoints to database operations with optional SQL generation.</p>

@@ -440,6 +440,59 @@
     };
 
     /**
+     * Validate OPA extra-input mappings against the closed whitelist (mirrors
+     * lib/opa-input.js). Grammar is "target -> source": the left side is a
+     * writable target, the right side a readable source. token.*, user.*,
+     * method, path and route are deliberately unwritable so a request field can
+     * never forge the identity a policy authorizes on.
+     * @param {string} mappingStr
+     * @returns {{valid: boolean, error?: string}}
+     */
+    ApiEndpointEditor.validateOpaMappings = function(mappingStr) {
+        if (!mappingStr || mappingStr.trim() === '') {
+            return { valid: true };
+        }
+        var SOURCE_PREFIXES = ['params', 'query', 'headers', 'body', 'auth'];
+        var SOURCE_SCALARS = ['method', 'path', 'route', 'ip'];
+        var TARGET_PREFIXES = ['resource', 'environment', 'extra'];
+        var TARGET_SCALARS = ['request_id', 'source_ip'];
+        function isLiteral(s) { return /^'[^']*'$/.test(s) || /^"[^"]*"$/.test(s); }
+        function validSource(s) {
+            if (isLiteral(s)) return true;
+            if (SOURCE_SCALARS.indexOf(s) !== -1) return true;
+            var i = s.indexOf('.');
+            if (i === -1) return false;
+            return SOURCE_PREFIXES.indexOf(s.slice(0, i)) !== -1 && s.slice(i + 1).length > 0;
+        }
+        function validTarget(t) {
+            if (TARGET_SCALARS.indexOf(t) !== -1) return true;
+            var i = t.indexOf('.');
+            if (i === -1) return false;
+            var key = t.slice(i + 1);
+            return TARGET_PREFIXES.indexOf(t.slice(0, i)) !== -1 && key.length > 0 && key.indexOf('.') === -1;
+        }
+        var pairs = mappingStr.split(',');
+        for (var i = 0; i < pairs.length; i++) {
+            var pair = pairs[i].trim();
+            if (!pair) continue;
+            var parts = pair.split('->');
+            if (parts.length !== 2) { parts = pair.split(':'); }
+            if (parts.length !== 2) {
+                return { valid: false, error: 'Invalid format: "' + pair + '". Use target->source' };
+            }
+            var target = parts[0].trim();
+            var source = parts[1].trim();
+            if (!validTarget(target)) {
+                return { valid: false, error: 'Invalid target "' + target + '": use resource.*, environment.*, extra.*, request_id or source_ip (token.*, user.*, method, path, route are not writable)' };
+            }
+            if (!validSource(source)) {
+                return { valid: false, error: 'Invalid source "' + source + '": use params.*, query.*, headers.*, body.*, auth.*, method, path, route, ip or a \'literal\'' };
+            }
+        }
+        return { valid: true };
+    };
+
+    /**
      * Parse scopes from comma-separated string
      * @param {string} scopesStr - Comma-separated scopes
      * @returns {string[]}
