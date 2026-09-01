@@ -345,6 +345,21 @@ describe("metrics-collector", function() {
                 const metrics = await collector.getMetrics();
                 metrics.should.containEql("test_opa_circuit_breaker_state 1");
             });
+
+            it("should record a non-decision as result=error with the taxonomy code, not a deny", async function() {
+                collector.recordOpaError({ policy: "authz", code: "OPA_HTTP_401", duration: 5 });
+                const metrics = await collector.getMetrics();
+                metrics.should.containEql("test_opa_operations_total");
+                metrics.should.containEql('result="error"');
+                metrics.should.containEql('reason="OPA_HTTP_401"');
+            });
+
+            it("should carry the policy reason on a deny counter", async function() {
+                collector.recordOpaEvaluation({ duration: 3, allowed: false, policy: "authz", reason: "insufficient_scope" });
+                const metrics = await collector.getMetrics();
+                metrics.should.containEql('result="deny"');
+                metrics.should.containEql('reason="insufficient_scope"');
+            });
         });
 
         describe("rate limiter metrics", function() {

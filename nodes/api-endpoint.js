@@ -118,6 +118,15 @@ module.exports = function(RED) {
         node.requiredScopes = parseScopes(config.requiredScopes);
         node.scopeOperator = config.scopeOperator === "OR" ? "OR" : "AND";  // Default to AND (requires all scopes)
 
+        // Per-endpoint OPA overrides (decision-001 D6, task-084). Precedence is
+        // resolved on the server node in resolveOpaSettings(); the endpoint only
+        // stores its overrides. `inherit` defers to the config-node default;
+        // a non-empty policy path creates its own client (its own cache/breaker).
+        node.opaMode = config.opaMode || "inherit";        // inherit | enforce | monitor | off
+        node.opaPolicyPath = config.opaPolicyPath || "";   // empty inherits the config path
+        node.opaInputMappings = config.opaInputMappings || ""; // closed-whitelist mappings
+        node.opaIncludeBody = config.opaIncludeBody === true;
+
         // CRUD operation mapping configuration
         node.crudOperation = validateCrudOperation(config.crudOperation);
         node.tableName = (config.tableName || "").trim();
@@ -849,7 +858,17 @@ module.exports = function(RED) {
                 errorHandlingEnabled: node.errorHandlingEnabled,
                 errorFormat: node.errorFormat,
                 includeStackTrace: node.includeStackTrace,
-                logErrors: node.logErrors
+                logErrors: node.logErrors,
+                // Resolved OPA policy (for the x-opa-policy OpenAPI extension,
+                // task-084 AC#5). Null when OPA is not active for this endpoint.
+                opa: (function() {
+                    const cfg = node.serverNode && node.serverNode.configNode;
+                    if (!cfg || !cfg.opaEnabled) return null;
+                    const mode = node.opaMode === "inherit" ? (cfg.opaMode || "enforce") : node.opaMode;
+                    const policyPath = (node.opaPolicyPath || "").trim() || (cfg.opaPolicyPath || "").trim();
+                    if (mode === "off" || !policyPath) return null;
+                    return { mode, policyPath, includeBody: node.opaIncludeBody === true };
+                })()
             };
         };
 
@@ -1185,8 +1204,13 @@ module.exports = function(RED) {
                     }
                 }
 
-                // Perform authorization check if scopes are required
-                if (node.requiredScopes.length > 0 && msg.req) {
+                // Perform the in-flow scope authorization check ONLY when OPA is
+                // not the authority for this endpoint. When OPA is active
+                // (msg.opa is present), the policy decision already authorized
+                // this request in the preHandler and is the single authority
+                // (decision-001 D6); requiredScopes is sent to the policy as
+                // context (input.endpoint.requiredScopes) but never re-checked here.
+                if (node.requiredScopes.length > 0 && msg.req && !msg.opa) {
                     // Get token scopes from auth context (populated by upstream auth middleware)
                     const tokenScopes = (msg.req.auth && msg.req.auth.scopes) || [];
                     const isAuthenticated = msg.req.auth && msg.req.auth.authenticated;

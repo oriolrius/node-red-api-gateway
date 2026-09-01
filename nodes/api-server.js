@@ -14,6 +14,46 @@ const {
     normalizePath
 } = require("../lib/path-utils");
 const { KeycloakClient } = require("../lib/keycloak-client");
+const { OpaClient, validateOpaConfig } = require("../lib/opa-client");
+const { buildOpaInput, parseOpaMappings } = require("../lib/opa-input");
+
+/**
+ * Map an OPA client/transport error to a stable taxonomy code. The same code
+ * appears in the 503 body `details.reason`, the opa_policy_check log field, the
+ * Prometheus `reason` label and `msg.opa.error.code` (decision-001, task-081),
+ * so a denial and an outage are never conflated.
+ * @param {Error} err
+ * @returns {string}
+ */
+function classifyOpaError(err) {
+    if (!err) return "UNKNOWN";
+    if (err.code === "DEADLINE") return "DEADLINE";
+    if (err.code === "TIMEOUT") return "TIMEOUT";
+    if (err.code === "CIRCUIT_OPEN") return "CIRCUIT_OPEN";
+    if (err.code === "CONFIG_INVALID") return "CONFIG_INVALID";
+    if (err.code === "POLICY_UNDEFINED") return "POLICY_UNDEFINED";
+    if (typeof err.statusCode === "number") return `OPA_HTTP_${err.statusCode}`;
+    return "NETWORK";
+}
+
+/**
+ * Classify an OPA `result` payload as an undefined-document config fault rather
+ * than a deny (decision-001, "The undefined-document trap"). OPA answers HTTP
+ * 200 `{}` for a path it does not define; that must become a 503, not a silent
+ * 403. Catches `undefined` or a non-array object carrying neither allow nor
+ * allowed. It cannot catch a wrong-but-defined path (that is the Test button's job).
+ * @param {*} result
+ * @returns {boolean}
+ */
+function isUndefinedDecision(result) {
+    if (result === undefined || result === null) return true;
+    if (typeof result === "boolean") return false;
+    if (Array.isArray(result)) return true;
+    if (typeof result === "object") {
+        return !(typeof result.allow === "boolean" || typeof result.allowed === "boolean");
+    }
+    return true;
+}
 
 module.exports = function(RED) {
     function ApiServerNode(config) {
@@ -65,6 +105,15 @@ module.exports = function(RED) {
 
         // Keycloak client for OAuth2 authentication
         node.keycloakClient = null;
+
+        // OPA policy enforcement (decision-001). One OpaClient per distinct
+        // resolved policy path — the decision cache key contains neither opaUrl
+        // nor policyPath, so a shared client would cross-serve decisions (D3).
+        node.opaClientsByPath = new Map();   // resolved policyPath -> OpaClient
+        node._opaFetchFn = null;             // test seam: inject a fake fetch
+        node._opaConfigInvalid = false;      // set when OPA config fails validation
+        node._opaFetchWrapper = null;        // bearer-injecting fetch wrapper
+        node._opaErrorDedup = new Set();     // deduped POLICY_UNDEFINED node.error keys
 
         /**
          * Initialize the OpenAPI generator with config settings
@@ -139,6 +188,444 @@ module.exports = function(RED) {
         }
 
         /**
+         * Build the bearer-injecting fetch wrapper used for EVERY outbound OPA
+         * request — decisions and the health check alike (decision-001 D7). The
+         * gateway authenticates to OPA with its OWN service token; the user's
+         * token is never forwarded. Covers both _makeRequest and getHealthStatus
+         * because both call `this._fetch`.
+         * @returns {Function}
+         */
+        function buildOpaFetchWrapper() {
+            return function(url, options = {}) {
+                // Read the token and the test seam at CALL time so a rotated
+                // credential — or a test-injected fetch (node._opaFetchFn) set
+                // after construction — takes effect without rebuilding clients.
+                const opaToken = node.configNode?.credentials?.opaToken;
+                const baseFetch = node._opaFetchFn || globalThis.fetch;
+                const headers = Object.assign({}, options.headers);
+                if (opaToken) {
+                    headers["Authorization"] = `Bearer ${opaToken}`;
+                }
+                return baseFetch(url, Object.assign({}, options, { headers }));
+            };
+        }
+
+        /**
+         * Config-node OPA settings -> OpaClient options, at the unit boundary:
+         * opaCacheTTL is seconds in the editor and ms in the client; 0 means
+         * "disable caching" (not "never expire"); opaIncludeAuditFields also
+         * disables the cache. A ms-looking TTL earns a defensive warn.
+         * @param {string} policyPath
+         * @returns {Object}
+         */
+        function opaClientOptions(policyPath) {
+            const cfg = node.configNode;
+            const ttlParsed = parseInt(cfg.opaCacheTTL, 10);
+            const ttl = Number.isNaN(ttlParsed) ? 60 : ttlParsed;
+            if (ttl >= 1000) {
+                node.warn(`OPA Cache TTL is ${ttl}s — that looks like milliseconds. This field is SECONDS.`);
+            }
+            const retry = parseInt(cfg.opaRetryAttempts, 10);
+            const cacheEnabled = ttl > 0 && cfg.opaIncludeAuditFields !== true;
+            return {
+                opaUrl: (cfg.opaUrl || "").trim(),
+                policyPath,
+                timeout: parseInt(cfg.opaTimeout, 10) || 2000,
+                retryAttempts: Number.isNaN(retry) ? 1 : retry,
+                deadline: parseInt(cfg.opaDeadline, 10) || 3000,
+                cacheEnabled,
+                cacheTtl: ttl > 0 ? ttl * 1000 : 0,
+                cacheMaxSize: parseInt(cfg.opaCacheMaxSize, 10) || 5000,
+                circuitBreakerThreshold: parseInt(cfg.opaCbThreshold, 10) || 5,
+                circuitBreakerTimeout: parseInt(cfg.opaCbTimeout, 10) || 30000,
+                logger: cfg.getLogger ? cfg.getLogger() : undefined,
+                fetchFn: node._opaFetchWrapper
+            };
+        }
+
+        /**
+         * Get (or lazily create) the OpaClient for a resolved policy path. One
+         * client per distinct path (D3) — the decision cache key contains no path.
+         * More than 16 distinct paths is a sizing smell and earns a warn.
+         * @param {string} policyPath
+         * @returns {OpaClient|null} null when OPA config is invalid/disabled
+         */
+        function getOrCreateOpaClient(policyPath) {
+            if (node._opaConfigInvalid || !node.configNode?.opaEnabled) {
+                return null;
+            }
+            if (node.opaClientsByPath.has(policyPath)) {
+                return node.opaClientsByPath.get(policyPath);
+            }
+            const client = new OpaClient(opaClientOptions(policyPath));
+            client.on("circuitOpen", () => {
+                node.warn(`OPA circuit breaker opened for policy ${policyPath} — policy calls fail fast`);
+                if (node.metricsCollector) node.metricsCollector.setOpaCircuitState(client.circuitState);
+            });
+            client.on("circuitClosed", () => {
+                node.log(`OPA circuit breaker closed for policy ${policyPath} — policy calls restored`);
+                if (node.metricsCollector) node.metricsCollector.setOpaCircuitState(client.circuitState);
+            });
+            client.on("circuitHalfOpen", () => {
+                if (node.metricsCollector) node.metricsCollector.setOpaCircuitState(client.circuitState);
+            });
+            // Defensive: OpaClient.isAllowed() emits "error", and an unhandled
+            // "error" on an EventEmitter throws. We never call isAllowed(), but a
+            // no-op listener guarantees a stray path cannot crash the process.
+            client.on("error", () => { /* isAllowed() is deprecated and never wired */ });
+            node.opaClientsByPath.set(policyPath, client);
+            if (node.opaClientsByPath.size > 16) {
+                node.warn(`This server now uses ${node.opaClientsByPath.size} distinct OPA policy paths — each is an independent cache and traffic stream to OPA. Consider consolidating.`);
+            }
+            return client;
+        }
+
+        /**
+         * Validate the OPA configuration and construct the primary client — a
+         * line-for-line analogue of initializeKeycloakClient (D3/D7). On any hard
+         * validation failure it forces mode OFF with a red status and a node.error
+         * and NEVER falls back to the built-in default policy path (D4).
+         */
+        function initializeOpaClient() {
+            node._opaConfigInvalid = false;
+            node.opaClientsByPath = new Map();
+
+            // A previously-wired config node that is now missing (getNode -> null)
+            // must not silently start unprotected (decision-001 "Lifecycle").
+            if (node.configNodeId && !node.configNode) {
+                node._opaConfigInvalid = true;
+                node.error("apigw-server: config node is missing or unwired — refusing to enforce OPA policy.");
+                return;
+            }
+            if (!node.configNode || !node.configNode.opaEnabled) {
+                return;
+            }
+
+            const cfg = node.configNode;
+            const opaUrl = (cfg.opaUrl || "").trim();
+            const policyPath = (cfg.opaPolicyPath || "").trim();
+
+            // An unset URL leaves OPA unconfigured — disabled, not pointing at
+            // localhost (task-076 AC#5). Soft-disable with a warn; endpoints then
+            // resolve to off. A NON-blank but malformed URL is a real error below.
+            if (!opaUrl) {
+                node._opaConfigInvalid = true;
+                node.warn("OPA is enabled but the OPA URL is not set — policy enforcement is disabled until it is configured.");
+                return;
+            }
+
+            // Hard validation — the first production caller of validateOpaConfig.
+            const validation = validateOpaConfig({
+                opaUrl,
+                timeout: cfg.opaTimeout,
+                retryAttempts: cfg.opaRetryAttempts,
+                cacheTtl: cfg.opaCacheTTL,
+                cacheMaxSize: cfg.opaCacheMaxSize,
+                circuitBreakerThreshold: cfg.opaCbThreshold
+            });
+            let urlOk = false;
+            try {
+                urlOk = !!new URL(opaUrl);
+            } catch (e) {
+                urlOk = false;
+            }
+            if (!validation.valid || !urlOk) {
+                node._opaConfigInvalid = true;
+                const why = !urlOk ? `opaUrl is not a valid URL ("${opaUrl}")` : validation.errors.join("; ");
+                node.error(`OPA configuration is invalid — enforcement disabled (mode forced off): ${why}`);
+                node.status({ fill: "red", shape: "dot", text: "OPA config invalid" });
+                return;
+            }
+
+            // Soft checks (D1/D7): warn but do not block — http:// and a missing
+            // token are valid for the e2e harness / local development.
+            if (opaUrl.toLowerCase().indexOf("https://") !== 0) {
+                node.warn(`OPA URL is not https:// ("${opaUrl}") — policy input carries verified JWT claims; use TLS in production.`);
+            }
+            if (!cfg.credentials?.opaToken) {
+                node.warn("OPA token is not set — required to call an OPA started with token authentication (D7).");
+            }
+
+            // Build the bearer wrapper now so endpoint-only policy paths (blank
+            // config path) still get an authenticated client at request time.
+            node._opaFetchWrapper = buildOpaFetchWrapper();
+
+            // Primary client only when the config path is non-blank (D5).
+            if (!policyPath) {
+                return;
+            }
+            const primary = getOrCreateOpaClient(policyPath);
+
+            // Re-point the health check at the LIVE client: its details then carry
+            // circuitState and, crucially, it authenticates with the gateway token
+            // via the same fetch wrapper (D7). The unauthenticated config-node
+            // createOpaHealthCheck would otherwise report a token-protected OPA as
+            // unhealthy while decisions succeed.
+            if (primary && node.configNode.healthCheckManager) {
+                node.configNode.healthCheckManager.registerCheck("opa", () => primary.getHealthStatus());
+            }
+        }
+
+        /**
+         * Resolve the effective OPA settings for an endpoint: config defaults
+         * overlaid by per-endpoint overrides, tighten-only (decision-001 D6 and
+         * the per-endpoint precedence table). An endpoint may select a mode or
+         * point at a stricter policy; it may NOT set fail-open or reconfigure the
+         * connection.
+         * @param {Object} endpointNode
+         * @returns {{active:boolean, mode:string, policyPath?:string}}
+         */
+        function resolveOpaSettings(endpointNode) {
+            const cfg = node.configNode;
+            if (!cfg || !cfg.opaEnabled || node._opaConfigInvalid) {
+                return { active: false, mode: "off" };
+            }
+            const epMode = endpointNode.opaMode || "inherit";
+            const mode = epMode === "inherit" ? (cfg.opaMode || "enforce") : epMode;
+
+            const epPath = (endpointNode.opaPolicyPath || "").trim();
+            const policyPath = epPath || (cfg.opaPolicyPath || "").trim();
+
+            if (mode === "off" || !policyPath) {
+                return { active: false, mode: "off", policyPath };
+            }
+
+            return {
+                active: true,
+                mode, // enforce | monitor
+                policyPath,
+                failOpen: cfg.opaFailOpen === true,   // config-only; endpoints cannot loosen
+                deadline: parseInt(cfg.opaDeadline, 10) || 3000,
+                tokenMode: cfg.opaTokenMode || "full",
+                tokenClaims: (cfg.opaTokenClaims || "").split(",").map(s => s.trim()).filter(Boolean),
+                includeAuditFields: cfg.opaIncludeAuditFields === true,
+                includeBody: endpointNode.opaIncludeBody === true,
+                mappings: parseOpaMappings(endpointNode.opaInputMappings || "")
+            };
+        }
+
+        /**
+         * Assemble the buildOpaInput() context from the request and endpoint.
+         * Uses request.auth.payload (VERIFIED claims) as the token — never the
+         * raw caller token string (request.auth.token).
+         */
+        function opaInputContext(request, endpointNode, settings) {
+            const auth = request.auth || { authenticated: false };
+            return {
+                method: request.method,
+                path: (request.url || "").split("?")[0],
+                route: request.routeOptions?.url,
+                params: request.params || {},
+                query: request.query || {},
+                headers: request.headers || {},
+                body: request.body,
+                ip: request.ip,
+                auth: { authenticated: auth.authenticated === true, token: auth.payload },
+                endpoint: {
+                    requiredScopes: endpointNode.requiredScopes || [],
+                    operator: endpointNode.scopeOperator || "AND"
+                },
+                tokenMode: settings.tokenMode,
+                tokenClaims: settings.tokenClaims,
+                mappings: settings.mappings,
+                includeBody: settings.includeBody,
+                includeAuditFields: settings.includeAuditFields,
+                requestId: request.id,
+                sourceIp: request.ip
+            };
+        }
+
+        function extractOpaReason(result) {
+            if (!result || typeof result !== "object") return null;
+            return result.reason || result.decision_reason || null;
+        }
+
+        /**
+         * Emit the flat, greppable opa_policy_check structured log (task-081).
+         * decisionId is a top-level field, present on a fresh decision and absent
+         * on a cache hit; the input document is NEVER logged.
+         */
+        function logOpaCheck(request, opa) {
+            const logger = node.configNode && node.configNode.getLogger && node.configNode.getLogger();
+            if (!logger) return;
+            const rec = {
+                event: "opa_policy_check",
+                allowed: opa.allowed,
+                enforced: opa.mode === "enforce",
+                mode: opa.mode,
+                policyPath: opa.policyPath,
+                reason: opa.reason,
+                cached: opa.cached,
+                durationMs: opa.durationMs,
+                method: request.method,
+                path: (request.url || "").split("?")[0],
+                route: request.routeOptions && request.routeOptions.url,
+                sub: request.auth && request.auth.sub
+            };
+            if (opa.decisionId !== undefined) rec.decisionId = opa.decisionId;
+            logger.info(rec, opa.allowed ? "OPA allow" : "OPA deny/non-decision");
+        }
+
+        function meterOpa(policyPath, opa) {
+            const m = node.metricsCollector;
+            if (!m) return;
+            if (opa.error) {
+                m.recordOpaError({ policy: policyPath, code: opa.error.code, duration: opa.durationMs });
+                return;
+            }
+            m.recordOpaEvaluation({ duration: opa.durationMs, allowed: opa.allowed, policy: policyPath, reason: opa.reason });
+            m.recordOpaCache(opa.cached === true);
+        }
+
+        /**
+         * Create the OPA policy-enforcement preHandler for an endpoint. Runs
+         * after the auth middleware, so request.auth carries verified claims.
+         * A denial or non-decision replies directly and the route handler never
+         * runs; an allow (or monitor / fail-open) attaches request.opa and
+         * proceeds. (decision-001 D2/D4/D5/D6)
+         * @param {Object} endpointNode
+         * @returns {Function}
+         */
+        function createOpaMiddleware(endpointNode) {
+            return async function(request, reply) {
+                const settings = resolveOpaSettings(endpointNode);
+                if (!settings.active) {
+                    return; // OPA off for this endpoint; requiredScopes (if any) still applies
+                }
+                const policyPath = settings.policyPath;
+
+                const finish = (opa) => {
+                    request.opa = opa;
+                    logOpaCheck(request, opa);
+                    meterOpa(policyPath, opa);
+                };
+
+                // 503 fail-closed (or 200 fail-open + warn / monitor pass-through)
+                // for anything that is not a valid decision.
+                const failClosed = (opa) => {
+                    finish(opa);
+                    if (settings.mode === "monitor") return;          // monitor never blocks
+                    if (settings.failOpen) {
+                        node.warn(`OPA fail-open: ${opa.reason} for ${request.method} ${request.url} — allowing request (opaFailOpen).`);
+                        return;
+                    }
+                    reply.code(503).send({
+                        statusCode: 503,
+                        error: "Service Unavailable",
+                        message: "Authorization service unavailable",
+                        details: { reason: opa.reason, policyPath: opa.policyPath }
+                    });
+                };
+
+                const client = getOrCreateOpaClient(policyPath);
+                if (!client) {
+                    return failClosed({
+                        allowed: false, reason: "CONFIG_INVALID", policyPath, mode: settings.mode,
+                        cached: false, durationMs: 0, decisionId: undefined, result: undefined,
+                        failOpen: settings.failOpen, error: { code: "CONFIG_INVALID", message: "OPA client unavailable" }
+                    });
+                }
+
+                let input;
+                try {
+                    input = buildOpaInput(opaInputContext(request, endpointNode, settings));
+                } catch (err) {
+                    // A forbidden/invalid mapping (closed whitelist) is a config fault.
+                    return failClosed({
+                        allowed: false, reason: "CONFIG_INVALID", policyPath, mode: settings.mode,
+                        cached: false, durationMs: 0, decisionId: undefined, result: undefined,
+                        failOpen: settings.failOpen, error: { code: "CONFIG_INVALID", message: err.message }
+                    });
+                }
+
+                const start = Date.now();
+                let decision = null;
+                let evalError = null;
+                let timer = null;
+                try {
+                    decision = await Promise.race([
+                        client.evaluate(input),
+                        new Promise((_resolve, reject) => {
+                            timer = setTimeout(() => {
+                                const e = new Error("OPA evaluation deadline exceeded");
+                                e.code = "DEADLINE";
+                                reject(e);
+                            }, settings.deadline);
+                        })
+                    ]);
+                } catch (err) {
+                    evalError = err;
+                } finally {
+                    if (timer) clearTimeout(timer);
+                }
+                const durationMs = Date.now() - start;
+
+                if (evalError) {
+                    const code = classifyOpaError(evalError);
+                    return failClosed({
+                        allowed: false, reason: code, policyPath, mode: settings.mode,
+                        cached: false, durationMs, decisionId: undefined, result: undefined,
+                        failOpen: settings.failOpen, error: { code, message: evalError.message }
+                    });
+                }
+
+                // Undefined-document trap: HTTP 200 {} (or an object without
+                // allow/allowed) is a CONFIG fault, not a deny.
+                if (isUndefinedDecision(decision.result)) {
+                    const dedupKey = `undef:${policyPath}`;
+                    if (!node._opaErrorDedup.has(dedupKey)) {
+                        node._opaErrorDedup.add(dedupKey);
+                        node.error(`OPA policy path "${policyPath}" returned an undefined document (HTTP 200 {}). It does not resolve to a decision — this is a configuration error, not a denial.`);
+                    }
+                    if (typeof client.clearCache === "function") client.clearCache();
+                    return failClosed({
+                        allowed: false, reason: "POLICY_UNDEFINED", policyPath, mode: settings.mode,
+                        cached: false, durationMs, decisionId: decision.decision_id, result: decision.result,
+                        failOpen: settings.failOpen, error: { code: "POLICY_UNDEFINED", message: "policy path returned an undefined document" }
+                    });
+                }
+
+                const allowed = decision.allowed === true;
+                const reason = extractOpaReason(decision.result) || (allowed ? "allow" : "policy_denied");
+                const opa = {
+                    allowed,
+                    reason,
+                    policyPath,
+                    mode: settings.mode,
+                    cached: decision.cached === true,
+                    durationMs,
+                    decisionId: decision.decision_id,
+                    result: decision.result,
+                    failOpen: settings.failOpen,
+                    error: null
+                };
+
+                if (allowed) {
+                    finish(opa);
+                    return; // proceed to the route handler
+                }
+
+                // A genuine policy denial.
+                finish(opa);
+                if (settings.mode === "monitor") {
+                    node.warn(`OPA monitor: ${request.method} ${request.url} would be DENIED (reason=${reason}) but monitor mode does not enforce.`);
+                    return;
+                }
+                // enforce: 401 only when the gateway's own state says unauthenticated
+                // AND the policy reason is an auth reason — never a policy string alone.
+                const authReason = reason === "missing_token" || reason === "token_expired";
+                const unauthenticated = !(request.auth && request.auth.authenticated);
+                const status = (authReason && unauthenticated) ? 401 : 403;
+                reply.code(status).send({
+                    statusCode: status,
+                    error: status === 401 ? "Unauthorized" : "Forbidden",
+                    message: status === 401 ? "Authentication required" : "Access denied by policy",
+                    details: { reason, policyPath, decisionId: decision.decision_id }
+                });
+            };
+        }
+
+        /**
          * Get the full path for an endpoint including base path from config
          * @param {string} endpointPath - The endpoint's path
          * @returns {string} Full path with base path prefix
@@ -193,9 +680,19 @@ module.exports = function(RED) {
          */
         function createAuthMiddleware(endpointNode) {
             return async function(request, reply) {
-                // Skip auth if no scopes required and OAuth2 not enabled
+                // Skip auth only if no scopes required, OAuth2 is off, AND OPA is
+                // not active for this endpoint. On an OPA-only gateway (OPA
+                // replaces scope checks, no requiredScopes) the token must still
+                // be read so OPA sees a verified — not anonymous — input (D2).
                 const requiresAuth = endpointNode.requiredScopes && endpointNode.requiredScopes.length > 0;
-                if (!requiresAuth && !node.configNode?.oauth2Enabled) {
+                const opaActive = resolveOpaSettings(endpointNode).active;
+                // When OPA is active it is the single authority (D6): the auth
+                // step only POPULATES request.auth and never rejects — a missing
+                // or invalid token yields an anonymous input and OPA decides
+                // (returning 401/403 via the policy). Only enforce token
+                // presence here on non-OPA endpoints that require scopes.
+                const enforceAuthHere = requiresAuth && !opaActive;
+                if (!requiresAuth && !node.configNode?.oauth2Enabled && !opaActive) {
                     request.auth = { authenticated: false };
                     return;
                 }
@@ -203,7 +700,7 @@ module.exports = function(RED) {
                 // Extract Bearer token from Authorization header
                 const authHeader = request.headers.authorization;
                 if (!authHeader || !authHeader.startsWith("Bearer ")) {
-                    if (requiresAuth) {
+                    if (enforceAuthHere) {
                         reply.code(401).send({
                             statusCode: 401,
                             error: "Unauthorized",
@@ -219,7 +716,7 @@ module.exports = function(RED) {
 
                 // Validate token with Keycloak
                 if (!node.keycloakClient) {
-                    if (requiresAuth) {
+                    if (enforceAuthHere) {
                         reply.code(503).send({
                             statusCode: 503,
                             error: "Service Unavailable",
@@ -234,7 +731,7 @@ module.exports = function(RED) {
                 const validationResult = await node.keycloakClient.validateToken(token);
 
                 if (!validationResult.valid) {
-                    if (requiresAuth) {
+                    if (enforceAuthHere) {
                         reply.code(401).send({
                             statusCode: 401,
                             error: "Unauthorized",
@@ -353,6 +850,12 @@ module.exports = function(RED) {
                     payload: request.body
                 };
 
+                // Carry the OPA decision (if any) onto the message so downstream
+                // (and the endpoint's single-authority skip) can see it (D6).
+                if (request.opa) {
+                    msg.opa = request.opa;
+                }
+
                 // Create a promise that will be resolved when the response is sent
                 return new Promise((resolve, _reject) => {
                     // Set timeout for response
@@ -453,9 +956,23 @@ module.exports = function(RED) {
                     handler: createRouteHandler(endpointNode)
                 };
 
-                // Add authentication middleware if OAuth2 is enabled
-                if (node.keycloakClient || (endpointNode.requiredScopes && endpointNode.requiredScopes.length > 0)) {
-                    routeOptions.preHandler = createAuthMiddleware(endpointNode);
+                // Build the preHandler chain as an array — auth first, then OPA
+                // (decision-001 D2). The attach condition widens for OPA-only
+                // endpoints so they still get the hook. Never a second assignment
+                // to routeOptions.preHandler.
+                const opaSettings = resolveOpaSettings(endpointNode);
+                const needsAuth = node.keycloakClient ||
+                    (endpointNode.requiredScopes && endpointNode.requiredScopes.length > 0) ||
+                    opaSettings.active;
+                const preHandlers = [];
+                if (needsAuth) {
+                    preHandlers.push(createAuthMiddleware(endpointNode));
+                }
+                if (opaSettings.active) {
+                    preHandlers.push(createOpaMiddleware(endpointNode));
+                }
+                if (preHandlers.length > 0) {
+                    routeOptions.preHandler = preHandlers;
                 }
 
                 // Register the route
@@ -873,6 +1390,20 @@ module.exports = function(RED) {
                 node.keycloakClient.shutdown();
                 node.keycloakClient = null;
             }
+
+            // Shutdown every OPA client (clears sweep timers, caches, breakers
+            // and listeners). restartServer() only calls fastify.close(), so the
+            // warm caches deliberately survive a debounced restart (D3).
+            if (node.opaClientsByPath) {
+                for (const client of node.opaClientsByPath.values()) {
+                    try {
+                        client.shutdown();
+                    } catch (e) {
+                        // best-effort teardown
+                    }
+                }
+                node.opaClientsByPath.clear();
+            }
         }
 
         /**
@@ -1024,6 +1555,10 @@ module.exports = function(RED) {
 
         // Initialize Keycloak client for OAuth2 authentication
         initializeKeycloakClient();
+
+        // Initialize OPA policy enforcement (validates config, builds the
+        // primary client, re-points the health check at the live client).
+        initializeOpaClient();
 
         // Start server if we have fastify dependencies
         // Use setImmediate to allow endpoints to register first
