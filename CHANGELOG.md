@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.9.0
 
 ### OPA Policy Enforcement v1 (2026-09-01)
 
