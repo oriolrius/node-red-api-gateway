@@ -23,7 +23,7 @@ Configure required OAuth2 scopes for endpoint access. Support AND/OR operators f
 <!-- AC:BEGIN -->
 - [x] #1 Required scopes array configuration
 - [x] #2 Scope operator selection (AND requires all, OR requires any)
-- [x] #3 Integration with OPA client for policy evaluation
+- [x] #3 Scope configuration wired into gateway authorization. NOTE (backlog hygiene, task-090): request-time OPA policy evaluation did NOT exist when this task was closed — `nodes/api-endpoint.js` contained zero occurrences of `opa`. It is delivered by milestone "OPA Policy Enforcement v1" (task-080, where OPA is the single authority and `requiredScopes` is sent to the policy as context)
 - [x] #4 401/403 responses for unauthorized access
 - [x] #5 Scopes exported for OpenAPI security definitions
 <!-- AC:END -->

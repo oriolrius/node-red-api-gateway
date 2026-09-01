@@ -34,7 +34,7 @@ Create an AI-assisted OPA policy generator module (`lib/ai-policy-generator.js`)
 - [ ] #6 Implement validateSyntax(regoCode) method that checks Rego syntax using OPA's /v1/compile endpoint before deployment
 - [ ] #7 Support policy templates as context (from task-055) to guide generation style
 - [ ] #8 Implement interactive refinement: user describes requirement → Claude generates → user reviews → Claude refines
-- [ ] #9 Generate policies that follow project conventions: package naming (api.gateway.*), standard input structure ({user, method, path, body})
+- [ ] #9 Generate policies against the CANONICAL input document defined in decision-001 (method, path as a STRING, route, params, query, endpoint, and token only when authenticated — never `{user, method, path, body}`); use `gateway.rego`'s package as an EXAMPLE, not a reserved convention — the gateway reserves no namespace and prescribes no `api.gateway.*` naming (amended by backlog hygiene, task-090)
 - [ ] #10 Support streaming responses for real-time policy generation feedback
 - [ ] #11 Unit tests with mocked Claude and OPA responses
 - [ ] #12 Integration test deploying generated policy to OPA and validating evaluation
