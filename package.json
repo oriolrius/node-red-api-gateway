@@ -1,6 +1,6 @@
 {
   "name": "@oriolrius/node-red-api-gateway",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Node-RED nodes for API gateway functionality",
   "keywords": [
     "node-red"
@@ -42,6 +42,7 @@
     "test:client-credentials": "node tests/e2e/client-credentials-integration.test.js",
     "test:opa": "node tests/e2e/opa-integration.test.js",
     "test:opa-enforcement": "mocha tests/e2e/opa-enforcement.test.js --exit",
+    "test:e2e-hardening": "mocha tests/e2e/gateway-hardening.test.js --exit",
     "setup:certs": "bash tests/e2e/setup-certs.sh",
     "test:openapi-tls": "node tests/e2e/openapi-tls.test.js",
     "test:full-stack": "node tests/e2e/full-stack-integration.test.js",

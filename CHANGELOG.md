@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.10.0
+
+### Gateway hardening: metrics access, DB error hygiene, request bodies (2026-09-28)
+
+**BREAKING CHANGES:**
+
+- **`/metrics` is opt-in.** A new `apigw-server` has metrics off, and the runtime
+  only enables them when `metricsEnabled` is `true`. Flows saved from the
+  editor keep their stored value, so existing servers are unaffected. Flows
+  built without the property (e.g. generated JSON) lose `/metrics` until
+  `metricsEnabled: true` is set.
+- **Auto-CRUD database errors no longer return the raw driver message**, and are
+  no longer always `500`. See below. Clients that parsed `detail` for SQL text
+  must use the status code, or enable `exposeDbErrors` in development.
+
+#### Security
+
+- **Metrics access control** ([#5]): new `metricsAuth` on `apigw-server`:
+  - `none`: public. Still supported, now an explicit choice with an editor
+    warning.
+  - `bearer`: static token credential.
+  - `basic`: username/password credentials.
+  - `oauth2`: token validated by the config node's Keycloak settings, with
+    optional `metricsRequiredScopes` (all/any).
+
+  An optional `metricsAllowedIps` IP/CIDR allowlist (IPv4/IPv6) answers `403`
+  to other sources. Failures return `401` with a `WWW-Authenticate` challenge,
+  or `403`. A mode that is missing its credentials fails closed with `503`
+  instead of serving public metrics.
+- **Auto-CRUD SQL errors don't leak schema details** ([#4]): responses carry a
+  generic `detail` and a `requestId`, and the raw message is only logged
+  server-side. SQL Server errors are mapped to proper statuses:
+  - PK/unique violation → `409`
+  - NOT NULL, type conversion, truncation and FK/CHECK violations on write →
+    `400`
+  - deleting a row that is still referenced → `409`
+  - lost connection → `503`
+  - anything else → `500`
+
+  `exposeDbErrors` (or `includeStackTrace`) on the endpoint returns the raw
+  message for development.
+
+#### Added
+
+- **`problemTypeBaseUri`** on `apigw-config` sets the RFC 7807 `type` base of
+  the auto-CRUD problem responses (default unchanged:
+  `https://api.example.com/errors/`) ([#4]).
+- **Configurable request bodies** ([#6]) on `apigw-server`:
+  - `bodyLimit`: bytes, default 1 MiB.
+  - `binaryBodyEnabled`: opt-in.
+  - `binaryContentTypes`: default `image/*,application/octet-stream`.
+
+  Matching uploads reach the flow as a `Buffer` in `msg.req.body`, so
+  file/image upload endpoints work without base64-in-JSON.
+- `npm run test:e2e-hardening`: a self-contained e2e covering all of the above,
+  with real HTTP, real RS256 JWTs against a JWKS server and a real SQL Server
+  2022 container.
+
+[#4]: https://github.com/oriolrius/node-red-api-gateway/issues/4
+[#5]: https://github.com/oriolrius/node-red-api-gateway/issues/5
+[#6]: https://github.com/oriolrius/node-red-api-gateway/issues/6
+
 ## 0.9.0
 
 ### OPA Policy Enforcement v1 (2026-09-01)
