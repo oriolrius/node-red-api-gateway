@@ -130,7 +130,26 @@ HTTP server node that hosts your API endpoints.
 - Reference to apigw-config node
 - OpenAPI specification endpoint (`/openapi.json`)
 - Swagger UI documentation (`/docs`)
-- Prometheus metrics endpoint (`/metrics`)
+- Prometheus metrics endpoint (`/metrics`), opt-in and served on the API port.
+  Access modes: `none` (public), `bearer` (static token), `basic`
+  (username/password) or `oauth2` (Keycloak-validated token with optional
+  scopes), plus an optional IP/CIDR allowlist
+- Request body limit (`bodyLimit`, default 1 MiB) and opt-in raw/binary bodies
+  (`binaryBodyEnabled`, `binaryContentTypes`, default
+  `image/*,application/octet-stream`): matching uploads reach the flow as a
+  `Buffer` in `msg.req.body`
+
+**Metrics security:** endpoint auth (Required Scopes, OPA) does not cover
+`/metrics`. With `metricsAuth: none` anyone who can reach the port can read
+process and traffic metrics, so pick an auth mode and/or `Allowed IPs` on
+exposed servers. Prometheus scrape examples:
+
+```yaml
+- job_name: api-gateway
+  authorization: { credentials: <metrics token> }   # metricsAuth: bearer
+  # basic_auth: { username: prometheus, password: <password> }   # metricsAuth: basic
+  static_configs: [{ targets: ["gateway:3000"] }]
+```
 
 **Features:**
 - Automatic route registration from apigw-endpoint nodes
@@ -190,6 +209,12 @@ Individual API endpoint definition node.
 - Error format (RFC 7807, generic, custom)
 - Stack trace inclusion (dev mode)
 - Custom error code mappings
+- Auto-CRUD database errors never expose the raw driver message by default:
+  PK/unique violations → `409`, NOT NULL / conversion / truncation /
+  constraint violations → `400` (FK on delete → `409`), connection loss → `503`,
+  anything else → `500`, each with a generic `detail` and a `requestId`.
+  `exposeDbErrors` (dev mode) returns the raw message; the RFC 7807 `type`
+  base URI is set with `problemTypeBaseUri` on apigw-config
 
 ## Examples
 
@@ -329,6 +354,10 @@ npm run test:e2e
 
 # Stop the Docker stack
 npm run docker:e2e:down
+
+# Self-contained hardening e2e: body limits/uploads, /metrics access modes
+# (real JWTs) and auto-CRUD DB errors (starts its own SQL Server container)
+npm run test:e2e-hardening
 ```
 
 ### Linting
