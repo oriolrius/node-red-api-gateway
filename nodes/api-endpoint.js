@@ -35,6 +35,8 @@ const {
     createRateLimitError
 } = require("../lib/rate-limiter");
 
+const { buildDbErrorResponse, problemTypeUri } = require("../lib/db-errors");
+
 const {
     CACHE_KEY_STRATEGIES,
     CACHE_DEFAULTS,
@@ -247,6 +249,7 @@ module.exports = function(RED) {
             ? config.errorFormat
             : ERROR_DEFAULTS.format;
         node.includeStackTrace = config.includeStackTrace === true;  // Dev mode only
+        node.exposeDbErrors = config.exposeDbErrors === true;  // Dev mode only: raw SQL messages in responses
         node.logErrors = config.logErrors !== false;  // Enabled by default
         node.customErrorCodes = {};
         node.errorHandler = null;
@@ -1432,7 +1435,7 @@ module.exports = function(RED) {
                                 if (result.data.length === 0) {
                                     statusCode = 404;
                                     responseData = {
-                                        type: "https://api.example.com/errors/not-found",
+                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
                                         title: "Not Found",
                                         status: 404,
                                         detail: `${node.tableName} not found`
@@ -1451,7 +1454,7 @@ module.exports = function(RED) {
                                 if (result.rowsAffected === 0) {
                                     statusCode = 404;
                                     responseData = {
-                                        type: "https://api.example.com/errors/not-found",
+                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
                                         title: "Not Found",
                                         status: 404,
                                         detail: `${node.tableName} not found`
@@ -1465,7 +1468,7 @@ module.exports = function(RED) {
                                 if (result.rowsAffected === 0) {
                                     statusCode = 404;
                                     responseData = {
-                                        type: "https://api.example.com/errors/not-found",
+                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
                                         title: "Not Found",
                                         status: 404,
                                         detail: `${node.tableName} not found`
@@ -1506,23 +1509,33 @@ module.exports = function(RED) {
                                 return;
                             }
                         } catch (sqlErr) {
+                            const errRequestId = requestId || msg.req?.headers?.["x-request-id"] || msg._msgid;
+                            // The raw driver message stays server-side (it names tables,
+                            // columns and constraints); clients get a generic detail.
                             if (requestLogger) {
                                 requestLogger.error({
                                     event: "crud_sql_error",
                                     operation: node.crudOperation,
                                     error: sqlErr.message,
+                                    sqlNumber: sqlErr.number,
                                     stack: sqlErr.stack
                                 }, `CRUD SQL error: ${sqlErr.message}`);
+                            } else {
+                                node.warn(`CRUD SQL error (${node.crudOperation} ${node.tableName}, request ${errRequestId}): ${sqlErr.message}`);
                             }
 
                             // Send error response
                             if (msg.res && typeof msg.res.status === "function") {
-                                msg.res.status(500).json({
-                                    type: "https://api.example.com/errors/database-error",
-                                    title: "Database Error",
-                                    status: 500,
-                                    detail: sqlErr.message
+                                const problem = buildDbErrorResponse(sqlErr, {
+                                    operation: node.crudOperation,
+                                    expose: node.exposeDbErrors || node.includeStackTrace,
+                                    requestId: errRequestId,
+                                    typeBase: configNode.problemTypeBaseUri
                                 });
+                                if (!requestId && errRequestId) {
+                                    msg.res.set("x-request-id", errRequestId);
+                                }
+                                msg.res.status(problem.status).json(problem.body);
 
                                 if (done) {
                                     done();
@@ -1534,7 +1547,7 @@ module.exports = function(RED) {
                         // Database not ready but useFlowOutput is false - return error
                         if (msg.res && typeof msg.res.status === "function") {
                             msg.res.status(503).json({
-                                type: "https://api.example.com/errors/service-unavailable",
+                                type: problemTypeUri(configNode?.problemTypeBaseUri, "service-unavailable"),
                                 title: "Service Unavailable",
                                 status: 503,
                                 detail: "Database connection not available"

@@ -57,6 +57,7 @@
             apiVersionInPath: { value: true },
             // OpenAPI configuration
             openapiTitle: { value: "API Gateway" },
+            problemTypeBaseUri: { value: "" },
             openapiDescription: { value: "" },
             openapiContactName: { value: "" },
             openapiContactEmail: { value: "" },
@@ -682,6 +683,13 @@
         <label for="node-config-input-openapiTermsOfService"><i class="fa fa-file-text-o"></i> Terms of Service</label>
         <input type="text" id="node-config-input-openapiTermsOfService" placeholder="https://example.com/terms">
     </div>
+    <div class="form-row" style="margin-top: 10px;">
+        <label style="width: 100%; font-weight: bold;"><i class="fa fa-exclamation-circle"></i> Error Responses</label>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-problemTypeBaseUri"><i class="fa fa-link"></i> Problem Type Base</label>
+        <input type="text" id="node-config-input-problemTypeBaseUri" placeholder="https://api.example.com/errors/">
+    </div>
 
     <!-- Logging Configuration Section -->
     <div class="form-row" style="margin-top: 15px;">
@@ -879,6 +887,15 @@
         <li><b>License Name</b> - Name of the license (e.g., "MIT", "Apache 2.0")</li>
         <li><b>License URL</b> - URL to the full license text</li>
         <li><b>Terms of Service</b> - URL to terms of service</li>
+    </ul>
+
+    <h4>Error Responses</h4>
+    <ul>
+        <li><b>Problem Type Base</b> - Base URI for the RFC 7807 <code>type</code> of the auto-CRUD error
+            responses; the gateway appends a slug (<code>not-found</code>, <code>conflict</code>,
+            <code>invalid-data</code>, <code>database-error</code>, <code>service-unavailable</code>).
+            Empty keeps the default <code>https://api.example.com/errors/</code>.
+            Examples: <code>https://api.mycompany.com/problems/</code>, <code>urn:problem:</code></li>
     </ul>
 
     <h3>Logging Configuration</h3>

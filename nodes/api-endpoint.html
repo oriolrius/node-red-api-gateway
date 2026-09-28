@@ -67,6 +67,7 @@
             errorHandlingEnabled: { value: true },
             errorFormat: { value: "rfc7807" },
             includeStackTrace: { value: false },
+            exposeDbErrors: { value: false },
             logErrors: { value: true },
             customErrorCodes: { value: "" }
         },
@@ -1124,6 +1125,11 @@ allow if {
             <span style="margin-left: 5px;">Include stack trace (development only)</span>
         </div>
         <div class="form-row">
+            <label for="node-input-exposeDbErrors"><i class="fa fa-database"></i> DB Errors</label>
+            <input type="checkbox" id="node-input-exposeDbErrors" style="width: auto;">
+            <span style="margin-left: 5px;">Return raw database error messages (development only)</span>
+        </div>
+        <div class="form-row">
             <label for="node-input-logErrors"><i class="fa fa-pencil"></i> Log Errors</label>
             <input type="checkbox" id="node-input-logErrors" style="width: auto;">
             <span style="margin-left: 5px;">Log errors to console</span>
@@ -1270,6 +1276,17 @@ allow if {
 
     <h3>CRUD Operations</h3>
     <p>Map endpoints to database operations with optional SQL generation.</p>
+    <p>When Auto SQL executes the query and the database rejects it, the response is an RFC 7807
+    problem with a <b>generic</b> <code>detail</code> and a <code>requestId</code>. The raw database message,
+    which names tables, columns and constraints, is only logged server-side:</p>
+    <ul>
+        <li>PRIMARY KEY / UNIQUE violation, or deleting a row that is still referenced → <code>409</code></li>
+        <li>NULL into NOT NULL, type conversion, truncation, FOREIGN KEY / CHECK on insert or update → <code>400</code></li>
+        <li>Database connection lost / timeout → <code>503</code></li>
+        <li>Anything else → <code>500</code></li>
+    </ul>
+    <p>Tick <b>DB Errors</b> (or <b>Stack Trace</b>) in Error Handling to return the raw message in <code>detail</code>
+    while developing. The <code>type</code> base URI is set on the config node (<i>Problem Type Base</i>).</p>
 
     <h3>Pagination</h3>
     <p>Supports offset-based (<code>?page=1&limit=20</code>) and cursor-based pagination.</p>

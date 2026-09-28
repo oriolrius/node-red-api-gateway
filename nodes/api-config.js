@@ -334,6 +334,7 @@ module.exports = function(RED) {
 
         // OpenAPI configuration
         node.openapiTitle = config.openapiTitle || "API Gateway";
+        node.problemTypeBaseUri = (config.problemTypeBaseUri || "").trim();
         node.openapiDescription = config.openapiDescription || "";
         node.openapiContactName = config.openapiContactName || "";
         node.openapiContactEmail = config.openapiContactEmail || "";
