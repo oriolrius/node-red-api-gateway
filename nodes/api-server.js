@@ -8,6 +8,8 @@ const {
     createTimer
 } = require("../lib/logger");
 const { getMetricsCollector } = require("../lib/metrics-collector");
+const { parseMetricsAccess, createMetricsGuard } = require("../lib/metrics-access");
+const { parseBodyOptions, registerBinaryParsers } = require("../lib/body-parsing");
 const {
     pathsConflict,
     combinePaths,
@@ -71,10 +73,17 @@ module.exports = function(RED) {
         node.swaggerUiEnabled = config.swaggerUiEnabled === true;
         node.swaggerUiPath = config.swaggerUiPath || "/docs";
 
-        // Metrics configuration
-        node.metricsEnabled = config.metricsEnabled !== false;  // Enabled by default
+        // Metrics configuration (opt-in; the route shares the API listener)
+        node.metricsEnabled = config.metricsEnabled === true;
         node.metricsPath = config.metricsPath || "/metrics";
         node.metricsCollector = null;
+        node.metricsAccess = parseMetricsAccess(config, node.credentials);
+
+        // Request body configuration (bodyLimit in bytes; raw/binary bodies are opt-in)
+        const bodyOptions = parseBodyOptions(config);
+        node.bodyLimit = bodyOptions.bodyLimit;
+        node.binaryBodyEnabled = bodyOptions.binaryBodyEnabled;
+        node.binaryContentTypes = bodyOptions.binaryContentTypes;
 
         // Get reference to api-config node
         node.configNodeId = config.config;
@@ -674,6 +683,31 @@ module.exports = function(RED) {
         }
 
         /**
+         * Collect scopes and roles from a validated token payload: the `scope`
+         * claim, realm_access.roles, a custom `roles` claim, and client roles
+         * from resource_access (as "client:role").
+         * @param {Object} payload - Verified JWT payload
+         * @returns {Array<string>}
+         */
+        function collectTokenScopes(payload) {
+            const scopes = payload.scope ? payload.scope.split(" ") : [];
+            if (payload.realm_access?.roles) {
+                scopes.push(...payload.realm_access.roles);
+            }
+            if (Array.isArray(payload.roles)) {
+                scopes.push(...payload.roles);
+            }
+            if (payload.resource_access) {
+                for (const [resource, access] of Object.entries(payload.resource_access)) {
+                    if (access.roles) {
+                        scopes.push(...access.roles.map(r => `${resource}:${r}`));
+                    }
+                }
+            }
+            return scopes;
+        }
+
+        /**
          * Create authentication middleware for an endpoint
          * @param {Object} endpointNode - The api-endpoint node
          * @returns {Function} Fastify preHandler hook
@@ -745,25 +779,7 @@ module.exports = function(RED) {
 
                 // Extract user info and scopes
                 const payload = validationResult.payload;
-                const scopes = payload.scope ? payload.scope.split(" ") : [];
-
-                // Extract roles from various possible locations in the token
-                // 1. Standard Keycloak realm_access.roles
-                if (payload.realm_access?.roles) {
-                    scopes.push(...payload.realm_access.roles);
-                }
-                // 2. Custom claim 'roles' (from custom protocol mapper)
-                if (Array.isArray(payload.roles)) {
-                    scopes.push(...payload.roles);
-                }
-                // 3. Resource access roles (client-specific)
-                if (payload.resource_access) {
-                    for (const [resource, access] of Object.entries(payload.resource_access)) {
-                        if (access.roles) {
-                            scopes.push(...access.roles.map(r => `${resource}:${r}`));
-                        }
-                    }
-                }
+                const scopes = collectTokenScopes(payload);
 
                 // Determine roles array for auth context
                 const roles = payload.realm_access?.roles || payload.roles || [];
@@ -1120,6 +1136,7 @@ module.exports = function(RED) {
                         ignoreTrailingSlash: true
                     },
                     requestIdHeader: "x-request-id",
+                    bodyLimit: node.bodyLimit,
                     genReqId: (req) => {
                         // Use existing request ID or generate new one
                         return req.headers["x-request-id"] || generateRequestId();
@@ -1166,6 +1183,16 @@ module.exports = function(RED) {
 
                 // Create Fastify instance
                 node.fastify = fastify(fastifyOptions);
+
+                // Optional raw body parsers (e.g. image uploads) -> msg.req.body is a Buffer
+                const binaryMatchers = registerBinaryParsers(node.fastify, {
+                    bodyLimit: node.bodyLimit,
+                    binaryBodyEnabled: node.binaryBodyEnabled,
+                    binaryContentTypes: node.binaryContentTypes
+                });
+                if (binaryMatchers.length > 0) {
+                    node.log(`Raw body parsing enabled for ${node.binaryContentTypes.join(", ")} (bodyLimit ${node.bodyLimit} bytes)`);
+                }
 
                 // Add request/response timing hooks for logging and metrics
                 // Always add hooks - metrics may be enabled even without logging
@@ -1310,7 +1337,20 @@ module.exports = function(RED) {
                         }
                     });
 
-                    node.fastify.get(node.metricsPath, async (request, reply) => {
+                    const access = node.metricsAccess;
+                    for (const err of access.errors) {
+                        node.error(`${err} - ${node.metricsPath} will answer 503`);
+                    }
+                    const metricsGuard = createMetricsGuard(access, {
+                        validateToken: async (token) => {
+                            if (!node.keycloakClient) return null;
+                            const result = await node.keycloakClient.validateToken(token);
+                            if (!result.valid) return { valid: false, error: result.error };
+                            return { valid: true, scopes: collectTokenScopes(result.payload) };
+                        }
+                    });
+
+                    node.fastify.get(node.metricsPath, { preHandler: metricsGuard }, async (request, reply) => {
                         try {
                             const metrics = await node.metricsCollector.getMetrics();
                             reply.type(node.metricsCollector.getContentType());
@@ -1343,7 +1383,10 @@ module.exports = function(RED) {
                     node.log(`Swagger UI available at ${node.swaggerUiPath}`);
                 }
                 if (node.metricsEnabled) {
-                    node.log(`Prometheus metrics available at ${node.metricsPath}`);
+                    const a = node.metricsAccess;
+                    const ipNote = a.allowedIps.length > 0 ? `, allowed from ${a.allowedIps.join(", ")}` : "";
+                    const authNote = a.auth === "none" ? "public, no authentication" : `auth: ${a.auth}`;
+                    node.log(`Prometheus metrics available at ${node.metricsPath} (${authNote}${ipNote})`);
                 }
 
             } catch (err) {
@@ -1632,7 +1675,13 @@ module.exports = function(RED) {
         });
     }
 
-    RED.nodes.registerType("apigw-server", ApiServerNode);
+    RED.nodes.registerType("apigw-server", ApiServerNode, {
+        credentials: {
+            metricsToken: { type: "password" },
+            metricsUsername: { type: "text" },
+            metricsPassword: { type: "password" }
+        }
+    });
 
     // HTTP Admin endpoint for OpenAPI import
     RED.httpAdmin.post("/api-gateway/import-openapi", RED.auth.needsPermission("flows.write"), function(req, res) {

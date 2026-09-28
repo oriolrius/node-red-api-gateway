@@ -13,8 +13,21 @@
             swaggerUiEnabled: { value: false },
             swaggerUiPath: { value: "/docs" },
             // Metrics configuration
-            metricsEnabled: { value: true },
-            metricsPath: { value: "/metrics" }
+            metricsEnabled: { value: false },
+            metricsPath: { value: "/metrics" },
+            metricsAuth: { value: "none" },
+            metricsAllowedIps: { value: "" },
+            metricsRequiredScopes: { value: "" },
+            metricsScopeOperator: { value: "AND" },
+            // Request body configuration
+            bodyLimit: { value: 1048576, validate: RED.validators.number() },
+            binaryBodyEnabled: { value: false },
+            binaryContentTypes: { value: "image/*,application/octet-stream" }
+        },
+        credentials: {
+            metricsToken: { type: "password" },
+            metricsUsername: { type: "text" },
+            metricsPassword: { type: "password" }
         },
         inputs: 1,
         outputs: 1,
@@ -54,6 +67,22 @@
                 } else {
                     $(".metrics-path-row").hide();
                 }
+                $("#node-input-metricsAuth").trigger("change");
+            }).trigger("change");
+
+            // Show only the credential fields of the selected metrics auth mode
+            $("#node-input-metricsAuth").on("change", function() {
+                var enabled = $("#node-input-metricsEnabled").is(":checked");
+                var mode = $(this).val();
+                $(".metrics-auth-bearer").toggle(enabled && mode === "bearer");
+                $(".metrics-auth-basic").toggle(enabled && mode === "basic");
+                $(".metrics-auth-oauth2").toggle(enabled && mode === "oauth2");
+                $(".metrics-auth-none").toggle(enabled && mode === "none");
+            }).trigger("change");
+
+            // Toggle raw body content types visibility
+            $("#node-input-binaryBodyEnabled").on("change", function() {
+                $(".binary-types-row").toggle($(this).is(":checked"));
             }).trigger("change");
 
             // OpenAPI Import functionality
@@ -485,6 +514,74 @@
         <input type="text" id="node-input-metricsPath" placeholder="/metrics">
     </div>
 
+    <div class="form-row metrics-path-row">
+        <label for="node-input-metricsAuth"><i class="fa fa-lock"></i> Metrics Auth</label>
+        <select id="node-input-metricsAuth" style="width: 70%;">
+            <option value="none">None (public)</option>
+            <option value="bearer">Bearer token</option>
+            <option value="basic">Basic auth</option>
+            <option value="oauth2">OAuth2 token (Keycloak)</option>
+        </select>
+    </div>
+
+    <div class="form-row metrics-auth-none">
+        <label>&nbsp;</label>
+        <span style="color: #a60;"><i class="fa fa-exclamation-triangle"></i> Anyone who can reach this port can read the metrics.</span>
+    </div>
+
+    <div class="form-row metrics-auth-bearer">
+        <label for="node-input-metricsToken"><i class="fa fa-key"></i> Token</label>
+        <input type="password" id="node-input-metricsToken">
+    </div>
+
+    <div class="form-row metrics-auth-basic">
+        <label for="node-input-metricsUsername"><i class="fa fa-user"></i> Username</label>
+        <input type="text" id="node-input-metricsUsername">
+    </div>
+
+    <div class="form-row metrics-auth-basic">
+        <label for="node-input-metricsPassword"><i class="fa fa-key"></i> Password</label>
+        <input type="password" id="node-input-metricsPassword">
+    </div>
+
+    <div class="form-row metrics-auth-oauth2">
+        <label for="node-input-metricsRequiredScopes"><i class="fa fa-shield"></i> Scopes</label>
+        <input type="text" id="node-input-metricsRequiredScopes" placeholder="metrics:read (optional, comma-separated)" style="width: 50%;">
+        <select id="node-input-metricsScopeOperator" style="width: 18%;">
+            <option value="AND">all</option>
+            <option value="OR">any</option>
+        </select>
+    </div>
+
+    <div class="form-row metrics-path-row">
+        <label for="node-input-metricsAllowedIps"><i class="fa fa-filter"></i> Allowed IPs</label>
+        <input type="text" id="node-input-metricsAllowedIps" placeholder="any (e.g. 10.0.0.5, 192.168.1.0/24)">
+    </div>
+
+    <div class="form-row" style="margin-top: 15px;">
+        <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <i class="fa fa-upload"></i> Request Body
+        </h4>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-bodyLimit"><i class="fa fa-arrows-v"></i> Body Limit</label>
+        <input type="number" id="node-input-bodyLimit" placeholder="1048576" min="1" style="width: 150px;"> bytes
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-binaryBodyEnabled">
+            <i class="fa fa-file-image-o"></i> Raw Bodies
+        </label>
+        <input type="checkbox" id="node-input-binaryBodyEnabled" style="width: auto; margin-left: 5px;">
+        <span>accept raw (binary) request bodies</span>
+    </div>
+
+    <div class="form-row binary-types-row">
+        <label for="node-input-binaryContentTypes"><i class="fa fa-list"></i> Raw Types</label>
+        <input type="text" id="node-input-binaryContentTypes" placeholder="image/*,application/octet-stream">
+    </div>
+
     <!-- OpenAPI Import Section -->
     <div class="form-row" style="margin-top: 15px;">
         <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">
@@ -638,10 +735,49 @@
     <h4>Metrics Configuration</h4>
     <dl class="message-properties">
         <dt>Enable Metrics</dt>
-        <dd>When enabled, exposes Prometheus metrics at the configured path</dd>
+        <dd>Off by default. When enabled, exposes Prometheus metrics at the configured path, on the same
+            host and port as the API. The endpoint auth (Required Scopes, OPA) does <b>not</b> apply to it;
+            use <i>Metrics Auth</i> and <i>Allowed IPs</i> below.</dd>
 
         <dt>Metrics Path</dt>
         <dd>URL path for Prometheus metrics endpoint (default: /metrics)</dd>
+
+        <dt>Metrics Auth <span class="property-type">none | bearer | basic | oauth2</span></dt>
+        <dd>
+            <ul>
+                <li><b>None</b> - public: anyone who can reach the port can read the metrics.</li>
+                <li><b>Bearer token</b> - requires <code>Authorization: Bearer &lt;token&gt;</code> with the
+                    configured static token (Prometheus <code>authorization.credentials</code>).</li>
+                <li><b>Basic auth</b> - requires the configured username and password
+                    (Prometheus <code>basic_auth</code>).</li>
+                <li><b>OAuth2 token</b> - requires an access token validated by the config node's Keycloak
+                    settings, optionally holding the listed scopes/roles (all or any)
+                    (Prometheus <code>oauth2</code>).</li>
+            </ul>
+            A missing or wrong credential gets <code>401</code> with a <code>WWW-Authenticate</code> header,
+            missing scopes get <code>403</code>. If the chosen mode lacks its credentials, the endpoint
+            answers <code>503</code> instead of being public.
+        </dd>
+
+        <dt>Allowed IPs <span class="property-type">string</span></dt>
+        <dd>Optional comma-separated list of IPs and CIDRs (IPv4/IPv6), e.g.
+            <code>10.0.0.5, 192.168.1.0/24</code>. Other source addresses get <code>403</code>.
+            Empty allows any address. Combined with the auth mode (both must pass). The address is the
+            direct TCP peer, so behind a reverse proxy it is the proxy's address.</dd>
+    </dl>
+
+    <h4>Request Body</h4>
+    <dl class="message-properties">
+        <dt>Body Limit <span class="property-type">number</span></dt>
+        <dd>Maximum request body size in bytes, for every content type. Default <code>1048576</code> (1 MiB, Fastify's default).
+            Larger bodies get <code>413 Payload Too Large</code>. Example: <code>10485760</code> for 10 MiB.</dd>
+        <dt>Raw Bodies <span class="property-type">boolean</span></dt>
+        <dd>Off by default. When on, requests whose <code>Content-Type</code> matches <i>Raw Types</i> are accepted
+            instead of being rejected with <code>415</code>, and reach the flow as a <code>Buffer</code> in <code>msg.req.body</code>.
+            Use it for file or image uploads. A handler can answer with binary via <code>msg.res.set("Content-Type", ...).send(buffer)</code>.</dd>
+        <dt>Raw Types <span class="property-type">string</span></dt>
+        <dd>Comma-separated content types handled as raw bodies. <code>type/*</code> matches every subtype.
+            Default <code>image/*,application/octet-stream</code>. JSON and text keep their normal parsers.</dd>
     </dl>
 
     <h3>Inputs</h3>
@@ -689,7 +825,7 @@
     <pre>http://localhost:3000/openapi.json  - OpenAPI spec (JSON)
 http://localhost:3000/openapi.yaml  - OpenAPI spec (YAML)
 http://localhost:3000/docs          - Swagger UI (if enabled)
-http://localhost:3000/metrics       - Prometheus metrics</pre>
+http://localhost:3000/metrics       - Prometheus metrics (if enabled)</pre>
 
     <h3>Prometheus Metrics</h3>
     <p>When metrics are enabled, the following metrics are collected:</p>
