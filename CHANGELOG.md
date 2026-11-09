@@ -2,9 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.11.0
 
-### Real database pool metrics and 503 on pool saturation (GH-7)
+### Real database pool metrics and 503 on pool saturation (GH-7) (2026-11-09)
 
 **BREAKING CHANGES:**
 
