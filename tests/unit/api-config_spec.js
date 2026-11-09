@@ -909,7 +909,9 @@ describe("api-config Node", function () {
     });
 
     describe("Connection Pool Management", function() {
-        it("should create connection pool when dbType is set", function (done) {
+        // GH-7: the custom ConnectionPoolManager was never used by queries;
+        // the native mssql/tarn pool is the only pool.
+        it("should not build a separate ConnectionPoolManager", function (done) {
             const flow = [{
                 id: "c1",
                 type: "apigw-config",
@@ -921,76 +923,12 @@ describe("api-config Node", function () {
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    c1.should.have.property("connectionPool");
-                    c1.connectionPool.should.be.ok();
-                    c1.connectionPool.poolName.should.equal("database");
-                    done();
-                } catch (err) {
-                    done(err);
-                }
-            });
-        });
-
-        it("should not create connection pool when dbType is none", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Config",
-                dbType: "none"
-            }];
-            helper.load(apiConfigNode, flow, function () {
-                const c1 = helper.getNode("c1");
-                try {
-                    (c1.connectionPool === null).should.be.true();
-                    done();
-                } catch (err) {
-                    done(err);
-                }
-            });
-        });
-
-        it("should configure pool with custom settings", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "Custom Pool Config",
-                dbType: "postgres",
-                dbPoolMin: 5,
-                dbPoolMax: 25,
-                dbPoolIdleTimeout: 60000,
-                dbPoolAcquireTimeout: 20000
-            }];
-            helper.load(apiConfigNode, flow, function () {
-                const c1 = helper.getNode("c1");
-                try {
-                    c1.connectionPool.config.minConnections.should.equal(5);
-                    c1.connectionPool.config.maxConnections.should.equal(25);
-                    c1.connectionPool.config.idleTimeout.should.equal(60000);
-                    c1.connectionPool.config.acquireTimeout.should.equal(20000);
-                    done();
-                } catch (err) {
-                    done(err);
-                }
-            });
-        });
-
-        it("should have pool helper methods", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "Pool Methods Config",
-                dbType: "postgres"
-            }];
-            helper.load(apiConfigNode, flow, function () {
-                const c1 = helper.getNode("c1");
-                try {
-                    c1.should.have.property("getConnectionPool").which.is.a.Function();
+                    c1.should.not.have.property("connectionPool");
+                    for (const name of ["getConnectionPool", "getPoolStatus", "setPoolFactory",
+                        "initializePool", "acquireConnection", "releaseConnection"]) {
+                        c1.should.not.have.property(name);
+                    }
                     c1.should.have.property("getPoolStatistics").which.is.a.Function();
-                    c1.should.have.property("getPoolStatus").which.is.a.Function();
-                    c1.should.have.property("setPoolFactory").which.is.a.Function();
-                    c1.should.have.property("initializePool").which.is.a.Function();
-                    c1.should.have.property("acquireConnection").which.is.a.Function();
-                    c1.should.have.property("releaseConnection").which.is.a.Function();
                     done();
                 } catch (err) {
                     done(err);
@@ -998,18 +936,30 @@ describe("api-config Node", function () {
             });
         });
 
-        it("should return null for pool stats when no pool", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Stats Config",
-                dbType: "none"
-            }];
+        it("should return null pool stats when dbType is none", function (done) {
+            const flow = [{ id: "c1", type: "apigw-config", name: "No Pool", dbType: "none" }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    (c1.mssqlPool === null).should.be.true();
+                    (c1.getPoolStatistics() === null).should.be.true();
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should return null pool stats before the mssql pool is connected", function (done) {
+            const flow = [{ id: "c1", type: "apigw-config", name: "Not Connected", dbType: "postgres" }];
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
                     (c1.getPoolStatistics() === null).should.be.true();
-                    (c1.getPoolStatus() === null).should.be.true();
+                    // mssql ConnectionPool before connect(): no tarn pool yet
+                    c1.mssqlPool = { pool: null };
+                    (c1.getPoolStatistics() === null).should.be.true();
+                    c1.mssqlPool = null;
                     done();
                 } catch (err) {
                     done(err);
@@ -1017,28 +967,43 @@ describe("api-config Node", function () {
             });
         });
 
-        it("should return pool statistics", function (done) {
+        it("should report the live mssql pool state", function (done) {
             const flow = [{
                 id: "c1",
                 type: "apigw-config",
                 name: "Stats Config",
                 dbType: "postgres",
-                dbPoolMin: 2,
-                dbPoolMax: 10
+                dbPoolMin: "2",
+                dbPoolMax: "10"
             }];
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
+                    c1.mssqlPool = { pool: {}, size: 10, available: 0, borrowed: 10, pending: 37 };
+                    c1.getPoolStatistics().should.eql({
+                        size: 10, available: 0, borrowed: 10, pending: 37, min: 2, max: 10
+                    });
+                    c1.mssqlPool = null;
+                    done();
+                } catch (err) {
+                    done(err);
+                }
+            });
+        });
+
+        it("should read stats through the real mssql ConnectionPool getters", function (done) {
+            const sql = require("mssql");
+            const flow = [{ id: "c1", type: "apigw-config", name: "Real Getters", dbType: "postgres", dbPoolMax: 10 }];
+            helper.load(apiConfigNode, flow, function () {
+                const c1 = helper.getNode("c1");
+                try {
+                    const pool = new sql.ConnectionPool({ server: "localhost", user: "u", password: "p" });
+                    // Stand-in for the tarn pool that connect() would create
+                    pool.pool = { numFree: () => 1, numUsed: () => 9, numPendingCreates: () => 0, numPendingAcquires: () => 12 };
+                    c1.mssqlPool = pool;
                     const stats = c1.getPoolStatistics();
-                    stats.should.have.property("pool", "database");
-                    stats.should.have.property("state");
-                    stats.should.have.property("config");
-                    stats.should.have.property("current");
-                    stats.should.have.property("cumulative");
-                    stats.should.have.property("peaks");
-
-                    stats.config.should.have.property("minConnections", 2);
-                    stats.config.should.have.property("maxConnections", 10);
+                    stats.should.containEql({ size: 10, available: 1, borrowed: 9, pending: 12, max: 10 });
+                    c1.mssqlPool = null;
                     done();
                 } catch (err) {
                     done(err);
@@ -1046,134 +1011,41 @@ describe("api-config Node", function () {
             });
         });
 
-        it("should return pool status", function (done) {
+        it("should not mark the DB as errored on a pool acquire timeout", function (done) {
+            const path = require("path");
+            const { TimeoutError } = require(require.resolve("tarn", { paths: [path.dirname(require.resolve("mssql"))] }));
             const flow = [{
                 id: "c1",
                 type: "apigw-config",
-                name: "Status Config",
-                dbType: "postgres"
+                name: "Saturated",
+                dbType: "mssql",
+                dbHost: "127.0.0.1",
+                dbPort: "1",
+                dbPoolMax: "3",
+                dbPoolAcquireTimeout: "500"
             }];
             helper.load(apiConfigNode, flow, function () {
                 const c1 = helper.getNode("c1");
                 try {
-                    const status = c1.getPoolStatus();
-                    status.should.have.property("state");
-                    status.should.have.property("available");
-                    status.should.have.property("borrowed");
-                    status.should.have.property("pending");
-                    status.should.have.property("total");
+                    const dbManager = c1.connectionManagers.database;
+                    const errors = [];
+                    const warnings = [];
+                    const origError = dbManager.error.bind(dbManager);
+                    dbManager.error = (err, ...rest) => {
+                        errors.push(err);
+                        return origError(err, ...rest);
+                    };
+                    c1.warn = (m) => warnings.push(m);
+
+                    c1.mssqlPool.emit("error", new TimeoutError());
+                    c1.mssqlPool.emit("error", new TimeoutError());
+                    errors.length.should.equal(0);
+                    warnings.length.should.equal(1); // throttled
+                    warnings[0].should.match(/saturated.*500ms.*dbPoolMax=3/);
+
+                    c1.mssqlPool.emit("error", Object.assign(new Error("socket closed"), { code: "ESOCKET" }));
+                    errors.length.should.equal(1);
                     done();
-                } catch (err) {
-                    done(err);
-                }
-            });
-        });
-
-        it("should throw error when setting factory on null pool", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Factory Config",
-                dbType: "none"
-            }];
-            helper.load(apiConfigNode, flow, function () {
-                const c1 = helper.getNode("c1");
-                try {
-                    (function() {
-                        c1.setPoolFactory({
-                            create: async () => ({}),
-                            destroy: async () => {}
-                        });
-                    }).should.throw(/not initialized/);
-                    done();
-                } catch (err) {
-                    done(err);
-                }
-            });
-        });
-
-        it("should throw error when initializing null pool", async function () {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Init Config",
-                dbType: "none"
-            }];
-
-            return new Promise((resolve, reject) => {
-                helper.load(apiConfigNode, flow, async function () {
-                    const c1 = helper.getNode("c1");
-                    try {
-                        await c1.initializePool();
-                        reject(new Error("Expected error"));
-                    } catch (err) {
-                        err.message.should.containEql("not initialized");
-                        resolve();
-                    }
-                });
-            });
-        });
-
-        it("should throw error when acquiring from null pool", async function () {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Acquire Config",
-                dbType: "none"
-            }];
-
-            return new Promise((resolve, reject) => {
-                helper.load(apiConfigNode, flow, async function () {
-                    const c1 = helper.getNode("c1");
-                    try {
-                        await c1.acquireConnection();
-                        reject(new Error("Expected error"));
-                    } catch (err) {
-                        err.message.should.containEql("not initialized");
-                        resolve();
-                    }
-                });
-            });
-        });
-
-        it("should throw error when releasing to null pool", async function () {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "No Pool Release Config",
-                dbType: "none"
-            }];
-
-            return new Promise((resolve, reject) => {
-                helper.load(apiConfigNode, flow, async function () {
-                    const c1 = helper.getNode("c1");
-                    try {
-                        await c1.releaseConnection({});
-                        reject(new Error("Expected error"));
-                    } catch (err) {
-                        err.message.should.containEql("not initialized");
-                        resolve();
-                    }
-                });
-            });
-        });
-
-        it("should shutdown connection pool on close", function (done) {
-            const flow = [{
-                id: "c1",
-                type: "apigw-config",
-                name: "Pool Shutdown Config",
-                dbType: "postgres"
-            }];
-            helper.load(apiConfigNode, flow, function () {
-                const c1 = helper.getNode("c1");
-                try {
-                    c1.connectionPool.should.be.ok();
-
-                    c1.close(false).then(function() {
-                        (c1.connectionPool === null).should.be.true();
-                        done();
-                    }).catch(done);
                 } catch (err) {
                     done(err);
                 }

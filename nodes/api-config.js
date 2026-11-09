@@ -6,8 +6,8 @@ const {
     createKeycloakHealthCheck,
     createOpaHealthCheck
 } = require("../lib/health-check");
-const { ConnectionPoolManager } = require("../lib/connection-pool");
 const { quoteIdentifierPart } = require("../lib/crud-generator");
+const { isPoolAcquireTimeout } = require("../lib/db-errors");
 const {
     LOG_DEFAULTS,
     createLogger,
@@ -199,18 +199,12 @@ module.exports = function(RED) {
         node.dbPoolIdleTimeout = config.dbPoolIdleTimeout;
         node.dbPoolAcquireTimeout = config.dbPoolAcquireTimeout;
 
-        // Initialize connection pool manager if database is configured
-        node.connectionPool = null;
-        node.mssqlPool = null;  // Native mssql ConnectionPool for SQL Server
+        // The native mssql ConnectionPool (backed by tarn) is the only DB pool:
+        // it enforces dbPoolMax and queues extra requests until
+        // dbPoolAcquireTimeout. getPoolStatistics() reads its live state.
+        node.mssqlPool = null;
 
         if (config.dbType && config.dbType !== "none") {
-            node.connectionPool = new ConnectionPoolManager("database", {
-                minConnections: toInt(config.dbPoolMin, 0),
-                maxConnections: toInt(config.dbPoolMax, 10),
-                idleTimeout: toInt(config.dbPoolIdleTimeout, 30000),
-                acquireTimeout: toInt(config.dbPoolAcquireTimeout, 15000)
-            });
-
             // Initialize SQL Server connection pool if dbType is mssql
             if (config.dbType === "mssql") {
                 const sql = getMssql();
@@ -241,6 +235,7 @@ module.exports = function(RED) {
                 // at startup (e.g. host reboot) until a manual redeploy.
                 node._dbReconnectTimer = null;
                 node._dbReconnectAttempt = 0;
+                node._lastAcquireTimeoutWarn = 0;
                 const connectMssql = () => {
                     if (node._dbClosing) {
                         return;
@@ -249,6 +244,17 @@ module.exports = function(RED) {
                     // Swallow pool errors: a fresh pool is created per attempt,
                     // and reconnection is driven by the connect() promise below.
                     node.mssqlPool.on("error", err => {
+                        // mssql emits "error" for every failed acquire too. An
+                        // acquire timeout means the pool is saturated, not that
+                        // the DB is down: warn (throttled) and keep the state.
+                        if (isPoolAcquireTimeout(err)) {
+                            const now = Date.now();
+                            if (now - node._lastAcquireTimeoutWarn >= 10000) {
+                                node._lastAcquireTimeoutWarn = now;
+                                node.warn(`SQL Server pool saturated: acquire timed out after ${mssqlConfig.pool.acquireTimeoutMillis}ms (dbPoolMax=${mssqlConfig.pool.max})`);
+                            }
+                            return;
+                        }
                         node.error(`SQL Server pool error: ${err.message}`);
                         if (node.connectionManagers.database) {
                             node.connectionManagers.database.error(err, false);
@@ -538,78 +544,23 @@ module.exports = function(RED) {
         };
 
         /**
-         * Get the connection pool manager
-         * @returns {ConnectionPoolManager|null}
-         */
-        node.getConnectionPool = function() {
-            return node.connectionPool;
-        };
-
-        /**
-         * Get connection pool statistics
-         * @returns {Object|null} Pool statistics or null if no pool
+         * Live statistics of the SQL Server connection pool (mssql/tarn).
+         * @returns {{size: number, available: number, borrowed: number, pending: number, min: number, max: number}|null}
+         *   null when no SQL Server pool exists yet
          */
         node.getPoolStatistics = function() {
-            if (!node.connectionPool) {
+            const pool = node.mssqlPool;
+            if (!pool || !pool.pool) {
                 return null;
             }
-            return node.connectionPool.getStatistics();
-        };
-
-        /**
-         * Get connection pool status (simplified)
-         * @returns {Object|null} Pool status or null if no pool
-         */
-        node.getPoolStatus = function() {
-            if (!node.connectionPool) {
-                return null;
-            }
-            return node.connectionPool.getStatus();
-        };
-
-        /**
-         * Set the connection factory for the pool
-         * @param {Object} factory - Factory with create, destroy, validate functions
-         */
-        node.setPoolFactory = function(factory) {
-            if (!node.connectionPool) {
-                throw new Error("Connection pool not initialized");
-            }
-            node.connectionPool.setFactory(factory);
-        };
-
-        /**
-         * Initialize the connection pool
-         * @returns {Promise<void>}
-         */
-        node.initializePool = async function() {
-            if (!node.connectionPool) {
-                throw new Error("Connection pool not initialized");
-            }
-            await node.connectionPool.initialize();
-        };
-
-        /**
-         * Acquire a connection from the pool
-         * @param {number} [timeout] - Optional custom timeout
-         * @returns {Promise<Object>} The acquired connection
-         */
-        node.acquireConnection = async function(timeout) {
-            if (!node.connectionPool) {
-                throw new Error("Connection pool not initialized");
-            }
-            return node.connectionPool.acquire(timeout);
-        };
-
-        /**
-         * Release a connection back to the pool
-         * @param {Object} connection - The connection to release
-         */
-        node.releaseConnection = async function(connection) {
-            if (!node.connectionPool) {
-                throw new Error("Connection pool not initialized");
-            }
-            await node.connectionPool.release(connection);
+            return {
+                size: pool.size,
+                available: pool.available,
+                borrowed: pool.borrowed,
+                pending: pool.pending,
+                min: toInt(config.dbPoolMin, 0),
+                max: toInt(config.dbPoolMax, 10)
+            };
         };
 
         /**
@@ -1016,17 +967,6 @@ module.exports = function(RED) {
                     node.error("Error closing SQL Server pool: " + err.message);
                 }
                 node.mssqlPool = null;
-            }
-
-            // Shutdown connection pool (graceful with drain timeout)
-            if (node.connectionPool) {
-                try {
-                    await node.connectionPool.shutdown(30000);
-                } catch (err) {
-                    // Log error but continue shutdown
-                    node.error("Error shutting down connection pool: " + err.message);
-                }
-                node.connectionPool = null;
             }
 
             // Flush and terminate the logger transport so its pino worker

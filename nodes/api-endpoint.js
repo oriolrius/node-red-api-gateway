@@ -1535,6 +1535,9 @@ module.exports = function(RED) {
                                 if (!requestId && errRequestId) {
                                     msg.res.set("x-request-id", errRequestId);
                                 }
+                                for (const [header, value] of Object.entries(typeof msg.res.set === "function" ? (problem.headers || {}) : {})) {
+                                    msg.res.set(header, value);
+                                }
                                 msg.res.status(problem.status).json(problem.body);
 
                                 if (done) {

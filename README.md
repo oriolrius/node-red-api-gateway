@@ -151,6 +151,15 @@ exposed servers. Prometheus scrape examples:
   static_configs: [{ targets: ["gateway:3000"] }]
 ```
 
+**Database pool metrics:** with SQL Server, every query uses the `mssql`
+connection pool. At most `dbPoolMax` queries run at the same time; extra
+requests wait in a FIFO queue until `dbPoolAcquireTimeout`. Each scrape reads
+the live pool into `api_gateway_connection_pool_size{pool="database",state}`:
+`active` (connections in use), `idle` (free connections) and `waiting`
+(requests queued for a connection). A `waiting` value above zero for a long
+time means the pool is too small for the load. `apigw-config` also gives
+`getPoolStatistics()` → `{ size, available, borrowed, pending, min, max }`.
+
 **Features:**
 - Automatic route registration from apigw-endpoint nodes
 - Route conflict detection
@@ -212,7 +221,9 @@ Individual API endpoint definition node.
 - Auto-CRUD database errors never expose the raw driver message by default:
   PK/unique violations → `409`, NOT NULL / conversion / truncation /
   constraint violations → `400` (FK on delete → `409`), connection loss → `503`,
-  anything else → `500`, each with a generic `detail` and a `requestId`.
+  pool saturated (no free connection within `dbPoolAcquireTimeout`) → `503`
+  `service-busy`, anything else → `500`, each with a generic `detail` and a
+  `requestId`. Every `503` also sends `Retry-After: 1`.
   `exposeDbErrors` (dev mode) returns the raw message; the RFC 7807 `type`
   base URI is set with `problemTypeBaseUri` on apigw-config
 

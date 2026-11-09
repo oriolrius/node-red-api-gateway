@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Real database pool metrics and 503 on pool saturation (GH-7)
+
+**BREAKING CHANGES:**
+
+- **`ConnectionPoolManager` is removed.** `apigw-config` built it, but no query
+  used it: all queries go through the native `mssql` pool. The unused wrappers
+  `getConnectionPool()`, `getPoolStatus()`, `setPoolFactory()`,
+  `initializePool()`, `acquireConnection()` and `releaseConnection()` and the
+  file `lib/connection-pool.js` are deleted.
+- **`getPoolStatistics()` has a new shape.** It now reads the live `mssql`
+  pool and returns `{ size, available, borrowed, pending, min, max }`, or
+  `null` when no SQL Server pool is connected.
+
+**Fixes:**
+
+- `api_gateway_connection_pool_size{pool="database",state="active|idle|waiting"}`
+  now shows the real pool. Each `/metrics` scrape reads it. Before, the gauge
+  was always empty, so the request queue in front of the pool was invisible.
+- A pool acquire timeout (all `dbPoolMax` connections busy for
+  `dbPoolAcquireTimeout`) now gives `503` `service-busy` with `Retry-After`,
+  not `500`. Every auto-CRUD `503` now sends `Retry-After`.
+- A pool acquire timeout no longer puts the database connection state into
+  error (the database is up, only busy). The gateway logs a throttled warning.
+
 ## 0.10.0
 
 ### Gateway hardening: metrics access, DB error hygiene, request bodies (2026-09-28)

@@ -1352,6 +1352,18 @@ module.exports = function(RED) {
 
                     node.fastify.get(node.metricsPath, { preHandler: metricsGuard }, async (request, reply) => {
                         try {
+                            // Pull the live mssql pool state at scrape time, so
+                            // the gauge shows the real tarn wait queue.
+                            const poolStats = node.configNode && typeof node.configNode.getPoolStatistics === "function"
+                                ? node.configNode.getPoolStatistics()
+                                : null;
+                            if (poolStats) {
+                                node.metricsCollector.updateConnectionPool("database", {
+                                    active: poolStats.borrowed,
+                                    idle: poolStats.available,
+                                    waiting: poolStats.pending
+                                });
+                            }
                             const metrics = await node.metricsCollector.getMetrics();
                             reply.type(node.metricsCollector.getContentType());
                             return metrics;

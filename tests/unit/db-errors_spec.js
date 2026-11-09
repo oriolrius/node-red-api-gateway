@@ -2,6 +2,7 @@ require("should");
 const {
     DEFAULT_PROBLEM_TYPE_BASE,
     getSqlErrorNumber,
+    isPoolAcquireTimeout,
     classifyDbError,
     problemTypeUri,
     buildDbErrorResponse
@@ -88,6 +89,43 @@ describe("db-errors", function () {
             r.status.should.equal(500);
             r.body.type.should.equal("urn:problem:database-error");
             r.body.detail.should.equal("Database error");
+        });
+    });
+
+    // GH-7: tarn's TimeoutError (pool saturated) reaches us unwrapped.
+    describe("pool acquire timeout", function () {
+        class TimeoutError extends Error {}
+        // tarn is mssql's pool library; resolve it from there, not as a direct dep.
+        const { TimeoutError: TarnTimeoutError } = require(require.resolve("tarn", { paths: [require("path").dirname(require.resolve("mssql"))] }));
+
+        it("detects tarn's TimeoutError by constructor name", function () {
+            isPoolAcquireTimeout(new TimeoutError("operation timed out")).should.be.true();
+            isPoolAcquireTimeout(new TarnTimeoutError()).should.be.true();
+        });
+
+        it("does not treat other errors as an acquire timeout", function () {
+            isPoolAcquireTimeout(new Error("boom")).should.be.false();
+            isPoolAcquireTimeout(null).should.be.false();
+            const requestTimeout = Object.assign(new TimeoutError("Timeout: Request failed"), { code: "ETIMEOUT" });
+            isPoolAcquireTimeout(requestTimeout).should.be.false();
+        });
+
+        it("maps an acquire timeout to 503 busy with Retry-After", function () {
+            const r = buildDbErrorResponse(new TarnTimeoutError(), { operation: "create" });
+            r.status.should.equal(503);
+            r.body.type.should.equal(`${DEFAULT_PROBLEM_TYPE_BASE}service-busy`);
+            r.body.title.should.equal("Service Unavailable");
+            r.headers.should.eql({ "Retry-After": "1" });
+            classifyDbError(new TarnTimeoutError()).slug.should.equal("service-busy");
+        });
+
+        it("adds Retry-After to every 503 and honours a custom value", function () {
+            const down = Object.assign(new Error("socket hang up"), { code: "ESOCKET" });
+            buildDbErrorResponse(down, { retryAfter: 5 }).headers.should.eql({ "Retry-After": "5" });
+        });
+
+        it("sends no Retry-After for non-503 answers", function () {
+            buildDbErrorResponse(sqlError(2627), { operation: "create" }).headers.should.eql({});
         });
     });
 });
