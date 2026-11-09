@@ -5,10 +5,10 @@
  * This file is loaded as a resource by Node-RED.
  */
 (function() {
-    'use strict';
+    "use strict";
 
     // Namespace for our utilities
-    window.ApiEndpointEditor = window.ApiEndpointEditor || {};
+    var ApiEndpointEditor = window.ApiEndpointEditor = window.ApiEndpointEditor || {};
 
     /**
      * Validate an API path
@@ -16,21 +16,21 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validatePath = function(path) {
-        if (!path || path.trim() === '') {
-            return { valid: false, error: 'Path is required' };
+        if (!path || path.trim() === "") {
+            return { valid: false, error: "Path is required" };
         }
-        if (!path.startsWith('/')) {
-            return { valid: false, error: 'Path must start with /' };
+        if (!path.startsWith("/")) {
+            return { valid: false, error: "Path must start with /" };
         }
-        if (path.indexOf('//') !== -1) {
-            return { valid: false, error: 'Path cannot contain double slashes' };
+        if (path.indexOf("//") !== -1) {
+            return { valid: false, error: "Path cannot contain double slashes" };
         }
         var invalidParamRegex = /:([^/]*)/g;
         var match;
         while ((match = invalidParamRegex.exec(path)) !== null) {
             var paramName = match[1];
             if (paramName && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(paramName)) {
-                return { valid: false, error: 'Invalid parameter name: ' + paramName };
+                return { valid: false, error: "Invalid parameter name: " + paramName };
             }
         }
         return { valid: true };
@@ -57,17 +57,17 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateJsonSchema = function(schemaStr) {
-        if (!schemaStr || schemaStr.trim() === '') {
+        if (!schemaStr || schemaStr.trim() === "") {
             return { valid: true };
         }
         try {
             var schema = JSON.parse(schemaStr);
-            if (typeof schema !== 'object' || schema === null) {
-                return { valid: false, error: 'Schema must be a JSON object' };
+            if (typeof schema !== "object" || schema === null) {
+                return { valid: false, error: "Schema must be a JSON object" };
             }
             return { valid: true };
         } catch (e) {
-            return { valid: false, error: 'Invalid JSON: ' + e.message };
+            return { valid: false, error: "Invalid JSON: " + e.message };
         }
     };
 
@@ -77,25 +77,25 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateResponseSchemas = function(schemasStr) {
-        if (!schemasStr || schemasStr.trim() === '') {
+        if (!schemasStr || schemasStr.trim() === "") {
             return { valid: true };
         }
         try {
             var schemas = JSON.parse(schemasStr);
-            if (typeof schemas !== 'object' || schemas === null || Array.isArray(schemas)) {
-                return { valid: false, error: 'Must be an object mapping status codes to schemas' };
+            if (typeof schemas !== "object" || schemas === null || Array.isArray(schemas)) {
+                return { valid: false, error: "Must be an object mapping status codes to schemas" };
             }
             for (var statusCode in schemas) {
-                if (statusCode !== 'default' && !/^[1-5][0-9]{2}$/.test(statusCode)) {
-                    return { valid: false, error: 'Invalid status code: ' + statusCode };
+                if (statusCode !== "default" && !/^[1-5][0-9]{2}$/.test(statusCode)) {
+                    return { valid: false, error: "Invalid status code: " + statusCode };
                 }
-                if (typeof schemas[statusCode] !== 'object' || schemas[statusCode] === null) {
-                    return { valid: false, error: 'Schema for ' + statusCode + ' must be an object' };
+                if (typeof schemas[statusCode] !== "object" || schemas[statusCode] === null) {
+                    return { valid: false, error: "Schema for " + statusCode + " must be an object" };
                 }
             }
             return { valid: true };
         } catch (e) {
-            return { valid: false, error: 'Invalid JSON: ' + e.message };
+            return { valid: false, error: "Invalid JSON: " + e.message };
         }
     };
 
@@ -139,16 +139,16 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateTableName = function(tableName) {
-        if (!tableName || tableName.trim() === '') {
+        if (!tableName || tableName.trim() === "") {
             return { valid: true }; // Empty is allowed
         }
         // Keep in sync with lib/crud-generator.js validateTableName: allow 1-3
         // dot-separated parts (table, schema.table, database.schema.table), each
         // a bare identifier or a bracket-quoted identifier (e.g. [My Table]).
-        var IDENT = '(?:\\[[^\\]\\[.]+\\]|[a-zA-Z_][a-zA-Z0-9_]*)';
-        var QUALIFIED = new RegExp('^' + IDENT + '(?:\\.' + IDENT + '){0,2}$');
+        var IDENT = "(?:\\[[^\\]\\[.]+\\]|[a-zA-Z_][a-zA-Z0-9_]*)";
+        var QUALIFIED = new RegExp("^" + IDENT + "(?:\\." + IDENT + "){0,2}$");
         if (!QUALIFIED.test(tableName.trim())) {
-            return { valid: false, error: 'Invalid table name format' };
+            return { valid: false, error: "Invalid table name format" };
         }
         return { valid: true };
     };
@@ -161,7 +161,7 @@
      */
     ApiEndpointEditor.isValidFieldName = function(fieldName) {
         // Accept any non-empty field name to support special characters like %, ñ, etc.
-        return typeof fieldName === 'string' && fieldName.trim().length > 0;
+        return typeof fieldName === "string" && fieldName.trim().length > 0;
     };
 
     /**
@@ -171,7 +171,7 @@
      */
     ApiEndpointEditor.parseFieldList = function(fieldStr) {
         if (!fieldStr) return [];
-        return fieldStr.split(',')
+        return fieldStr.split(",")
             .map(function(f) { return f.trim(); })
             .filter(function(f) { return f.length > 0; });
     };
@@ -182,7 +182,7 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateJsonataExpression = function(exprStr) {
-        if (!exprStr || exprStr.trim() === '') {
+        if (!exprStr || exprStr.trim() === "") {
             return { valid: true };
         }
         var trimmed = exprStr.trim();
@@ -192,26 +192,26 @@
         for (var i = 0; i < trimmed.length; i++) {
             var c = trimmed[i];
             if (inString) {
-                if (c === stringChar && trimmed[i-1] !== '\\') {
+                if (c === stringChar && trimmed[i-1] !== "\\") {
                     inString = false;
                 }
             } else {
                 if (c === '"' || c === "'") {
                     inString = true;
                     stringChar = c;
-                } else if (c === '[') brackets++;
-                else if (c === ']') brackets--;
-                else if (c === '(') parens++;
-                else if (c === ')') parens--;
-                else if (c === '{') braces++;
-                else if (c === '}') braces--;
+                } else if (c === "[") brackets++;
+                else if (c === "]") brackets--;
+                else if (c === "(") parens++;
+                else if (c === ")") parens--;
+                else if (c === "{") braces++;
+                else if (c === "}") braces--;
             }
         }
 
-        if (brackets !== 0) return { valid: false, error: 'Unbalanced brackets []' };
-        if (parens !== 0) return { valid: false, error: 'Unbalanced parentheses ()' };
-        if (braces !== 0) return { valid: false, error: 'Unbalanced braces {}' };
-        if (inString) return { valid: false, error: 'Unterminated string' };
+        if (brackets !== 0) return { valid: false, error: "Unbalanced brackets []" };
+        if (parens !== 0) return { valid: false, error: "Unbalanced parentheses ()" };
+        if (braces !== 0) return { valid: false, error: "Unbalanced braces {}" };
+        if (inString) return { valid: false, error: "Unterminated string" };
 
         return { valid: true };
     };
@@ -222,17 +222,17 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateFieldMappings = function(mappingStr) {
-        if (!mappingStr || mappingStr.trim() === '') {
+        if (!mappingStr || mappingStr.trim() === "") {
             return { valid: true };
         }
-        var pairs = mappingStr.split(',');
+        var pairs = mappingStr.split(",");
         for (var i = 0; i < pairs.length; i++) {
             var pair = pairs[i].trim();
             if (!pair) continue;
 
-            var parts = pair.split('->');
+            var parts = pair.split("->");
             if (parts.length !== 2) {
-                parts = pair.split(':');
+                parts = pair.split(":");
             }
             if (parts.length !== 2) {
                 return { valid: false, error: 'Invalid format: "' + pair + '". Use oldName->newName' };
@@ -263,14 +263,14 @@
         var mappings = [];
         if (!mappingStr) return mappings;
 
-        var pairs = mappingStr.split(',');
+        var pairs = mappingStr.split(",");
         pairs.forEach(function(pair) {
             pair = pair.trim();
             if (!pair) return;
 
-            var parts = pair.split('->');
+            var parts = pair.split("->");
             if (parts.length !== 2) {
-                parts = pair.split(':');
+                parts = pair.split(":");
             }
             if (parts.length === 2) {
                 var oldName = parts[0].trim();
@@ -289,17 +289,17 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateCustomErrorCodes = function(codesStr) {
-        if (!codesStr || codesStr.trim() === '') {
+        if (!codesStr || codesStr.trim() === "") {
             return { valid: true };
         }
         try {
             var codes = JSON.parse(codesStr);
-            if (typeof codes !== 'object' || codes === null || Array.isArray(codes)) {
-                return { valid: false, error: 'Error codes must be a JSON object' };
+            if (typeof codes !== "object" || codes === null || Array.isArray(codes)) {
+                return { valid: false, error: "Error codes must be a JSON object" };
             }
             for (var code in codes) {
                 var mapping = codes[code];
-                if (typeof mapping !== 'object' || mapping === null) {
+                if (typeof mapping !== "object" || mapping === null) {
                     return { valid: false, error: 'Code "' + code + '" must have an object mapping' };
                 }
                 if (mapping.status !== undefined) {
@@ -311,7 +311,7 @@
             }
             return { valid: true };
         } catch (e) {
-            return { valid: false, error: 'Invalid JSON: ' + e.message };
+            return { valid: false, error: "Invalid JSON: " + e.message };
         }
     };
 
@@ -323,22 +323,22 @@
      * @returns {string} SQL preview
      */
     ApiEndpointEditor.generateSqlPreview = function(operation, tableName, primaryKey) {
-        tableName = tableName || '[table_name]';
-        primaryKey = primaryKey || 'id';
+        tableName = tableName || "[table_name]";
+        primaryKey = primaryKey || "id";
 
         switch (operation) {
-            case 'list':
-                return 'SELECT * FROM ' + tableName;
-            case 'get':
-                return 'SELECT * FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
-            case 'create':
-                return 'INSERT INTO ' + tableName + ' (@columns) VALUES (@values)';
-            case 'update':
-                return 'UPDATE ' + tableName + ' SET @assignments WHERE ' + primaryKey + ' = @' + primaryKey;
-            case 'delete':
-                return 'DELETE FROM ' + tableName + ' WHERE ' + primaryKey + ' = @' + primaryKey;
-            default:
-                return '-- No operation selected';
+        case "list":
+            return "SELECT * FROM " + tableName;
+        case "get":
+            return "SELECT * FROM " + tableName + " WHERE " + primaryKey + " = @" + primaryKey;
+        case "create":
+            return "INSERT INTO " + tableName + " (@columns) VALUES (@values)";
+        case "update":
+            return "UPDATE " + tableName + " SET @assignments WHERE " + primaryKey + " = @" + primaryKey;
+        case "delete":
+            return "DELETE FROM " + tableName + " WHERE " + primaryKey + " = @" + primaryKey;
+        default:
+            return "-- No operation selected";
         }
     };
 
@@ -349,14 +349,14 @@
      * @param {function} validator - Validation function returning {valid, error}
      */
     ApiEndpointEditor.setupValidation = function(inputSelector, errorSelector, validator) {
-        $(inputSelector).on('input change', function() {
+        $(inputSelector).on("input change", function() {
             var validation = validator($(this).val());
             var $error = $(errorSelector);
             if (!validation.valid) {
-                $(this).addClass('input-error');
+                $(this).addClass("input-error");
                 $error.text(validation.error).show();
             } else {
-                $(this).removeClass('input-error');
+                $(this).removeClass("input-error");
                 $error.hide();
             }
         });
@@ -369,8 +369,8 @@
      * @param {function} [callback] - Optional callback after toggle
      */
     ApiEndpointEditor.setupToggle = function(checkboxSelector, targetSelector, callback) {
-        $(checkboxSelector).on('change', function() {
-            var enabled = $(this).is(':checked');
+        $(checkboxSelector).on("change", function() {
+            var enabled = $(this).is(":checked");
             if (enabled) {
                 $(targetSelector).show();
             } else {
@@ -386,7 +386,7 @@
      * @returns {string} Escaped text
      */
     ApiEndpointEditor.escapeHtml = function(text) {
-        var div = document.createElement('div');
+        var div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
     };
@@ -402,7 +402,7 @@
         $display.empty();
         items.forEach(function(item) {
             var escaped = ApiEndpointEditor.escapeHtml(item);
-            $display.append('<span class="' + badgeClass + '">' + escaped + '</span> ');
+            $display.append('<span class="' + badgeClass + '">' + escaped + "</span> ");
         });
     };
 
@@ -417,9 +417,9 @@
         $display.empty();
         scopes.forEach(function(scope, index) {
             var escaped = ApiEndpointEditor.escapeHtml(scope);
-            $display.append('<span class="scope-badge">' + escaped + '</span>');
+            $display.append('<span class="scope-badge">' + escaped + "</span>");
             if (index < scopes.length - 1) {
-                $display.append(' <span style="color: #666;">' + operator + '</span> ');
+                $display.append(' <span style="color: #666;">' + operator + "</span> ");
             }
         });
     };
@@ -435,7 +435,7 @@
         mappings.forEach(function(mapping) {
             var escapedOld = ApiEndpointEditor.escapeHtml(mapping.oldName);
             var escapedNew = ApiEndpointEditor.escapeHtml(mapping.newName);
-            $display.append('<span class="mapping-badge">' + escapedOld + ' → ' + escapedNew + '</span> ');
+            $display.append('<span class="mapping-badge">' + escapedOld + " → " + escapedNew + "</span> ");
         });
     };
 
@@ -449,34 +449,34 @@
      * @returns {{valid: boolean, error?: string}}
      */
     ApiEndpointEditor.validateOpaMappings = function(mappingStr) {
-        if (!mappingStr || mappingStr.trim() === '') {
+        if (!mappingStr || mappingStr.trim() === "") {
             return { valid: true };
         }
-        var SOURCE_PREFIXES = ['params', 'query', 'headers', 'body', 'auth'];
-        var SOURCE_SCALARS = ['method', 'path', 'route', 'ip'];
-        var TARGET_PREFIXES = ['resource', 'environment', 'extra'];
-        var TARGET_SCALARS = ['request_id', 'source_ip'];
+        var SOURCE_PREFIXES = ["params", "query", "headers", "body", "auth"];
+        var SOURCE_SCALARS = ["method", "path", "route", "ip"];
+        var TARGET_PREFIXES = ["resource", "environment", "extra"];
+        var TARGET_SCALARS = ["request_id", "source_ip"];
         function isLiteral(s) { return /^'[^']*'$/.test(s) || /^"[^"]*"$/.test(s); }
         function validSource(s) {
             if (isLiteral(s)) return true;
             if (SOURCE_SCALARS.indexOf(s) !== -1) return true;
-            var i = s.indexOf('.');
+            var i = s.indexOf(".");
             if (i === -1) return false;
             return SOURCE_PREFIXES.indexOf(s.slice(0, i)) !== -1 && s.slice(i + 1).length > 0;
         }
         function validTarget(t) {
             if (TARGET_SCALARS.indexOf(t) !== -1) return true;
-            var i = t.indexOf('.');
+            var i = t.indexOf(".");
             if (i === -1) return false;
             var key = t.slice(i + 1);
-            return TARGET_PREFIXES.indexOf(t.slice(0, i)) !== -1 && key.length > 0 && key.indexOf('.') === -1;
+            return TARGET_PREFIXES.indexOf(t.slice(0, i)) !== -1 && key.length > 0 && key.indexOf(".") === -1;
         }
-        var pairs = mappingStr.split(',');
+        var pairs = mappingStr.split(",");
         for (var i = 0; i < pairs.length; i++) {
             var pair = pairs[i].trim();
             if (!pair) continue;
-            var parts = pair.split('->');
-            if (parts.length !== 2) { parts = pair.split(':'); }
+            var parts = pair.split("->");
+            if (parts.length !== 2) { parts = pair.split(":"); }
             if (parts.length !== 2) {
                 return { valid: false, error: 'Invalid format: "' + pair + '". Use target->source' };
             }
@@ -499,7 +499,7 @@
      */
     ApiEndpointEditor.parseScopes = function(scopesStr) {
         if (!scopesStr) return [];
-        return scopesStr.split(',')
+        return scopesStr.split(",")
             .map(function(s) { return s.trim(); })
             .filter(function(s) { return s.length > 0; });
     };
@@ -511,13 +511,13 @@
      */
     ApiEndpointEditor.normalizePath = function(path) {
         var normalized = path.trim();
-        if (normalized && !normalized.startsWith('/')) {
-            normalized = '/' + normalized;
+        if (normalized && !normalized.startsWith("/")) {
+            normalized = "/" + normalized;
         }
-        if (normalized && normalized.length > 1 && normalized.endsWith('/')) {
+        if (normalized && normalized.length > 1 && normalized.endsWith("/")) {
             normalized = normalized.slice(0, -1);
         }
-        return normalized || '/';
+        return normalized || "/";
     };
 
 })();

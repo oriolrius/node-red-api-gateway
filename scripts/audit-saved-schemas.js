@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-'use strict';
+"use strict";
 
 /**
  * Audit saved endpoint schemas against Ajv 2020-12.
@@ -19,10 +19,10 @@
  * Exit code 0 if all schemas compile, 1 otherwise.
  */
 
-const fs = require('fs');
-const path = require('path');
-const Ajv = require('ajv/dist/2020');
-const addFormats = require('ajv-formats');
+const fs = require("fs");
+const path = require("path");
+const Ajv = require("ajv/dist/2020");
+const addFormats = require("ajv-formats");
 
 function makeAjv() {
     const ajv = new Ajv({ allErrors: true, strict: false });
@@ -31,17 +31,17 @@ function makeAjv() {
 }
 
 function tryCompile(ajv, raw, label, failures) {
-    if (raw === undefined || raw === null || raw === '') {
+    if (raw === undefined || raw === null || raw === "") {
         return;
     }
     let parsed;
     try {
-        parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     } catch (err) {
         failures.push({ label, error: `invalid JSON: ${err.message}` });
         return;
     }
-    if (parsed === null || typeof parsed !== 'object') {
+    if (parsed === null || typeof parsed !== "object") {
         return;
     }
     try {
@@ -55,7 +55,7 @@ function auditFile(filePath) {
     const ajv = makeAjv();
     let nodes;
     try {
-        nodes = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        nodes = JSON.parse(fs.readFileSync(filePath, "utf8"));
     } catch (err) {
         console.error(`✘ ${filePath}: could not read/parse file (${err.message})`);
         return 1;
@@ -69,10 +69,10 @@ function auditFile(filePath) {
     let endpointCount = 0;
 
     for (const node of nodes) {
-        if (!node || node.type !== 'apigw-endpoint') continue;
+        if (!node || node.type !== "apigw-endpoint") continue;
         endpointCount += 1;
-        const id = node.id || '<no-id>';
-        const route = `${node.method || '?'} ${node.path || '?'}`;
+        const id = node.id || "<no-id>";
+        const route = `${node.method || "?"} ${node.path || "?"}`;
         tryCompile(ajv, node.bodySchema, `${id} (${route}) bodySchema`, failures);
         tryCompile(ajv, node.querySchema, `${id} (${route}) querySchema`, failures);
         tryCompile(ajv, node.paramsSchema, `${id} (${route}) paramsSchema`, failures);
@@ -80,14 +80,14 @@ function auditFile(filePath) {
         if (node.responseSchemas) {
             let respMap;
             try {
-                respMap = typeof node.responseSchemas === 'string'
+                respMap = typeof node.responseSchemas === "string"
                     ? JSON.parse(node.responseSchemas)
                     : node.responseSchemas;
             } catch (err) {
                 failures.push({ label: `${id} (${route}) responseSchemas`, error: `invalid JSON: ${err.message}` });
                 continue;
             }
-            if (respMap && typeof respMap === 'object') {
+            if (respMap && typeof respMap === "object") {
                 for (const [status, schema] of Object.entries(respMap)) {
                     tryCompile(ajv, schema, `${id} (${route}) responseSchemas[${status}]`, failures);
                 }
@@ -110,7 +110,7 @@ function auditFile(filePath) {
 function main() {
     const files = process.argv.slice(2);
     if (files.length === 0) {
-        console.error('Usage: node scripts/audit-saved-schemas.js <flow.json> [<flow.json> ...]');
+        console.error("Usage: node scripts/audit-saved-schemas.js <flow.json> [<flow.json> ...]");
         process.exit(2);
     }
     let exitCode = 0;
