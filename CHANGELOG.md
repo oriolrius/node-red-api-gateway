@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.11.1
+
+### Regression tests for the mssql pool and full lint coverage (2026-11-10)
+
+No change to runtime behavior. This release adds tests and tooling only.
+
+**Tests:**
+
+- **E2E regression tests for GH-7 against a real SQL Server 2022 container**
+  (`npm run test:e2e-hardening`):
+  - `getPoolStatistics()` returns the live `mssql` pool (`size`, `available`,
+    `borrowed`, `pending`, `min`, `max`), and `/metrics` shows the same values
+    in `api_gateway_connection_pool_size{pool="database",state=...}`.
+  - With `dbPoolMax=1` held by an open transaction, `/metrics` shows
+    `active=1` and `waiting=1`. The queued request gets `503 service-busy` with
+    `Retry-After` after `dbPoolAcquireTimeout`, with no schema details.
+  - After the connection is released, the pool recovers: the DB connection is
+    not marked as errored and the next request gets `200`.
+
+**Tooling:**
+
+- `npm run lint` and `lint:fix` now also check `resources/` (browser code for
+  the editor) and `scripts/`. 184 lint errors there are fixed (quotes, indent,
+  browser globals). No logic change.
+
 ## 0.11.0
 
 ### Real database pool metrics and 503 on pool saturation (GH-7) (2026-11-09)
