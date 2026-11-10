@@ -1,6 +1,6 @@
 "use strict";
 
-// Gateway hardening e2e (tasks 091-093, GitHub issues #4, #5, #6).
+// Gateway hardening e2e (tasks 091-093, 095; GitHub issues #4, #5, #6, #7).
 //
 // Drives the real nodes (apigw-config + apigw-server + apigw-endpoint) through
 // node-red-node-test-helper and talks to them over real HTTP sockets:
@@ -13,6 +13,9 @@
 //  - #4 auto-CRUD database errors: a REAL SQL Server 2022 container provokes
 //       PK, NOT NULL, conversion, FK and CHECK violations; responses must map to
 //       409/400 without leaking schema details.
+//  - #7 the real mssql pool: getPoolStatistics() and connection_pool_size on
+//       /metrics show the live pool; a saturated pool (dbPoolMax=1 held by an
+//       open transaction) answers 503 + Retry-After and recovers afterwards.
 //
 // Run: npm run test:e2e-hardening
 // The SQL Server suite starts a throwaway container and is skipped when Docker
@@ -381,7 +384,7 @@ function dockerAvailable() {
 
 const sqlRunner = (external || dockerAvailable()) ? describe : describe.skip;
 
-sqlRunner("E2E #4: auto-CRUD database errors (real SQL Server)", function() {
+sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
     this.timeout(240000);
     const sql = require("mssql");
     const DB = "apigw_e2e";
@@ -521,5 +524,83 @@ sqlRunner("E2E #4: auto-CRUD database errors (real SQL Server)", function() {
         const missing = await httpRequest(srv.port, "/parents/424242");
         missing.status.should.equal(404);
         missing.json.type.should.equal("urn:problem:not-found");
+    });
+
+    // -----------------------------------------------------------------------
+    // Issue #7 - the real mssql pool: statistics, metrics and saturation
+    // -----------------------------------------------------------------------
+    describe("#7: real mssql pool statistics and saturation", function() {
+        function poolGauge(body, state) {
+            const line = body.split("\n").find((l) => l.startsWith("api_gateway_connection_pool_size{") &&
+                l.includes('pool="database"') && l.includes(`state="${state}"`));
+            return line === undefined ? undefined : Number(line.trim().split(" ").pop());
+        }
+
+        before(async function() {
+            await adminQuery("IF NOT EXISTS (SELECT 1 FROM parents WHERE id = 700) INSERT INTO parents (id, name) VALUES (700, 'pool')", DB);
+        });
+
+        async function deployPool(cfg) {
+            const srv = await deploy({
+                cfg: Object.assign({}, baseCfg, { dbPoolMin: 0, dbPoolMax: 1, dbPoolAcquireTimeout: 1500 }, cfg || {}),
+                cfgCreds,
+                srv: { metricsEnabled: true, metricsAuth: "none" },
+                endpoints: [crud("/parents/:id", "GET", "parents", "get")]
+            });
+            const cfgNode = helper.getNode("cfg");
+            await waitFor(() => cfgNode.isSqlServerReady(), 30000, 100);
+            return { srv, cfgNode };
+        }
+
+        it("getPoolStatistics() and /metrics report the live mssql pool", async function() {
+            const { srv, cfgNode } = await deployPool({ dbPoolMax: 3 });
+            (await httpRequest(srv.port, "/parents/700")).status.should.equal(200);
+            const stats = cfgNode.getPoolStatistics();
+            stats.should.have.properties(["size", "available", "borrowed", "pending", "min", "max"]);
+            stats.min.should.equal(0);
+            stats.max.should.equal(3);
+            stats.borrowed.should.equal(0);
+            stats.pending.should.equal(0);
+            stats.size.should.be.aboveOrEqual(1);
+
+            const res = await httpRequest(srv.port, "/metrics");
+            res.status.should.equal(200);
+            poolGauge(res.body, "active").should.equal(0);
+            poolGauge(res.body, "idle").should.equal(stats.available);
+            poolGauge(res.body, "waiting").should.equal(0);
+        });
+
+        it("a saturated pool answers 503 + Retry-After, shows the queue, and recovers", async function() {
+            const { srv, cfgNode } = await deployPool();
+            const tx = new sql.Transaction(cfgNode.mssqlPool);
+            await tx.begin(); // holds the only connection (dbPoolMax=1)
+            let released = false;
+            try {
+                const pending = httpRequest(srv.port, "/parents/700", { headers: { "x-request-id": "e2e-busy-1" } });
+                await waitFor(() => cfgNode.getPoolStatistics().pending >= 1, 1000, 20);
+
+                const scrape = await httpRequest(srv.port, "/metrics");
+                poolGauge(scrape.body, "active").should.equal(1);
+                poolGauge(scrape.body, "waiting").should.equal(1);
+
+                const res = await pending;
+                assertSafeProblem(res, 503);
+                res.json.type.should.equal("https://api.example.com/errors/service-busy");
+                res.json.requestId.should.equal("e2e-busy-1");
+                res.headers.should.have.property("retry-after");
+                Number(res.headers["retry-after"]).should.be.above(0);
+
+                await tx.commit();
+                released = true;
+            } finally {
+                if (!released) await tx.rollback().catch(() => {});
+            }
+
+            // The acquire timeout must not mark the DB connection as errored.
+            cfgNode.isSqlServerReady().should.equal(true);
+            const ok = await httpRequest(srv.port, "/parents/700");
+            ok.status.should.equal(200, ok.body);
+            cfgNode.getPoolStatistics().pending.should.equal(0);
+        });
     });
 });
