@@ -52,10 +52,66 @@ function toInt(value, fallback) {
  * mssql parameter types.
  * @param {string|undefined} dataType - Lowercased DATA_TYPE from INFORMATION_SCHEMA
  * @param {Object} sql - The mssql module
+ * @param {Object} [column] - Introspected column (precision/scale for decimals)
+ * @param {*} [value] - The body value to bind
  * @returns {{sqlType: Object, binary: boolean}|null} Explicit type or null for default binding
  */
-function getExplicitParamType(dataType, sql) {
+const BIGINT_MIN = -(2n ** 63n);
+const BIGINT_MAX = 2n ** 63n - 1n;
+
+/**
+ * Error for a body value that cannot be bound (db-errors maps EPARAM to 400).
+ * @param {string} message
+ * @returns {Error}
+ */
+function invalidParam(message) {
+    const err = new Error(message);
+    err.code = "EPARAM";
+    return err;
+}
+
+function getExplicitParamType(dataType, sql, column, value) {
     switch (dataType) {
+    case "bigint":
+        // Int would reject values > 2^31-1. Strings keep values beyond
+        // Number.MAX_SAFE_INTEGER exact. Non-integers keep the default
+        // binding (SQL Server converts or rejects them with a 400).
+        if ((typeof value === "string" && /^-?[0-9]+$/.test(value)) || Number.isInteger(value)) {
+            // tedious rejects out-of-range values before SQL Server sees
+            // them; that is the client's error (400), not a 500.
+            const big = BigInt(value);
+            if (big < BIGINT_MIN || big > BIGINT_MAX) {
+                throw invalidParam("bigint value out of range");
+            }
+            return { sqlType: sql.BigInt, binary: false };
+        }
+        return null;
+    case "decimal":
+    case "numeric":
+        // Never the JS-number default Decimal(18,4) (it drops digits), nor
+        // Decimal(p,s): tedious encodes the scaled value in 64 bits and fails
+        // for e.g. 1 into decimal(38,20). A number goes as its shortest
+        // decimal text, which SQL Server converts exactly (overflow -> 400);
+        // exponent notation goes as float. Strings keep NVarChar as well.
+        if (typeof value === "number" && Number.isFinite(value)) {
+            const text = String(value);
+            return /e/i.test(text)
+                ? { sqlType: sql.Float, binary: false }
+                : { sqlType: sql.NVarChar, binary: false, value: text };
+        }
+        return null;
+    case "float":
+        return typeof value === "number" ? { sqlType: sql.Float, binary: false } : null;
+    case "real":
+        if (typeof value !== "number") {
+            return null;
+        }
+        // A value beyond the float32 range would be sent as infinity and
+        // rejected by SQL Server (error 8023) with a 500.
+        if (!Number.isFinite(Math.fround(value))) {
+            throw invalidParam("real value out of range");
+        }
+        return { sqlType: sql.Real, binary: false };
     case "binary":
     case "varbinary":
     case "image":
@@ -586,7 +642,8 @@ module.exports = function(RED) {
          * introspection query fails (failures are not cached).
          * @param {string} tableName - Table name, optionally schema/db-qualified
          * @returns {Promise<Array<{name: string, dataType: string, nullable: boolean,
-         *   maxLength: number|null, hasDefault: boolean, identity: boolean, computed: boolean}>>}
+         *   maxLength: number|null, precision: number|null, scale: number|null,
+         *   hasDefault: boolean, identity: boolean, computed: boolean}>>}
          */
         node._tableColumns = new Map();
         node._tableColumnTypes = new Map();
@@ -616,6 +673,7 @@ module.exports = function(RED) {
                 // VIEW DEFINITION it returns no rows (LEFT JOIN -> NULL flags)
                 // instead of failing, so it never breaks binary binding.
                 let query = "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.CHARACTER_MAXIMUM_LENGTH, " +
+                    "c.NUMERIC_PRECISION, c.NUMERIC_SCALE, " +
                     "c.COLUMN_DEFAULT, sc.is_identity AS IS_IDENTITY, sc.is_computed AS IS_COMPUTED " +
                     `FROM ${catalog}INFORMATION_SCHEMA.COLUMNS c ` +
                     `LEFT JOIN ${catalog}sys.columns sc ON sc.object_id = OBJECT_ID(QUOTENAME(c.TABLE_CATALOG) + '.' + ` +
@@ -627,11 +685,11 @@ module.exports = function(RED) {
                     query += " AND c.TABLE_SCHEMA = @schema";
                     request.input("schema", sql.NVarChar, schema);
                 } else {
-                    // Unqualified name: scope to the connection's default schema,
-                    // which is where the DML actually runs. Without this filter a
-                    // same-named table/view in another schema would merge in and
-                    // mistype columns.
-                    query += " AND c.TABLE_SCHEMA = SCHEMA_NAME()";
+                    // Unqualified name: resolve it like the DML does (the user's
+                    // default schema, then dbo) via OBJECT_ID, so the columns
+                    // come from the same object. Without this filter a
+                    // same-named table/view in another schema would merge in.
+                    query += " AND c.TABLE_SCHEMA = COALESCE(OBJECT_SCHEMA_NAME(OBJECT_ID(QUOTENAME(@table))), SCHEMA_NAME())";
                 }
                 query += " ORDER BY c.ORDINAL_POSITION";
                 const result = await request.query(query);
@@ -645,6 +703,8 @@ module.exports = function(RED) {
                         dataType: String(row.DATA_TYPE).toLowerCase(),
                         nullable: String(row.IS_NULLABLE || "").toUpperCase() === "YES",
                         maxLength: Number.isFinite(maxLength) ? maxLength : null,
+                        precision: Number.isInteger(row.NUMERIC_PRECISION) ? row.NUMERIC_PRECISION : null,
+                        scale: Number.isInteger(row.NUMERIC_SCALE) ? row.NUMERIC_SCALE : null,
                         hasDefault: row.COLUMN_DEFAULT !== null && row.COLUMN_DEFAULT !== undefined,
                         identity: truthy(row.IS_IDENTITY),
                         computed: truthy(row.IS_COMPUTED)
@@ -688,9 +748,10 @@ module.exports = function(RED) {
          * @param {Object} [params] - Query parameters (name: value pairs)
          * @param {Object} [paramTypes] - Optional explicit mssql types per param
          *   name (e.g. sql.VarBinary(sql.MAX)); overrides JS-type sniffing
+         * @param {Object} [transaction] - Optional mssql Transaction to run in
          * @returns {Promise<Object>} Query result with recordset and rowsAffected
          */
-        node.executeQuery = async function(query, params = {}, paramTypes = {}) {
+        node.executeQuery = async function(query, params = {}, paramTypes = {}, transaction = null) {
             if (!node.mssqlPool) {
                 throw new Error("SQL Server not configured");
             }
@@ -699,7 +760,7 @@ module.exports = function(RED) {
             }
 
             const sql = getMssql();
-            const request = node.mssqlPool.request();
+            const request = transaction ? new sql.Request(transaction) : node.mssqlPool.request();
 
             // Add parameters to the request
             for (const [name, value] of Object.entries(params)) {
@@ -731,6 +792,50 @@ module.exports = function(RED) {
                 rowsAffected: result.rowsAffected || [],
                 output: result.output || {}
             };
+        };
+
+        /**
+         * Run work inside one mssql Transaction on one pooled connection.
+         * `work` receives run(query, params, paramTypes) bound to the
+         * transaction. Commits when work resolves; rolls back (and rethrows)
+         * when it throws. mssql releases the connection in both cases, so no
+         * session state (open transaction, SET options) leaks into the pool.
+         * @param {function(function): Promise<*>} work
+         * @returns {Promise<*>} The value of work
+         */
+        node.withTransaction = async function(work) {
+            if (!node.mssqlPool) {
+                throw new Error("SQL Server not configured");
+            }
+            if (!node.mssqlPool.connected) {
+                throw new Error("SQL Server not connected");
+            }
+            const sql = getMssql();
+            const transaction = new sql.Transaction(node.mssqlPool);
+            try {
+                await transaction.begin();
+            } catch (err) {
+                // mssql keeps the acquired connection when BEGIN TRANSACTION
+                // fails; rollback() releases it (its own error is expected).
+                try {
+                    await transaction.rollback();
+                } catch (releaseErr) {
+                    /* nothing to roll back; the connection is released */
+                }
+                throw err;
+            }
+            try {
+                const value = await work((q, p, t) => node.executeQuery(q, p, t, transaction));
+                await transaction.commit();
+                return value;
+            } catch (err) {
+                try {
+                    await transaction.rollback();
+                } catch (rollbackErr) {
+                    /* already aborted by the driver */
+                }
+                throw err;
+            }
         };
 
         /**
@@ -780,12 +885,20 @@ module.exports = function(RED) {
             const bindBodyColumns = async (columns, prefix) => {
                 const columnTypes = await node.getTableColumnTypes(sqlTemplate.tableName);
                 const sqlLib = columnTypes.size > 0 ? getMssql() : null;
+                // Precision/scale for decimal binding (GH-8 review)
+                const details = new Map((node._tableColumns.get(sqlTemplate.tableName) || [])
+                    .map(col => [col.name.toLowerCase(), col]));
                 columns.forEach((c, i) => {
                     const name = `${prefix}${i}`;
-                    const hint = sqlLib ? getExplicitParamType(columnTypes.get(String(c).toLowerCase()), sqlLib) : null;
+                    const key = String(c).toLowerCase();
+                    const hint = sqlLib ? getExplicitParamType(columnTypes.get(key), sqlLib, details.get(key), body[c]) : null;
                     if (hint) {
                         paramTypes[name] = hint.sqlType;
-                        params[name] = hint.binary ? toBufferValue(body[c]) : body[c];
+                        if (hint.binary) {
+                            params[name] = toBufferValue(body[c]);
+                        } else {
+                            params[name] = Object.prototype.hasOwnProperty.call(hint, "value") ? hint.value : body[c];
+                        }
                     } else {
                         params[name] = body[c];
                     }
@@ -810,48 +923,57 @@ module.exports = function(RED) {
                 const rawLimit = Number.isInteger(page.limit) ? page.limit : parseInt(query.limit, 10);
                 const rawOffset = Number.isInteger(page.offset) ? page.offset : parseInt(query.offset, 10);
                 params.limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 10;
-                params.offset = Number.isInteger(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+                params.offset = Number.isInteger(rawOffset) && rawOffset > 0
+                    ? Math.min(rawOffset, Number.MAX_SAFE_INTEGER)
+                    : 0;
+                // OFFSET takes a bigint; an int would reject offsets > 2^31-1.
+                paramTypes.offset = getMssql().BigInt;
 
-                // COUNT(*) over the same FROM/WHERE gives the real total.
-                // Built from the template before ORDER BY/OFFSET are touched.
-                const fromStart = sql.indexOf(" FROM ");
-                const orderStart = sql.indexOf(" ORDER BY ");
-                const fromClause = fromStart > -1
-                    ? sql.slice(fromStart + 1, orderStart > fromStart ? orderStart : undefined)
-                    : null;
-                let whereSql = "";
-
-                // Handle filtering - inject WHERE clause before ORDER BY
-                if (filtering && filtering.whereClause && filtering.whereClause.clause) {
-                    whereSql = filtering.whereClause.clause;
-                    // Add filter params
-                    for (const [key, value] of Object.entries(filtering.whereClause.params || {})) {
-                        params[key] = value;
-                    }
-
-                    // Inject WHERE clause into SQL (before ORDER BY)
-                    const orderByIndex = sql.indexOf("ORDER BY");
-                    if (orderByIndex > -1) {
-                        sql = sql.slice(0, orderByIndex) + filtering.whereClause.clause + " " + sql.slice(orderByIndex);
-                    } else {
-                        sql = sql + " " + filtering.whereClause.clause;
-                    }
+                const whereSql = filtering && filtering.whereClause && filtering.whereClause.clause
+                    ? filtering.whereClause.clause
+                    : "";
+                for (const [key, value] of Object.entries((whereSql && filtering.whereClause.params) || {})) {
+                    params[key] = value;
                 }
+                const orderSql = sorting && sorting.orderByClause ? sorting.orderByClause : "";
+                const PAGE_SUFFIX = " OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
+                const table = sqlTemplate.tableName ? quoteTableName(sqlTemplate.tableName) : null;
+                const generatedPrefix = table ? `SELECT * FROM ${table} ORDER BY ` : null;
 
-                // Handle custom sorting if provided. Replace the generated
-                // "ORDER BY <pk>" (which sits between ORDER BY and OFFSET) with
-                // the custom clause using index math - a regex like
-                // /ORDER BY [^O]+/i wrongly stops at any 'o' in the column name.
-                if (sorting && sorting.orderByClause) {
-                    const obStart = sql.indexOf("ORDER BY");
-                    const offStart = obStart > -1 ? sql.indexOf("OFFSET", obStart) : -1;
-                    if (obStart > -1 && offStart > -1) {
-                        sql = sql.slice(0, obStart) + sorting.orderByClause + " " + sql.slice(offStart);
+                if (generatedPrefix && sql.startsWith(generatedPrefix) && sql.endsWith(PAGE_SUFFIX)) {
+                    // Generated template: rebuild it from its parts. Searching
+                    // the SQL text for keywords would match inside a quoted
+                    // identifier such as [Sales ORDER BY Region].
+                    const defaultOrder = sql.slice(generatedPrefix.length - "ORDER BY ".length, sql.length - PAGE_SUFFIX.length);
+                    const where = whereSql ? ` ${whereSql}` : "";
+                    sql = `SELECT * FROM ${table}${where} ${orderSql || defaultOrder}${PAGE_SUFFIX}`;
+                    if (context.countTotal !== false) {
+                        // COUNT(*) over the same FROM/WHERE gives the real total.
+                        countSql = `SELECT COUNT_BIG(*) AS total FROM ${table}${where}`;
                     }
-                }
-
-                if (fromClause && context.countTotal !== false) {
-                    countSql = `SELECT COUNT_BIG(*) AS total ${fromClause}${whereSql ? " " + whereSql : ""}`;
+                } else {
+                    // Custom template: legacy text injection. The count uses
+                    // the template's FROM part (found by text search, so a
+                    // keyword inside a quoted identifier can break it).
+                    const fromStart = sql.indexOf(" FROM ");
+                    const orderStart = sql.indexOf(" ORDER BY ");
+                    if (fromStart > -1 && context.countTotal !== false) {
+                        const fromClause = sql.slice(fromStart + 1, orderStart > fromStart ? orderStart : undefined);
+                        countSql = `SELECT COUNT_BIG(*) AS total ${fromClause}${whereSql ? " " + whereSql : ""}`;
+                    }
+                    if (whereSql) {
+                        const orderByIndex = sql.indexOf("ORDER BY");
+                        sql = orderByIndex > -1
+                            ? sql.slice(0, orderByIndex) + whereSql + " " + sql.slice(orderByIndex)
+                            : sql + " " + whereSql;
+                    }
+                    if (orderSql) {
+                        const obStart = sql.indexOf("ORDER BY");
+                        const offStart = obStart > -1 ? sql.indexOf("OFFSET", obStart) : -1;
+                        if (obStart > -1 && offStart > -1) {
+                            sql = sql.slice(0, obStart) + orderSql + " " + sql.slice(offStart);
+                        }
+                    }
                 }
                 break;
             }
@@ -912,8 +1034,12 @@ module.exports = function(RED) {
                     // Replace @assignments placeholder with actual SET clause
                     // (literal replacement: identifiers derive from user keys).
                     sql = replaceLiteral(sql, "@assignments", assignments.join(", "));
-                    // Add OUTPUT clause to return updated row (SQL Server)
-                    const whereIndex = sql.indexOf("WHERE");
+                    // Add OUTPUT clause to return updated row (SQL Server). Put it
+                    // before the generated key predicate (the last WHERE); a
+                    // first-match search could hit a quoted identifier.
+                    const keyWhere = pkCol ? ` WHERE ${quoteIdentifierPart(pkCol)} = @${pkCol}` : null;
+                    const keyIndex = keyWhere && sql.endsWith(keyWhere) ? sql.length - keyWhere.length : -1;
+                    const whereIndex = keyIndex > -1 ? keyIndex + 1 : sql.indexOf("WHERE");
                     if (whereIndex > -1) {
                         sql = sql.slice(0, whereIndex) + "OUTPUT INSERTED.* " + sql.slice(whereIndex);
                     }
@@ -934,28 +1060,42 @@ module.exports = function(RED) {
             }
             }
 
-            // Execute the query
             // Guard writes by key (GH-8 section 6): when the configured
             // primaryKey is not unique, update/delete would change every
-            // matching row. The extra predicate makes the single DML
-            // statement a no-op unless exactly one row matches; a no-op with
-            // matching rows left means "more than one" -> THROW (409).
-            if ((operation === "update" || operation === "delete") && sqlTemplate.primaryKey && sqlTemplate.tableName) {
-                const whereStart = sql.lastIndexOf(" WHERE ");
-                if (whereStart > -1) {
-                    const keyWhere = sql.slice(whereStart + 1);
-                    const table = quoteTableName(sqlTemplate.tableName);
-                    sql = `${sql} AND (SELECT COUNT_BIG(*) FROM ${table} ${keyWhere}) = 1;\n` +
-                        `IF @@ROWCOUNT = 0 AND EXISTS (SELECT 1 FROM ${table} ${keyWhere}) ` +
-                        `THROW ${SQL_NON_UNIQUE_KEY}, N'primaryKey matches more than one row', 1;`;
-                }
+            // matching row. In one transaction, lock the key range
+            // (UPDLOCK, HOLDLOCK: no concurrent insert/update/delete of that
+            // key until commit), count up to two matches, and only then write.
+            let result;
+            let countResult = null;
+            const pkCol = sqlTemplate.primaryKey;
+            if ((operation === "update" || operation === "delete") && pkCol && sqlTemplate.tableName &&
+                Object.prototype.hasOwnProperty.call(params, pkCol)) {
+                const table = quoteTableName(sqlTemplate.tableName);
+                const checkSql = `SELECT TOP (2) 1 AS found FROM ${table} WITH (UPDLOCK, HOLDLOCK) ` +
+                    `WHERE ${quoteIdentifierPart(pkCol)} = @${pkCol}`;
+                result = await node.withTransaction(async run => {
+                    const check = await run(checkSql, { [pkCol]: params[pkCol] }, paramTypes[pkCol] ? { [pkCol]: paramTypes[pkCol] } : {});
+                    const matches = (check.recordset || []).length;
+                    if (matches > 1) {
+                        const err = new Error("primaryKey matches more than one row");
+                        err.number = SQL_NON_UNIQUE_KEY;
+                        err.code = "EREQUEST";
+                        throw err;
+                    }
+                    if (matches === 0) {
+                        return { recordset: [], rowsAffected: [0] };
+                    }
+                    return run(sql, params, paramTypes);
+                });
+            } else {
+                // List: page and COUNT(*) run in parallel on two pool
+                // connections, so concurrent writes can make total differ
+                // slightly from the page (documented).
+                [result, countResult] = await Promise.all([
+                    node.executeQuery(sql, params, paramTypes),
+                    countSql ? node.executeQuery(countSql, params, paramTypes) : Promise.resolve(null)
+                ]);
             }
-
-            // List: page and COUNT(*) run in parallel on two pool connections.
-            const [result, countResult] = await Promise.all([
-                node.executeQuery(sql, params, paramTypes),
-                countSql ? node.executeQuery(countSql, params, paramTypes) : Promise.resolve(null)
-            ]);
 
             const out = {
                 operation,

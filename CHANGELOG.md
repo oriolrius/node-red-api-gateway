@@ -13,11 +13,13 @@ All notable changes to this project will be documented in this file.
   returned a whole table. Now `limit` defaults to `defaultPageSize` when
   pagination is enabled (10 when it is not) and is always capped at
   `maxPageSize` (default 100). Negative values fall back to the defaults, and
-  `?page=` is accepted as well as `?offset=`. The response `limit`/`offset`
-  echo the values that the SQL used.
+  `?page=` is accepted as well as `?offset=`. `OFFSET` is bound as `bigint`, so
+  a large page number gives an empty page instead of a driver error. The
+  response `limit`/`offset` echo the values that the SQL used.
 - **`total` in auto-CRUD list responses is the real number of matching rows**
   (`COUNT_BIG(*)` with the same `WHERE`, run in parallel with the page query).
-  Before, it was the number of rows in the page.
+  Before, it was the number of rows in the page. The two queries are separate
+  reads: a concurrent write can make `total` differ from the page.
 - **The default RFC 7807 `type` is `about:blank`** (with the HTTP status phrase
   as `title`) when `problemTypeBaseUri` is empty. Before, it was
   `https://api.example.com/errors/<slug>`. Set `problemTypeBaseUri` to keep
@@ -27,8 +29,12 @@ All notable changes to this project will be documented in this file.
   table name is now only in the server log.
 - **A non-unique `primaryKey` gives `409`.** `get` answers `409` when the key
   matches more than one row (before: an arbitrary row). `update` and `delete`
-  add a guard to the single DML statement, so they change no row and answer
-  `409` (`non-unique-key`) instead of changing every matching row.
+  now run in one transaction: a key check with `UPDLOCK, HOLDLOCK` locks the
+  key range until commit, counts up to two matches, and the write runs only
+  for exactly one. Otherwise they change no row and answer `409`
+  (`non-unique-key`) or `404`. A duplicate inserted by a transaction that
+  locked first is seen (the gateway waits for it). Without an index on the key,
+  SQL Server can lock more than the key range, so writes block more.
 
 **Features:**
 
@@ -47,8 +53,28 @@ All notable changes to this project will be documented in this file.
   (default off)**, passed to `mssql` as `useUTC` and `lowerCaseGuids`. The
   README and the node help explain what the `Z` on `datetime` values means
   under each setting.
-- `apigw-config.getTableColumns(tableName)` returns the introspected columns;
-  `getTableColumnTypes()` is now derived from it.
+- `apigw-config.getTableColumns(tableName)` returns the introspected columns
+  (with precision and scale); `getTableColumnTypes()` is now derived from it.
+  An unqualified table name resolves like the DML (default schema, then
+  `dbo`).
+- `apigw-config.withTransaction(work)` runs queries in one `mssql` transaction.
+
+**Fixes:**
+
+- Auto-CRUD body values bind with the column type: `bigint` as `BigInt`
+  (before: `Int`, so values above 2^31-1 failed), `float`/`real` as
+  `Float`/`Real`. `decimal`/`numeric` numbers are sent as their decimal text,
+  which SQL Server converts exactly (before: `Decimal(18,4)`, which lost
+  digits); decimal strings are converted the same way.
+- The list SQL is built from its parts: a table name that contains SQL
+  keywords (`[Sales ORDER BY Region]`) no longer breaks filtering, sorting or
+  the count. `update` puts `OUTPUT INSERTED.*` before the key predicate, not
+  before the first `WHERE` in the text.
+- The OpenAPI of `list`, `get` and `update` uses the configured success status
+  code (e.g. `202`; `204` without a body), as the runtime does; `create` stays
+  `201`, `delete` `204`.
+- `withTransaction()` releases the pool connection when `BEGIN TRANSACTION`
+  itself fails.
 
 **Docs:**
 
@@ -61,8 +87,11 @@ All notable changes to this project will be documented in this file.
 - `tests/unit/gh8-auto-crud-contract_spec.js` covers every point of the issue.
 - `npm run test:e2e-hardening` adds GH-8 checks against a real SQL Server 2022:
   page size settings and `total` (with filters), every returned row validates
-  against the `/openapi.json` row schema (Ajv), the generic `404`, and `409`
-  with no row changed for a non-unique key.
+  against the `/openapi.json` row schema (Ajv), the generic `404`, `409` with no
+  row changed for a non-unique key (also with a duplicate inserted by a
+  concurrent transaction), a table name with SQL keywords, a page number beyond
+  int range, exact `bigint`/`decimal` writes, and the `dbo` fallback of
+  introspection for a user with another default schema.
 
 ## 0.11.1
 

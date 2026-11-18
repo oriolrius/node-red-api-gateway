@@ -13,6 +13,19 @@ describe("api-config executeCrudOperation primary-key binding", function () {
         helper.stopServer(done);
     });
 
+    // GH-8: update/delete run a guarded transaction. Answer the key check
+    // (one match) and pass the write through to the captured executeQuery.
+    function passGuard(node) {
+        node.withTransaction = async function (work) {
+            return work(async function (q, p, t) {
+                if (q.startsWith("SELECT TOP (2)")) {
+                    return { recordset: [{ found: 1 }], rowsAffected: [1] };
+                }
+                return node.executeQuery(q, p, t);
+            });
+        };
+    }
+
     function load(cb) {
         const flow = [{ id: "c1", type: "apigw-config", name: "cfg", dbType: "mssql" }];
         helper.load(apiConfigNode, flow, function () {
@@ -215,6 +228,7 @@ describe("api-config executeCrudOperation primary-key binding", function () {
                 calls.push({ sql, params });
                 return { recordset: [{}], rowsAffected: [1] };
             };
+            passGuard(node);
             node.executeCrudOperation(
                 "update",
                 { sql: "UPDATE [t] SET @assignments WHERE [col0] = @col0", primaryKey: "col0", tableName: "t" },

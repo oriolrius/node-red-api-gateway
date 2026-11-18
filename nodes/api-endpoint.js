@@ -922,15 +922,19 @@ module.exports = function(RED) {
         // SQL), otherwise the legacy default of 10. maxPageSize always caps
         // the page so one request cannot read a whole table (GH-8).
         node.getAutoCrudPage = function(pagination, query) {
+            // Offsets above 2^53 are not exact in JavaScript; clamp them (the
+            // page is then empty). The SQL binds OFFSET as bigint.
+            // Infinity (a 309-digit page number) also clamps to the maximum.
+            const clampOffset = o => (typeof o === "number" && o > 0 ? Math.min(Math.floor(o), Number.MAX_SAFE_INTEGER) : 0);
             if (pagination && pagination.style !== "cursor" && Number.isInteger(pagination.limit)) {
-                return { limit: pagination.limit, offset: Number.isInteger(pagination.offset) ? pagination.offset : 0 };
+                return { limit: pagination.limit, offset: clampOffset(pagination.offset) };
             }
             const parsed = parsePaginationParams(query || {}, {
                 paginationStyle: "offset",
                 defaultPageSize: node.paginationEnabled ? node.defaultPageSize : 10,
                 maxPageSize: node.maxPageSize
             });
-            return { limit: parsed.limit, offset: parsed.offset };
+            return { limit: parsed.limit, offset: clampOffset(parsed.offset) };
         };
 
         // RFC 7807 404 for auto-CRUD. The detail is generic: the table name
@@ -997,6 +1001,7 @@ module.exports = function(RED) {
                 columns: node.autoCrudColumns,
                 primaryKey: node.primaryKey,
                 autoExecute: !node.useFlowOutput,
+                successStatusCode: node.successStatusCode,
                 filterableFields: node.filteringEnabled ? node.filterableFields : [],
                 defaultPageSize: node.paginationEnabled ? node.defaultPageSize : 10,
                 maxPageSize: node.maxPageSize,

@@ -207,20 +207,25 @@ Individual API endpoint definition node.
 - Auto-generate SQL templates
 - The primary key **must be unique** (a PRIMARY KEY or UNIQUE constraint).
   When it matches more than one row, auto-CRUD `get`, `update` and `delete`
-  answer `409` and change no row.
+  answer `409` and change no row. `update`/`delete` lock the key range in a
+  transaction before they write. If a concurrent transaction inserts a
+  duplicate first, the gateway waits for it and then answers `409`. If the
+  gateway locks first, the insert waits until the gateway commits (and can then
+  create the duplicate, which the next request detects).
 
 **Auto-CRUD responses (`autoGenerateSql` on, `useFlowOutput` off):**
 
 | Operation | Success | Body |
 |---|---|---|
-| list | `200` | `{ data: [row…], total, limit, offset }` |
-| get | `200` | the row (`404` when absent) |
+| list | `200` (default; the configured success code) | `{ data: [row…], total, limit, offset }` |
+| get | `200` (default; the configured success code) | the row (`404` when absent) |
 | create | `201` | the inserted row |
-| update | `200` | the updated row (`404` when absent) |
+| update | `200` (default; the configured success code) | the updated row (`404` when absent) |
 | delete | `204` | empty (`404` when absent) |
 
 - `total` is the number of rows that match the filters (a `COUNT(*)` with the
-  same `WHERE`), not the number of rows in the page.
+  same `WHERE`), not the number of rows in the page. The page and the count are
+  separate reads, so a concurrent write can make them differ.
 - `limit` comes from `?limit=`, or `defaultPageSize` when pagination is enabled
   (10 when it is not). It is always capped at `maxPageSize` (default 100).
   `offset` comes from `?offset=` or `?page=`. The list SQL supports offset
@@ -239,6 +244,9 @@ Individual API endpoint definition node.
   `char(n)`/`nchar(n)` → string padded to `n`, dates → ISO 8601 string (see
   `dbUseUTC`), `binary`/`varbinary`/`image` → `{"type":"Buffer","data":[…]}`,
   `NULL` → `null` (the key is always present).
+- In request bodies, send `bigint` values outside ±2^53 and exact `decimal`
+  values as strings: JSON numbers lose precision before they reach the
+  gateway.
 
 **Pagination:**
 - Style: offset-based or cursor-based

@@ -441,7 +441,19 @@ sqlRunner("E2E #4/#7/#8: database errors, pool and auto-CRUD contract (real SQL 
                 photo VARBINARY(MAX) NULL,
                 guid UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID()
             );
-            CREATE TABLE legacy (k INT NOT NULL, v NVARCHAR(10) NULL);`, DB);
+            CREATE TABLE legacy (k INT NOT NULL, v NVARCHAR(10) NULL);
+            CREATE TABLE [Sales ORDER BY Region] (id INT PRIMARY KEY, x INT NOT NULL);
+            CREATE TABLE amounts (id INT IDENTITY(1,1) PRIMARY KEY, big BIGINT NULL, amount DECIMAL(12,5) NULL, wide DECIMAL(38,20) NULL, r REAL NULL);`, DB);
+        // A login whose default schema is "app": unqualified names resolve to
+        // app.<name>, then dbo.<name> (GH-8 review: introspection fallback).
+        await adminQuery(`
+            IF SUSER_ID('apigw_app') IS NULL CREATE LOGIN apigw_app WITH PASSWORD = '${MSSQL.password}', CHECK_POLICY = OFF;`);
+        await adminQuery(`
+            EXEC('CREATE SCHEMA app');
+            CREATE USER apigw_app FOR LOGIN apigw_app WITH DEFAULT_SCHEMA = app;
+            ALTER ROLE db_datareader ADD MEMBER apigw_app;
+            ALTER ROLE db_datawriter ADD MEMBER apigw_app;
+            CREATE TABLE dbo.fallback (id INT PRIMARY KEY, photo VARBINARY(MAX) NULL);`, DB);
         await adminQuery(`
             SET NOCOUNT ON;
             DECLARE @i INT = 1;
@@ -451,7 +463,8 @@ sqlRunner("E2E #4/#7/#8: database errors, pool and auto-CRUD contract (real SQL 
                         DATEADD(MINUTE, @i, '2026-05-27T12:05:46.837'), CASE WHEN @i = 1 THEN 0xDEADBEEF ELSE NULL END);
                 SET @i += 1;
             END;
-            INSERT INTO legacy (k, v) VALUES (1, 'a'), (1, 'b'), (2, 'c');`, DB);
+            INSERT INTO legacy (k, v) VALUES (1, 'a'), (1, 'b'), (2, 'c'), (3, 'x');
+            INSERT INTO [Sales ORDER BY Region] (id, x) VALUES (1, 10), (2, 20), (3, 30);`, DB);
     });
 
     after(function() {
@@ -470,7 +483,7 @@ sqlRunner("E2E #4/#7/#8: database errors, pool and auto-CRUD contract (real SQL 
         const srv = await deploy({
             cfg: Object.assign({}, baseCfg, opts.cfg || {}),
             srv: opts.srv || {},
-            cfgCreds,
+            cfgCreds: opts.cfgCredsOverride || cfgCreds,
             endpoints: opts.endpoints || [
                 crud("/parents", "POST", "parents", "create"),
                 crud("/parents/:id", "GET", "parents", "get"),
@@ -707,6 +720,82 @@ sqlRunner("E2E #4/#7/#8: database errors, pool and auto-CRUD contract (real SQL 
             res.status.should.equal(404);
             res.json.should.containEql({ type: "about:blank", title: "Not Found", status: 404, detail: "Resource not found" });
             res.body.should.not.match(/items/);
+        });
+
+        it("a duplicate inserted concurrently is seen by the locked key check (409, nothing deleted)", async function() {
+            const srv = await deployItems();
+            const pool = await new sql.ConnectionPool({
+                server: MSSQL.host, port: MSSQL.port, user: "sa", password: MSSQL.password, database: DB,
+                options: { encrypt: false, trustServerCertificate: true }
+            }).connect();
+            try {
+                const tx = new sql.Transaction(pool);
+                await tx.begin();
+                await new sql.Request(tx).query("INSERT INTO legacy (k, v) VALUES (3, 'y')");
+                // The gateway's UPDLOCK/HOLDLOCK check waits for this transaction.
+                const pending = httpRequest(srv.port, "/legacy/3", { method: "DELETE" });
+                await new Promise(r => setTimeout(r, 500));
+                await tx.commit();
+                assertSafeProblem(await pending, 409);
+            } finally {
+                await pool.close();
+            }
+            const rows = await adminQuery("SELECT v FROM legacy WHERE k = 3 ORDER BY v", DB);
+            rows.recordset.should.eql([{ v: "x" }, { v: "y" }]);
+        });
+
+        it("handles a table name that contains SQL keywords", async function() {
+            const srv = await deployCrud({
+                endpoints: [crud("/sales", "GET", "dbo.[Sales ORDER BY Region]", "list", {
+                    paginationEnabled: true, filteringEnabled: true, filterableFields: "x",
+                    sortingEnabled: true, sortableFields: "x"
+                })]
+            });
+            const res = await httpRequest(srv.port, "/sales?filter[x][gt]=10&sort=-x&limit=1");
+            res.status.should.equal(200, res.body);
+            res.json.should.eql({ data: [{ id: 3, x: 30 }], total: 2, limit: 1, offset: 0 });
+        });
+
+        it("a page number beyond int range answers an empty page, not 500", async function() {
+            const srv = await deployItems();
+            const res = await httpRequest(srv.port, "/items?page=200000000&limit=20");
+            res.status.should.equal(200, res.body);
+            res.json.data.should.eql([]);
+            res.json.offset.should.equal(3999999980);
+            res.json.total.should.be.aboveOrEqual(49);
+        });
+
+        it("writes bigint and decimal values exactly", async function() {
+            const srv = await deployCrud({ endpoints: [crud("/amounts", "POST", "amounts", "create")] });
+            const a = await post(srv, "/amounts", { big: 3000000000, amount: 1.23456 });
+            a.status.should.equal(201, a.body);
+            a.json.should.containEql({ big: "3000000000", amount: 1.23456 });
+            const b = await post(srv, "/amounts", { big: "9007199254740993", amount: "1234567.12345" });
+            b.status.should.equal(201, b.body);
+            b.json.big.should.equal("9007199254740993");
+            const exact = await adminQuery(`SELECT CAST(amount AS NVARCHAR(40)) AS a FROM amounts WHERE id = ${b.json.id}`, DB);
+            exact.recordset[0].a.should.equal("1234567.12345");
+            // decimal(38,20): tedious' Decimal encoder overflows; text does not
+            const w = await post(srv, "/amounts", { wide: 1 });
+            w.status.should.equal(201, w.body);
+            w.json.wide.should.equal(1);
+            // Out-of-range values are the client's error: 400, not 500
+            assertSafeProblem(await post(srv, "/amounts", { big: "9223372036854775808" }), 400);
+            assertSafeProblem(await post(srv, "/amounts", { r: 1e40 }), 400);
+        });
+
+        it("introspects an unqualified name through the dbo fallback", async function() {
+            const srv = await deployCrud({
+                cfg: { dbName: DB },
+                cfgCredsOverride: { dbUser: "apigw_app", dbPassword: MSSQL.password },
+                endpoints: [crud("/fallback", "POST", "fallback", "create")]
+            });
+            const cfg = helper.getNode("cfg");
+            (await cfg.getTableColumns("fallback")).map(c => c.name).should.eql(["id", "photo"]);
+            // The binary type hint works, so base64 binds as varbinary.
+            const res = await post(srv, "/fallback", { id: 1, photo: "3q2+7w==" });
+            res.status.should.equal(201, res.body);
+            res.json.photo.should.eql({ type: "Buffer", data: [0xde, 0xad, 0xbe, 0xef] });
         });
 
         it("a non-unique primaryKey answers 409 and changes no row", async function() {

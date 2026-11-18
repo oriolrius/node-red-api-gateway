@@ -225,24 +225,74 @@ describe("GH-8 auto-CRUD contract", function () {
             r.body.detail.should.not.match(/items/);
         }));
 
+        function loadConfig(cb) {
+            helper.load(apiConfigNode, [{ id: "c1", type: "apigw-config", name: "cfg", dbType: "postgres" }], function () {
+                cb(helper.getNode("c1"));
+            });
+        }
+
+        // Runs the guard's transaction work with a fake run(); `matches` is
+        // the number of rows that the locked key check finds.
+        function fakeTransaction(c1, matches, calls) {
+            c1.getTableColumnTypes = async () => new Map();
+            c1.executeQuery = async () => { throw new Error("must run inside the transaction"); };
+            c1.withTransaction = async function (work) {
+                return work(async function (q, params) {
+                    calls.push({ q, params });
+                    if (q.startsWith("SELECT TOP (2)")) {
+                        return { recordset: Array.from({ length: matches }, () => ({ found: 1 })), rowsAffected: [matches] };
+                    }
+                    return { recordset: [{ id: 7 }], rowsAffected: [1] };
+                });
+            };
+        }
+
+        const templates = {
+            update: { sql: "UPDATE [dbo].[items] SET @assignments WHERE [id] = @id", tableName: "dbo.items", primaryKey: "id" },
+            delete: { sql: "DELETE FROM [dbo].[items] WHERE [id] = @id", tableName: "dbo.items", primaryKey: "id" }
+        };
+
         for (const operation of ["update", "delete"]) {
-            it(`${operation} SQL only changes a row when exactly one matches`, function (done) {
-                helper.load(apiConfigNode, [{ id: "c1", type: "apigw-config", name: "cfg", dbType: "postgres" }], function () {
-                    const c1 = helper.getNode("c1");
+            it(`${operation} locks the key range and writes when exactly one row matches`, function (done) {
+                loadConfig(function (c1) {
                     const calls = [];
-                    c1.getTableColumnTypes = async () => new Map();
-                    c1.executeQuery = async function (q, params) {
-                        calls.push({ q, params });
-                        return { recordset: [], rowsAffected: [0] };
-                    };
-                    const template = operation === "update"
-                        ? { sql: "UPDATE [dbo].[items] SET @assignments WHERE [id] = @id", tableName: "dbo.items", primaryKey: "id" }
-                        : { sql: "DELETE FROM [dbo].[items] WHERE [id] = @id", tableName: "dbo.items", primaryKey: "id" };
-                    c1.executeCrudOperation(operation, template, { params: { id: 7 }, body: { name: "n" } }).then(function () {
-                        const q = calls[0].q;
-                        q.should.containEql("WHERE [id] = @id AND (SELECT COUNT_BIG(*) FROM [dbo].[items] WHERE [id] = @id) = 1;");
-                        q.should.containEql("IF @@ROWCOUNT = 0 AND EXISTS (SELECT 1 FROM [dbo].[items] WHERE [id] = @id) THROW 50409");
-                        calls[0].params.id.should.equal(7);
+                    fakeTransaction(c1, 1, calls);
+                    c1.executeCrudOperation(operation, templates[operation], { params: { id: 7 }, body: { name: "n" } }).then(function (result) {
+                        calls.length.should.equal(2);
+                        calls[0].q.should.equal("SELECT TOP (2) 1 AS found FROM [dbo].[items] WITH (UPDLOCK, HOLDLOCK) WHERE [id] = @id");
+                        calls[0].params.should.eql({ id: 7 });
+                        calls[1].q.should.startWith(operation === "update" ? "UPDATE [dbo].[items] SET [name] = @col0 OUTPUT INSERTED.* WHERE [id] = @id" : "DELETE FROM [dbo].[items] WHERE [id] = @id");
+                        result.rowsAffected.should.equal(1);
+                        done();
+                    }).catch(done);
+                });
+            });
+
+            it(`${operation} throws the 50409 guard error and writes nothing when the key matches two rows`, function (done) {
+                loadConfig(function (c1) {
+                    const calls = [];
+                    fakeTransaction(c1, 2, calls);
+                    c1.executeCrudOperation(operation, templates[operation], { params: { id: 7 }, body: { name: "n" } }).then(function () {
+                        done(new Error("expected the guard error"));
+                    }, function (err) {
+                        try {
+                            err.number.should.equal(50409);
+                            calls.length.should.equal(1);
+                            done();
+                        } catch (e) {
+                            done(e);
+                        }
+                    });
+                });
+            });
+
+            it(`${operation} returns 0 rows (404) without writing when nothing matches`, function (done) {
+                loadConfig(function (c1) {
+                    const calls = [];
+                    fakeTransaction(c1, 0, calls);
+                    c1.executeCrudOperation(operation, templates[operation], { params: { id: 7 }, body: { name: "n" } }).then(function (result) {
+                        calls.length.should.equal(1);
+                        result.rowsAffected.should.equal(0);
                         done();
                     }).catch(done);
                 });
@@ -288,8 +338,8 @@ describe("GH-8 auto-CRUD contract", function () {
                                 captured = q;
                                 return {
                                     recordset: [
-                                        { COLUMN_NAME: "Id", DATA_TYPE: "INT", IS_NULLABLE: "NO", CHARACTER_MAXIMUM_LENGTH: null, COLUMN_DEFAULT: null, IS_IDENTITY: true, IS_COMPUTED: false },
-                                        { COLUMN_NAME: "Name", DATA_TYPE: "nvarchar", IS_NULLABLE: "YES", CHARACTER_MAXIMUM_LENGTH: 50, COLUMN_DEFAULT: "(N'x')", IS_IDENTITY: null, IS_COMPUTED: null }
+                                        { COLUMN_NAME: "Id", DATA_TYPE: "INT", IS_NULLABLE: "NO", CHARACTER_MAXIMUM_LENGTH: null, NUMERIC_PRECISION: 10, NUMERIC_SCALE: 0, COLUMN_DEFAULT: null, IS_IDENTITY: true, IS_COMPUTED: false },
+                                        { COLUMN_NAME: "Name", DATA_TYPE: "nvarchar", IS_NULLABLE: "YES", CHARACTER_MAXIMUM_LENGTH: 50, NUMERIC_PRECISION: null, NUMERIC_SCALE: null, COLUMN_DEFAULT: "(N'x')", IS_IDENTITY: null, IS_COMPUTED: null }
                                     ]
                                 };
                             }
@@ -300,8 +350,8 @@ describe("GH-8 auto-CRUD contract", function () {
                     captured.should.containEql("[MYDB].sys.columns");
                     captured.should.containEql("ORDER BY c.ORDINAL_POSITION");
                     columns.should.eql([
-                        { name: "Id", dataType: "int", nullable: false, maxLength: null, hasDefault: false, identity: true, computed: false },
-                        { name: "Name", dataType: "nvarchar", nullable: true, maxLength: 50, hasDefault: true, identity: false, computed: false }
+                        { name: "Id", dataType: "int", nullable: false, maxLength: null, precision: 10, scale: 0, hasDefault: false, identity: true, computed: false },
+                        { name: "Name", dataType: "nvarchar", nullable: true, maxLength: 50, precision: null, scale: null, hasDefault: true, identity: false, computed: false }
                     ]);
                     return c1.getTableColumnTypes("MYDB.dbo.items");
                 }).then(function (types) {
@@ -407,6 +457,246 @@ describe("GH-8 auto-CRUD contract", function () {
                 const op = spec.paths["/items/{id}"].get;
                 op.responses["200"].content["application/json"].schema.properties.should.have.property("mine");
                 op.responses["404"].should.be.ok();
+            });
+        });
+    });
+    describe("review fixes", function () {
+        function loadConfig(cb) {
+            helper.load(apiConfigNode, [{ id: "c1", type: "apigw-config", name: "cfg", dbType: "postgres" }], function () {
+                cb(helper.getNode("c1"));
+            });
+        }
+
+        it("builds page and COUNT from parts when the table name contains SQL keywords", function (done) {
+            loadConfig(function (c1) {
+                const calls = [];
+                c1.executeQuery = async function (q, params, types) {
+                    calls.push({ q, params, types });
+                    return { recordset: q.startsWith("SELECT COUNT_BIG") ? [{ total: 3 }] : [], rowsAffected: [0] };
+                };
+                const table = "dbo.Sales ORDER BY Region";
+                c1.executeCrudOperation(
+                    "list",
+                    { sql: "SELECT * FROM [dbo].[Sales ORDER BY Region] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY", tableName: table, primaryKey: "id" },
+                    {
+                        pagination: { limit: 5, offset: 0 },
+                        filtering: { whereClause: { clause: "WHERE [x] = @filter_x", params: { filter_x: 1 } } },
+                        sorting: { orderByClause: "ORDER BY [x] DESC" }
+                    }
+                ).then(function (result) {
+                    calls[0].q.should.equal("SELECT * FROM [dbo].[Sales ORDER BY Region] WHERE [x] = @filter_x ORDER BY [x] DESC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY");
+                    calls[1].q.should.equal("SELECT COUNT_BIG(*) AS total FROM [dbo].[Sales ORDER BY Region] WHERE [x] = @filter_x");
+                    result.total.should.equal(3);
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("binds OFFSET as bigint so large page numbers do not overflow int", function (done) {
+            loadConfig(function (c1) {
+                const calls = [];
+                c1.executeQuery = async function (q, params, types) {
+                    calls.push({ q, params, types });
+                    return { recordset: [], rowsAffected: [0] };
+                };
+                c1.executeCrudOperation(
+                    "list",
+                    { sql: "SELECT * FROM [t] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY", tableName: "t", primaryKey: "id" },
+                    { pagination: { limit: 20, offset: 3999999980 } }
+                ).then(function () {
+                    calls[0].params.offset.should.equal(3999999980);
+                    calls[0].types.offset.should.equal(sql.BigInt);
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("binds bigint and decimal body values with the column type", function (done) {
+            loadConfig(function (c1) {
+                const calls = [];
+                c1._tableColumns.set("t", [
+                    { name: "big", dataType: "bigint" },
+                    { name: "amount", dataType: "decimal", precision: 12, scale: 5 },
+                    { name: "exact", dataType: "decimal", precision: 12, scale: 5 },
+                    { name: "wide", dataType: "decimal", precision: 38, scale: 20 },
+                    { name: "tiny", dataType: "numeric", precision: 38, scale: 20 }
+                ]);
+                c1.getTableColumnTypes = async () => new Map([["big", "bigint"], ["amount", "decimal"], ["exact", "decimal"], ["wide", "decimal"], ["tiny", "numeric"]]);
+                c1.executeQuery = async function (q, params, types) {
+                    calls.push({ q, params, types });
+                    return { recordset: [{}], rowsAffected: [1] };
+                };
+                c1.executeCrudOperation(
+                    "create",
+                    { sql: "INSERT INTO [t] (@columns) VALUES (@values)", tableName: "t", primaryKey: "id" },
+                    { body: { big: 3000000000, amount: 1.23456, exact: "12345.67891", wide: 1, tiny: 1e-7 } }
+                ).then(function () {
+                    const { types, params } = calls[0];
+                    types.col0.should.equal(sql.BigInt);
+                    // Numbers go as decimal text: exact, and no 64-bit
+                    // encoder overflow (1 into decimal(38,20))
+                    types.col1.should.equal(sql.NVarChar);
+                    params.col1.should.equal("1.23456");
+                    // Decimal strings keep the exact NVarChar conversion
+                    should(types.col2).be.undefined();
+                    params.col2.should.equal("12345.67891");
+                    types.col3.should.equal(sql.NVarChar);
+                    params.col3.should.equal("1");
+                    // Exponent notation is not valid decimal text: float
+                    types.col4.should.equal(sql.Float);
+                    params.col4.should.equal(1e-7);
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("resolves an unqualified name like the DML (default schema, then dbo)", function (done) {
+            loadConfig(function (c1) {
+                let captured = null;
+                c1.mssqlPool = {
+                    connected: true,
+                    close: async function () {},
+                    request() {
+                        return { input() {}, async query(q) { captured = q; return { recordset: [] }; } };
+                    }
+                };
+                c1.getTableColumns("items").then(function () {
+                    captured.should.containEql("OBJECT_SCHEMA_NAME(OBJECT_ID(QUOTENAME(@table)))");
+                    c1.mssqlPool = null;
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("documents a configured success status for get under that code", function () {
+            const api = buildAutoCrudOpenApi({ operation: "get", columns: COLUMNS, autoExecute: true, successStatusCode: 202 });
+            api.successStatusCode.should.equal(202);
+            api.responses.should.have.property("202");
+            api.responses.should.not.have.property("200");
+            buildAutoCrudOpenApi({ operation: "create", columns: COLUMNS, autoExecute: true, successStatusCode: 202 }).successStatusCode.should.equal(201);
+            buildAutoCrudOpenApi({ operation: "delete", columns: COLUMNS, autoExecute: true, successStatusCode: 202 }).successStatusCode.should.equal(204);
+        });
+
+        it("the OpenAPI shows the configured code (202) and no extra 200", function (done) {
+            helper.load(apiEndpointNode, endpointFlow({ crudOperation: "get", path: "/items/:id", successStatusCode: 202 }), function () {
+                const n1 = helper.getNode("n1");
+                n1.serverNode = { configNode: fakeConfig(sinon.stub()) };
+                const generator = new OpenApiGenerator({});
+                generator.registerEndpoint(n1);
+                generator.generateAsync().then(function (spec) {
+                    const op = spec.paths["/items/{id}"].get;
+                    op.responses["202"].content["application/json"].schema.properties.should.have.property("code");
+                    should(op.responses["200"]).be.undefined();
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("the bigint body schema rejects unsafe integers and accepts digit strings", function () {
+            const Ajv = require("ajv/dist/2020");
+            const validate = new Ajv({ strict: false }).compile(buildBodySchema(COLUMNS, "update"));
+            validate({ big: 3000000000 }).should.be.true();
+            validate({ big: "9007199254740993" }).should.be.true();
+            validate({ big: Number.MAX_SAFE_INTEGER + 2 }).should.be.false();
+            validate({ big: "92233720368547758080" }).should.be.false();
+        });
+
+        it("documents a configured 204 for list/get/update without a body", function () {
+            for (const operation of ["list", "get", "update"]) {
+                const api = buildAutoCrudOpenApi({ operation, columns: COLUMNS, autoExecute: true, successStatusCode: 204 });
+                api.responses["204"].should.eql({ description: "No content" });
+            }
+        });
+
+        it("still counts the total for a custom list template", function (done) {
+            loadConfig(function (c1) {
+                const calls = [];
+                c1.executeQuery = async function (q) {
+                    calls.push(q);
+                    return { recordset: q.startsWith("SELECT COUNT_BIG") ? [{ total: 50 }] : [{ id: 1 }], rowsAffected: [1] };
+                };
+                c1.executeCrudOperation(
+                    "list",
+                    { sql: "SELECT id FROM [items] ORDER BY [id] OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY", tableName: "items", primaryKey: "id" },
+                    { pagination: { limit: 10, offset: 0 } }
+                ).then(function (result) {
+                    calls[1].should.equal("SELECT COUNT_BIG(*) AS total FROM [items]");
+                    result.total.should.equal(50);
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("releases the pool connection when BEGIN TRANSACTION fails", function (done) {
+            loadConfig(function (c1) {
+                const rollback = sinon.stub().rejects(new Error("no transaction"));
+                sinon.stub(sql, "Transaction").callsFake(function () {
+                    return { begin: sinon.stub().rejects(new Error("begin failed")), rollback, commit: sinon.stub() };
+                });
+                c1.mssqlPool = { connected: true, close: async function () {} };
+                const work = sinon.stub();
+                c1.withTransaction(work).then(function () {
+                    done(new Error("expected the begin error"));
+                }, function (err) {
+                    try {
+                        err.message.should.equal("begin failed");
+                        sinon.assert.calledOnce(rollback);
+                        sinon.assert.notCalled(work);
+                        c1.mssqlPool = null;
+                        done();
+                    } catch (e) {
+                        done(e);
+                    }
+                });
+            });
+        });
+
+        it("answers 400 (not 500) for bigint and real values out of range", function (done) {
+            const { buildDbErrorResponse } = require("../../lib/db-errors");
+            loadConfig(function (c1) {
+                c1.getTableColumnTypes = async () => new Map([["big", "bigint"], ["r", "real"]]);
+                c1.executeQuery = async () => ({ recordset: [{}], rowsAffected: [1] });
+                const tpl = { sql: "INSERT INTO [t] (@columns) VALUES (@values)", tableName: "t", primaryKey: "id" };
+                const create = body => c1.executeCrudOperation("create", tpl, { body });
+                const status = err => buildDbErrorResponse(err, { operation: "create" }).status;
+                (async function () {
+                    // Each case on its own: a valid value must never take the error path
+                    await create({ big: "-9223372036854775808", r: 1.5 });
+                    await create({ big: "9223372036854775807" });
+                    const bigErr = await create({ big: "9223372036854775808" }).then(() => null, e => e);
+                    should(bigErr).not.be.null();
+                    bigErr.code.should.equal("EPARAM");
+                    status(bigErr).should.equal(400);
+                    const realErr = await create({ r: 1e40 }).then(() => null, e => e);
+                    should(realErr).not.be.null();
+                    realErr.code.should.equal("EPARAM");
+                    status(realErr).should.equal(400);
+                })().then(() => done(), done);
+            });
+        });
+
+        it("an explicit 204 response schema is documented without a body", function (done) {
+            const custom = JSON.stringify({ "204": { type: "object", description: "Done" } });
+            helper.load(apiEndpointNode, endpointFlow({ crudOperation: "update", method: "PUT", path: "/items/:id", successStatusCode: 204, responseSchemas: custom }), function () {
+                const n1 = helper.getNode("n1");
+                n1.serverNode = { configNode: fakeConfig(sinon.stub()) };
+                const generator = new OpenApiGenerator({});
+                generator.registerEndpoint(n1);
+                generator.generateAsync().then(function (spec) {
+                    spec.paths["/items/{id}"].put.responses["204"].should.eql({ description: "Done" });
+                    done();
+                }).catch(done);
+            });
+        });
+
+        it("clamps the auto-CRUD page offset to a safe integer", function (done) {
+            helper.load(apiEndpointNode, endpointFlow({ paginationEnabled: true }), function () {
+                const n1 = helper.getNode("n1");
+                n1.getAutoCrudPage(null, { offset: "1e30" }).offset.should.equal(1);
+                n1.getAutoCrudPage(null, { offset: "99999999999999999999" }).offset.should.equal(Number.MAX_SAFE_INTEGER);
+                // A 309-digit page number gives Infinity: clamp, do not wrap to page 1
+                n1.getAutoCrudPage(null, { page: "9".repeat(309), limit: "20" }).offset.should.equal(Number.MAX_SAFE_INTEGER);
+                done();
             });
         });
     });

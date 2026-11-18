@@ -29,6 +29,19 @@ describe("api-config executeCrudOperation binary column binding", function () {
         };
     }
 
+    // GH-8: update/delete run a guarded transaction. Answer the key check
+    // (one match) and pass the write through to the captured executeQuery.
+    function passGuard(node) {
+        node.withTransaction = async function (work) {
+            return work(async function (q, p, t) {
+                if (q.startsWith("SELECT TOP (2)")) {
+                    return { recordset: [{ found: 1 }], rowsAffected: [1] };
+                }
+                return node.executeQuery(q, p, t);
+            });
+        };
+    }
+
     function captureExecuteQuery(node, calls) {
         node.executeQuery = async function (sql, params, paramTypes) {
             calls.push({ sql, params, paramTypes });
@@ -134,6 +147,7 @@ describe("api-config executeCrudOperation binary column binding", function () {
             stubTypes(node, [["photo", "image"]]);
             const calls = [];
             captureExecuteQuery(node, calls);
+            passGuard(node);
             node.executeCrudOperation(
                 "update",
                 { sql: "UPDATE [dbo].[t] SET @assignments WHERE id = @id", primaryKey: "id", tableName: "dbo.t" },
@@ -240,7 +254,7 @@ describe("api-config executeCrudOperation binary column binding", function () {
                 node.getTableColumnTypes("[my table]").then(function () {
                     // Bare names must be scoped to the connection's default
                     // schema so same-named tables in other schemas don't merge in.
-                    capturedSql.should.containEql("TABLE_SCHEMA = SCHEMA_NAME()");
+                    capturedSql.should.containEql("TABLE_SCHEMA = COALESCE(OBJECT_SCHEMA_NAME(OBJECT_ID(QUOTENAME(@table))), SCHEMA_NAME())");
                     capturedSql.should.not.containEql("@schema");
                     inputs.table.should.equal("my table");
                     done();
