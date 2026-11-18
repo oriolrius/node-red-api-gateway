@@ -1256,7 +1256,7 @@ module.exports = function(RED) {
                 if (node.openapiEnabled) {
                     // JSON endpoint
                     node.fastify.get(node.openapiPath, async (request, reply) => {
-                        const spec = node.openapiGenerator.generate();
+                        const spec = await node.openapiGenerator.generateAsync();
 
                         // Add server URL based on request. Use request.host
                         // (includes the port); request.hostname strips it in
@@ -1279,6 +1279,7 @@ module.exports = function(RED) {
                     if (yamlPath !== node.openapiPath) {
                         node.fastify.get(yamlPath, async (request, reply) => {
                             reply.type("text/yaml");
+                            await node.openapiGenerator.prepare();
                             return node.openapiGenerator.toYAML();
                         });
                     }
@@ -1525,6 +1526,9 @@ module.exports = function(RED) {
             if (!node.openapiGenerator) {
                 return null;
             }
+            // Synchronous callers (Swagger UI) use the cached auto-CRUD columns;
+            // start a background load so the next call has them (GH-8).
+            node.openapiGenerator.prepare().catch(() => {});
             return node.openapiGenerator.generate();
         };
 

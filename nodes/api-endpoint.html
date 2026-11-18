@@ -1276,11 +1276,21 @@ allow if {
 
     <h3>CRUD Operations</h3>
     <p>Map endpoints to database operations with optional SQL generation.</p>
+    <p><b>Primary Key must be unique</b> (a PRIMARY KEY or UNIQUE constraint). When it matches more than
+    one row, Auto SQL <code>get</code>, <code>update</code> and <code>delete</code> answer <code>409</code>
+    and change no row.</p>
+    <p>Auto SQL responses: <code>list</code> → <code>200 {data, total, limit, offset}</code>, where
+    <code>total</code> counts every row that matches the filters (not only the page) and <code>limit</code>
+    is capped at <b>Max Page Size</b>; <code>get</code>/<code>update</code> → <code>200</code> row;
+    <code>create</code> → <code>201</code> row; <code>delete</code> → <code>204</code>; no matching row →
+    <code>404</code> with the generic detail <code>Resource not found</code>. <code>/openapi.json</code>
+    describes the row, the request body and typed filters from the table's columns.</p>
     <p>When Auto SQL executes the query and the database rejects it, the response is an RFC 7807
     problem with a <b>generic</b> <code>detail</code> and a <code>requestId</code>. The raw database message,
     which names tables, columns and constraints, is only logged server-side:</p>
     <ul>
         <li>PRIMARY KEY / UNIQUE violation, or deleting a row that is still referenced → <code>409</code></li>
+        <li>Primary Key matches more than one row → <code>409</code> (nothing changed)</li>
         <li>NULL into NOT NULL, type conversion, truncation, FOREIGN KEY / CHECK on insert or update → <code>400</code></li>
         <li>Database connection lost / timeout → <code>503</code></li>
         <li>Anything else → <code>500</code></li>
@@ -1289,7 +1299,9 @@ allow if {
     while developing. The <code>type</code> base URI is set on the config node (<i>Problem Type Base</i>).</p>
 
     <h3>Pagination</h3>
-    <p>Supports offset-based (<code>?page=1&limit=20</code>) and cursor-based pagination.</p>
+    <p>Supports offset-based (<code>?page=1&limit=20</code>) and cursor-based pagination.
+    Auto SQL lists use <b>Default Page Size</b> and <b>Max Page Size</b> (offset style only); without
+    pagination they default to 10 rows, still capped at the maximum.</p>
 
     <h3>Filtering & Sorting</h3>
     <p>Filter: <code>?filter[status]=active</code> or <code>?filter[age][gt]=18</code></p>

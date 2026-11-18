@@ -49,6 +49,7 @@ describe("api-endpoint auto-CRUD pool acquire timeout", function () {
                     isSqlServerReady: () => true,
                     executeQuery: sinon.stub(),
                     executeCrudOperation,
+                    problemTypeBaseUri: "urn:problem:",
                     getLogger: () => null
                 }
             };

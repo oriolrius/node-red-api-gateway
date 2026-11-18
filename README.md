@@ -97,6 +97,22 @@ Configuration node for centralized settings shared across apigw-server and apigw
 - Database type (PostgreSQL, MSSQL, MySQL, etc.)
 - Connection pooling settings
 - Credentials (stored securely)
+- SQL Server date and GUID semantics: `dbUseUTC` (default on) and
+  `dbLowerCaseGuids` (default off), passed to the driver as `useUTC` and
+  `lowerCaseGuids`
+
+**SQL Server dates (`dbUseUTC`):** `datetime`, `datetime2`, `smalldatetime`
+and `date` columns have no time zone.
+
+| `dbUseUTC` | Read | Write |
+|---|---|---|
+| on (default) | the stored wall-clock time is returned with a `Z` suffix, with no conversion (`12:05` stored → `"…T12:05:00.000Z"`) | a `Date` is stored as its UTC time |
+| off | the stored value is read as the Node-RED process's local time and returned converted to UTC (the `Z` is then a real UTC instant) | a `Date` is stored as local time |
+
+If your database stores local time (common in line-of-business databases), turn
+`dbUseUTC` off and set the `TZ` of the Node-RED process to the database's time
+zone, or treat the `Z` as "no time zone". `datetimeoffset` is always converted
+correctly.
 
 **OAuth2/Keycloak Configuration:**
 - Keycloak URL and realm
@@ -189,10 +205,44 @@ Individual API endpoint definition node.
 - Operation type (list, get, create, update, delete)
 - Table name and primary key
 - Auto-generate SQL templates
+- The primary key **must be unique** (a PRIMARY KEY or UNIQUE constraint).
+  When it matches more than one row, auto-CRUD `get`, `update` and `delete`
+  answer `409` and change no row.
+
+**Auto-CRUD responses (`autoGenerateSql` on, `useFlowOutput` off):**
+
+| Operation | Success | Body |
+|---|---|---|
+| list | `200` | `{ data: [row…], total, limit, offset }` |
+| get | `200` | the row (`404` when absent) |
+| create | `201` | the inserted row |
+| update | `200` | the updated row (`404` when absent) |
+| delete | `204` | empty (`404` when absent) |
+
+- `total` is the number of rows that match the filters (a `COUNT(*)` with the
+  same `WHERE`), not the number of rows in the page.
+- `limit` comes from `?limit=`, or `defaultPageSize` when pagination is enabled
+  (10 when it is not). It is always capped at `maxPageSize` (default 100).
+  `offset` comes from `?offset=` or `?page=`. The list SQL supports offset
+  pagination only.
+- `/openapi.json` describes the row (from the table's columns), the list
+  envelope, the request body of create/update, the `201`/`204`/`404`/`409`/`503`
+  responses and typed `filter[...]` parameters. Columns are read once from
+  `INFORMATION_SCHEMA` when the document is first requested with the database
+  connected; until then the schemas are a generic `object`. Hand-written
+  `bodySchema` / `responseSchemas` take precedence. The schemas are only
+  documentation: they are not attached to the routes and do not change
+  serialization.
+- JSON value per SQL type: `int`/`smallint`/`tinyint` → integer, `bigint` →
+  string, `float`/`real`/`decimal`/`numeric`/`money` → number, `bit` → boolean,
+  `uniqueidentifier` → upper-case string (unless `dbLowerCaseGuids`),
+  `char(n)`/`nchar(n)` → string padded to `n`, dates → ISO 8601 string (see
+  `dbUseUTC`), `binary`/`varbinary`/`image` → `{"type":"Buffer","data":[…]}`,
+  `NULL` → `null` (the key is always present).
 
 **Pagination:**
 - Style: offset-based or cursor-based
-- Default and maximum page size
+- Default and maximum page size (applied to auto-CRUD lists as well)
 
 **Filtering & Sorting:**
 - Configurable filterable fields
@@ -225,7 +275,10 @@ Individual API endpoint definition node.
   `service-busy`, anything else → `500`, each with a generic `detail` and a
   `requestId`. Every `503` also sends `Retry-After: 1`.
   `exposeDbErrors` (dev mode) returns the raw message; the RFC 7807 `type`
-  base URI is set with `problemTypeBaseUri` on apigw-config
+  base URI is set with `problemTypeBaseUri` on apigw-config. When it is empty,
+  `type` is `about:blank` and `title` is the HTTP status phrase (RFC 7807).
+  A `404` has the generic detail `Resource not found`; the table name is only
+  logged.
 
 ## Examples
 

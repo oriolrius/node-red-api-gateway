@@ -6,8 +6,8 @@ const {
     createKeycloakHealthCheck,
     createOpaHealthCheck
 } = require("../lib/health-check");
-const { quoteIdentifierPart } = require("../lib/crud-generator");
-const { isPoolAcquireTimeout } = require("../lib/db-errors");
+const { quoteIdentifierPart, quoteTableName } = require("../lib/crud-generator");
+const { isPoolAcquireTimeout, SQL_NON_UNIQUE_KEY } = require("../lib/db-errors");
 const {
     LOG_DEFAULTS,
     createLogger,
@@ -192,6 +192,10 @@ module.exports = function(RED) {
         // SQL Server specific options
         node.dbEncrypt = config.dbEncrypt;
         node.dbTrustServerCertificate = config.dbTrustServerCertificate;
+        // tedious date/GUID semantics (GH-8). useUTC defaults to true (the
+        // driver default, also for flows saved before the option existed).
+        node.dbUseUTC = config.dbUseUTC !== false;
+        node.dbLowerCaseGuids = config.dbLowerCaseGuids === true;
 
         // Connection pool settings
         node.dbPoolMin = config.dbPoolMin;
@@ -217,7 +221,9 @@ module.exports = function(RED) {
                     options: {
                         encrypt: config.dbEncrypt !== false,
                         trustServerCertificate: config.dbTrustServerCertificate === true,
-                        enableArithAbort: true
+                        enableArithAbort: true,
+                        useUTC: node.dbUseUTC,
+                        lowerCaseGuids: node.dbLowerCaseGuids
                     },
                     pool: {
                         min: toInt(config.dbPoolMin, 0),
@@ -572,27 +578,29 @@ module.exports = function(RED) {
         };
 
         /**
-         * Introspect column data types for a table via INFORMATION_SCHEMA,
-         * cached per table name for the lifetime of the node (reset on redeploy).
-         * Returns a Map of lowercased column name -> lowercased DATA_TYPE.
-         * Degrades to an empty map (legacy NVarChar binding) when the pool is
-         * unavailable or the introspection query fails.
+         * Introspect the columns of a table via INFORMATION_SCHEMA (plus
+         * sys.columns for identity/computed flags), cached per table name for
+         * the lifetime of the node (reset on redeploy). Used to bind binary
+         * parameters and to generate the auto-CRUD OpenAPI schemas (GH-8).
+         * Degrades to an empty array when the pool is unavailable or the
+         * introspection query fails (failures are not cached).
          * @param {string} tableName - Table name, optionally schema/db-qualified
-         * @returns {Promise<Map<string, string>>} Column name -> data type map
+         * @returns {Promise<Array<{name: string, dataType: string, nullable: boolean,
+         *   maxLength: number|null, hasDefault: boolean, identity: boolean, computed: boolean}>>}
          */
+        node._tableColumns = new Map();
         node._tableColumnTypes = new Map();
         node._introspectWarned = new Set();
-        node.getTableColumnTypes = async function(tableName) {
+        node.getTableColumns = async function(tableName) {
             if (!tableName || typeof tableName !== "string") {
-                return new Map();
+                return [];
             }
-            if (node._tableColumnTypes.has(tableName)) {
-                return node._tableColumnTypes.get(tableName);
+            if (node._tableColumns.has(tableName)) {
+                return node._tableColumns.get(tableName);
             }
             if (!node.mssqlPool || !node.mssqlPool.connected) {
-                return new Map();
+                return [];
             }
-            const columnTypes = new Map();
             try {
                 const sql = getMssql();
                 // Split the qualified name and strip one bracket layer per part.
@@ -602,28 +610,50 @@ module.exports = function(RED) {
                 const table = parts[parts.length - 1];
                 const schema = parts.length >= 2 ? parts[parts.length - 2] : null;
                 const database = parts.length === 3 ? parts[0] : null;
-                // A db-qualified name reads that database's INFORMATION_SCHEMA
+                // A db-qualified name reads that database's catalog views
                 const catalog = database ? `${quoteIdentifierPart(database)}.` : "";
-                let query = `SELECT COLUMN_NAME, DATA_TYPE FROM ${catalog}INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @table`;
+                // sys.columns only adds the identity/computed flags. Without
+                // VIEW DEFINITION it returns no rows (LEFT JOIN -> NULL flags)
+                // instead of failing, so it never breaks binary binding.
+                let query = "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.CHARACTER_MAXIMUM_LENGTH, " +
+                    "c.COLUMN_DEFAULT, sc.is_identity AS IS_IDENTITY, sc.is_computed AS IS_COMPUTED " +
+                    `FROM ${catalog}INFORMATION_SCHEMA.COLUMNS c ` +
+                    `LEFT JOIN ${catalog}sys.columns sc ON sc.object_id = OBJECT_ID(QUOTENAME(c.TABLE_CATALOG) + '.' + ` +
+                    "QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND sc.name = c.COLUMN_NAME " +
+                    "WHERE c.TABLE_NAME = @table";
                 const request = node.mssqlPool.request();
                 request.input("table", sql.NVarChar, table);
                 if (schema) {
-                    query += " AND TABLE_SCHEMA = @schema";
+                    query += " AND c.TABLE_SCHEMA = @schema";
                     request.input("schema", sql.NVarChar, schema);
                 } else {
                     // Unqualified name: scope to the connection's default schema,
                     // which is where the DML actually runs. Without this filter a
                     // same-named table/view in another schema would merge in and
                     // mistype columns.
-                    query += " AND TABLE_SCHEMA = SCHEMA_NAME()";
+                    query += " AND c.TABLE_SCHEMA = SCHEMA_NAME()";
                 }
+                query += " ORDER BY c.ORDINAL_POSITION";
                 const result = await request.query(query);
-                for (const row of (result.recordset || [])) {
-                    columnTypes.set(String(row.COLUMN_NAME).toLowerCase(), String(row.DATA_TYPE).toLowerCase());
-                }
+                const truthy = v => v === true || v === 1 || v === "1";
+                const columns = (result.recordset || []).map(row => {
+                    const maxLength = row.CHARACTER_MAXIMUM_LENGTH === null || row.CHARACTER_MAXIMUM_LENGTH === undefined
+                        ? null
+                        : Number(row.CHARACTER_MAXIMUM_LENGTH);
+                    return {
+                        name: String(row.COLUMN_NAME),
+                        dataType: String(row.DATA_TYPE).toLowerCase(),
+                        nullable: String(row.IS_NULLABLE || "").toUpperCase() === "YES",
+                        maxLength: Number.isFinite(maxLength) ? maxLength : null,
+                        hasDefault: row.COLUMN_DEFAULT !== null && row.COLUMN_DEFAULT !== undefined,
+                        identity: truthy(row.IS_IDENTITY),
+                        computed: truthy(row.IS_COMPUTED)
+                    };
+                });
                 // Cache only successful introspection. A transient failure
                 // (timeout, failover blip) must not permanently disable typing.
-                node._tableColumnTypes.set(tableName, columnTypes);
+                node._tableColumns.set(tableName, columns);
+                return columns;
             } catch (err) {
                 // Do NOT cache failures: retry on the next request. Warn once per
                 // table to avoid log spam when INFORMATION_SCHEMA is unavailable.
@@ -631,6 +661,23 @@ module.exports = function(RED) {
                     node._introspectWarned.add(tableName);
                     node.warn(`Column type introspection failed for ${tableName}: ${err.message}`);
                 }
+                return [];
+            }
+        };
+
+        /**
+         * Column data types of a table (see getTableColumns).
+         * @param {string} tableName - Table name, optionally schema/db-qualified
+         * @returns {Promise<Map<string, string>>} Lowercased column name -> lowercased DATA_TYPE
+         */
+        node.getTableColumnTypes = async function(tableName) {
+            if (node._tableColumnTypes.has(tableName)) {
+                return node._tableColumnTypes.get(tableName);
+            }
+            const columns = await node.getTableColumns(tableName);
+            const columnTypes = new Map(columns.map(c => [c.name.toLowerCase(), c.dataType]));
+            if (node._tableColumns.has(tableName)) {
+                node._tableColumnTypes.set(tableName, columnTypes);
             }
             return columnTypes;
         };
@@ -704,6 +751,7 @@ module.exports = function(RED) {
 
             // Build base SQL - may need to inject WHERE clause for filtering
             let sql = sqlTemplate.sql;
+            let countSql = null;
 
             // Pick a positional body-parameter prefix that cannot collide with
             // the primary-key parameter (bound under its bare column name in the
@@ -754,13 +802,28 @@ module.exports = function(RED) {
 
             // Build parameters based on operation
             switch (operation) {
-            case "list":
-                // Pagination params with defaults (required for SQL Server OFFSET/FETCH)
-                params.limit = parseInt(query.limit, 10) || 10;
-                params.offset = parseInt(query.offset, 10) || 0;
+            case "list": {
+                // Pagination (required for SQL Server OFFSET/FETCH). The
+                // endpoint passes the resolved page (defaultPageSize/maxPageSize
+                // applied, GH-8); direct callers fall back to the raw query.
+                const page = context.pagination || {};
+                const rawLimit = Number.isInteger(page.limit) ? page.limit : parseInt(query.limit, 10);
+                const rawOffset = Number.isInteger(page.offset) ? page.offset : parseInt(query.offset, 10);
+                params.limit = Number.isInteger(rawLimit) && rawLimit > 0 ? rawLimit : 10;
+                params.offset = Number.isInteger(rawOffset) && rawOffset > 0 ? rawOffset : 0;
+
+                // COUNT(*) over the same FROM/WHERE gives the real total.
+                // Built from the template before ORDER BY/OFFSET are touched.
+                const fromStart = sql.indexOf(" FROM ");
+                const orderStart = sql.indexOf(" ORDER BY ");
+                const fromClause = fromStart > -1
+                    ? sql.slice(fromStart + 1, orderStart > fromStart ? orderStart : undefined)
+                    : null;
+                let whereSql = "";
 
                 // Handle filtering - inject WHERE clause before ORDER BY
                 if (filtering && filtering.whereClause && filtering.whereClause.clause) {
+                    whereSql = filtering.whereClause.clause;
                     // Add filter params
                     for (const [key, value] of Object.entries(filtering.whereClause.params || {})) {
                         params[key] = value;
@@ -786,7 +849,12 @@ module.exports = function(RED) {
                         sql = sql.slice(0, obStart) + sorting.orderByClause + " " + sql.slice(offStart);
                     }
                 }
+
+                if (fromClause && context.countTotal !== false) {
+                    countSql = `SELECT COUNT_BIG(*) AS total ${fromClause}${whereSql ? " " + whereSql : ""}`;
+                }
                 break;
+            }
 
             case "get": {
                 // Bind primary-key parameter. Prefer urlParams[primaryKey];
@@ -867,14 +935,43 @@ module.exports = function(RED) {
             }
 
             // Execute the query
-            const result = await node.executeQuery(sql, params, paramTypes);
+            // Guard writes by key (GH-8 section 6): when the configured
+            // primaryKey is not unique, update/delete would change every
+            // matching row. The extra predicate makes the single DML
+            // statement a no-op unless exactly one row matches; a no-op with
+            // matching rows left means "more than one" -> THROW (409).
+            if ((operation === "update" || operation === "delete") && sqlTemplate.primaryKey && sqlTemplate.tableName) {
+                const whereStart = sql.lastIndexOf(" WHERE ");
+                if (whereStart > -1) {
+                    const keyWhere = sql.slice(whereStart + 1);
+                    const table = quoteTableName(sqlTemplate.tableName);
+                    sql = `${sql} AND (SELECT COUNT_BIG(*) FROM ${table} ${keyWhere}) = 1;\n` +
+                        `IF @@ROWCOUNT = 0 AND EXISTS (SELECT 1 FROM ${table} ${keyWhere}) ` +
+                        `THROW ${SQL_NON_UNIQUE_KEY}, N'primaryKey matches more than one row', 1;`;
+                }
+            }
 
-            return {
+            // List: page and COUNT(*) run in parallel on two pool connections.
+            const [result, countResult] = await Promise.all([
+                node.executeQuery(sql, params, paramTypes),
+                countSql ? node.executeQuery(countSql, params, paramTypes) : Promise.resolve(null)
+            ]);
+
+            const out = {
                 operation,
                 data: result.recordset,
                 rowsAffected: result.rowsAffected[0] || 0,
                 success: true
             };
+            if (operation === "list") {
+                const counted = countResult && countResult.recordset && countResult.recordset[0]
+                    ? Number(countResult.recordset[0].total)
+                    : NaN;
+                out.total = Number.isFinite(counted) ? counted : null;
+                out.limit = params.limit;
+                out.offset = params.offset;
+            }
+            return out;
         };
 
         /**

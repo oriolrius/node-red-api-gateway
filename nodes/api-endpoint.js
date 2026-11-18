@@ -35,7 +35,8 @@ const {
     createRateLimitError
 } = require("../lib/rate-limiter");
 
-const { buildDbErrorResponse, problemTypeUri } = require("../lib/db-errors");
+const { buildDbErrorResponse, problemTypeUri, problemTitle } = require("../lib/db-errors");
+const { buildAutoCrudOpenApi } = require("../lib/crud-schema");
 
 const {
     CACHE_KEY_STRATEGIES,
@@ -916,6 +917,94 @@ module.exports = function(RED) {
             }];
         };
 
+        // Auto-CRUD list page: the parsed msg.pagination when pagination is
+        // enabled (offset style; cursors are not supported by the generated
+        // SQL), otherwise the legacy default of 10. maxPageSize always caps
+        // the page so one request cannot read a whole table (GH-8).
+        node.getAutoCrudPage = function(pagination, query) {
+            if (pagination && pagination.style !== "cursor" && Number.isInteger(pagination.limit)) {
+                return { limit: pagination.limit, offset: Number.isInteger(pagination.offset) ? pagination.offset : 0 };
+            }
+            const parsed = parsePaginationParams(query || {}, {
+                paginationStyle: "offset",
+                defaultPageSize: node.paginationEnabled ? node.defaultPageSize : 10,
+                maxPageSize: node.maxPageSize
+            });
+            return { limit: parsed.limit, offset: parsed.offset };
+        };
+
+        // RFC 7807 404 for auto-CRUD. The detail is generic: the table name
+        // stays in the server log only (GH-8).
+        function notFoundProblem(configNode, requestLogger) {
+            const type = problemTypeUri(configNode?.problemTypeBaseUri, "not-found");
+            if (requestLogger) {
+                requestLogger.debug({ event: "crud_not_found", table: node.tableName }, `${node.tableName}: no matching row`);
+            } else {
+                node.debug(`${node.tableName}: no matching row`);
+            }
+            return { type, title: problemTitle(type, 404, "Not Found"), status: 404, detail: "Resource not found" };
+        }
+
+        function nonUniqueProblem(configNode, requestLogger, rows) {
+            const type = problemTypeUri(configNode?.problemTypeBaseUri, "non-unique-key");
+            const text = `${node.tableName}: primaryKey "${node.primaryKey}" matches ${rows} rows; it must be unique`;
+            if (requestLogger) {
+                requestLogger.warn({ event: "crud_non_unique_key", table: node.tableName, primaryKey: node.primaryKey, rows }, text);
+            } else {
+                node.warn(text);
+            }
+            return {
+                type,
+                title: "Conflict",
+                status: 409,
+                detail: "The key matches more than one resource"
+            };
+        }
+
+        // OpenAPI for auto-CRUD endpoints (GH-8). Columns are introspected
+        // once (cached by the config node) and kept here, so the synchronous
+        // generator can use them.
+        node.autoCrudColumns = null;
+        node.loadAutoCrudColumns = async function() {
+            if (!node.autoGenerateSql || !node.tableName || node.crudOperation === "none") {
+                return null;
+            }
+            const configNode = node.serverNode && node.serverNode.configNode;
+            if (!configNode || typeof configNode.getTableColumns !== "function") {
+                return node.autoCrudColumns;
+            }
+            if (typeof configNode.isSqlServerReady === "function" && !configNode.isSqlServerReady()) {
+                return node.autoCrudColumns;
+            }
+            try {
+                const columns = await configNode.getTableColumns(node.tableName);
+                if (Array.isArray(columns) && columns.length > 0) {
+                    node.autoCrudColumns = columns;
+                }
+            } catch (e) {
+                /* keep the previous value; the generic schema is the fallback */
+            }
+            return node.autoCrudColumns;
+        };
+
+        node.getAutoCrudOpenApi = function() {
+            if (!node.autoGenerateSql || !node.tableName || node.crudOperation === "none") {
+                return null;
+            }
+            const configNode = node.serverNode && node.serverNode.configNode;
+            return buildAutoCrudOpenApi({
+                operation: node.crudOperation,
+                columns: node.autoCrudColumns,
+                primaryKey: node.primaryKey,
+                autoExecute: !node.useFlowOutput,
+                filterableFields: node.filteringEnabled ? node.filterableFields : [],
+                defaultPageSize: node.paginationEnabled ? node.defaultPageSize : 10,
+                maxPageSize: node.maxPageSize,
+                lowerCaseGuids: !!(configNode && configNode.dbLowerCaseGuids),
+                useUTC: !(configNode && configNode.dbUseUTC === false)
+            });
+        };
+
         node.on("input", async function(msg, send, done) {
             // Node-RED 1.0+ compatibility
             send = send || function() { node.send.apply(node, arguments); };
@@ -1399,6 +1488,9 @@ module.exports = function(RED) {
                                 sorting: msg.sorting || null,
                                 paramNames: node.paramNames || []
                             };
+                            if (node.crudOperation === "list") {
+                                context.pagination = node.getAutoCrudPage(msg.pagination, context.query);
+                            }
 
                             if (requestLogger) {
                                 requestLogger.debug({
@@ -1423,23 +1515,24 @@ module.exports = function(RED) {
 
                             switch (node.crudOperation) {
                             case "list":
+                                // total is the COUNT(*) of all matching rows (GH-8);
+                                // limit/offset echo the page that the SQL used.
                                 responseData = {
                                     data: result.data,
-                                    total: result.data.length,
-                                    limit: context.query.limit ? parseInt(context.query.limit, 10) : 10,
-                                    offset: context.query.offset ? parseInt(context.query.offset, 10) : 0
+                                    total: Number.isFinite(result.total) ? result.total : result.data.length,
+                                    limit: context.pagination.limit,
+                                    offset: context.pagination.offset
                                 };
                                 break;
 
                             case "get":
                                 if (result.data.length === 0) {
                                     statusCode = 404;
-                                    responseData = {
-                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
-                                        title: "Not Found",
-                                        status: 404,
-                                        detail: `${node.tableName} not found`
-                                    };
+                                    responseData = notFoundProblem(configNode, requestLogger);
+                                } else if (result.data.length > 1) {
+                                    // primaryKey is not unique: never return an arbitrary row
+                                    statusCode = 409;
+                                    responseData = nonUniqueProblem(configNode, requestLogger, result.data.length);
                                 } else {
                                     responseData = result.data[0];
                                 }
@@ -1453,12 +1546,7 @@ module.exports = function(RED) {
                             case "update":
                                 if (result.rowsAffected === 0) {
                                     statusCode = 404;
-                                    responseData = {
-                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
-                                        title: "Not Found",
-                                        status: 404,
-                                        detail: `${node.tableName} not found`
-                                    };
+                                    responseData = notFoundProblem(configNode, requestLogger);
                                 } else {
                                     responseData = result.data[0] || { success: true, rowsAffected: result.rowsAffected };
                                 }
@@ -1467,12 +1555,7 @@ module.exports = function(RED) {
                             case "delete":
                                 if (result.rowsAffected === 0) {
                                     statusCode = 404;
-                                    responseData = {
-                                        type: problemTypeUri(configNode?.problemTypeBaseUri, "not-found"),
-                                        title: "Not Found",
-                                        status: 404,
-                                        detail: `${node.tableName} not found`
-                                    };
+                                    responseData = notFoundProblem(configNode, requestLogger);
                                 } else {
                                     statusCode = 204;
                                     responseData = null;

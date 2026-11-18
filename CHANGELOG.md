@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Auto-CRUD contract matches the configuration and the OpenAPI (GH-8) (2026-11-18)
+
+**BREAKING CHANGES:**
+
+- **Auto-CRUD lists apply `defaultPageSize` and `maxPageSize`.** Before, the
+  page size was always 10 by default with no maximum, so `?limit=100000`
+  returned a whole table. Now `limit` defaults to `defaultPageSize` when
+  pagination is enabled (10 when it is not) and is always capped at
+  `maxPageSize` (default 100). Negative values fall back to the defaults, and
+  `?page=` is accepted as well as `?offset=`. The response `limit`/`offset`
+  echo the values that the SQL used.
+- **`total` in auto-CRUD list responses is the real number of matching rows**
+  (`COUNT_BIG(*)` with the same `WHERE`, run in parallel with the page query).
+  Before, it was the number of rows in the page.
+- **The default RFC 7807 `type` is `about:blank`** (with the HTTP status phrase
+  as `title`) when `problemTypeBaseUri` is empty. Before, it was
+  `https://api.example.com/errors/<slug>`. Set `problemTypeBaseUri` to keep
+  slug-based types.
+- **Auto-CRUD `404` responses have the generic detail `Resource not found`.**
+  Before, the detail named the table (`"MYDB.dbo.my_table not found"`). The
+  table name is now only in the server log.
+- **A non-unique `primaryKey` gives `409`.** `get` answers `409` when the key
+  matches more than one row (before: an arbitrary row). `update` and `delete`
+  add a guard to the single DML statement, so they change no row and answer
+  `409` (`non-unique-key`) instead of changing every matching row.
+
+**Features:**
+
+- **`/openapi.json` describes auto-CRUD endpoints from the table columns.** The
+  columns (type, nullability, length, default, identity/computed) are read from
+  `INFORMATION_SCHEMA.COLUMNS` and `sys.columns` (cached) and give: the row
+  schema (with the JSON type that tedious returns for each SQL type, and `null`
+  for nullable columns), the list envelope, the create/update request body
+  (identity, computed and rowversion columns excluded; `required` for NOT NULL
+  columns without a default), `201`/`204`/`404`/`409`/`503` responses, typed
+  `filter[...]` parameters and `limit`/`offset`/`page`. Without columns the
+  schemas fall back to a generic `object`. Hand-written schemas take
+  precedence. The schemas are not attached to the Fastify routes, so
+  serialization does not change.
+- **`apigw-config` options `dbUseUTC` (default on) and `dbLowerCaseGuids`
+  (default off)**, passed to `mssql` as `useUTC` and `lowerCaseGuids`. The
+  README and the node help explain what the `Z` on `datetime` values means
+  under each setting.
+- `apigw-config.getTableColumns(tableName)` returns the introspected columns;
+  `getTableColumnTypes()` is now derived from it.
+
+**Docs:**
+
+- README and node help: the auto-CRUD response contract, the SQL type → JSON
+  mapping, the `dbUseUTC` semantics, and a warning that `primaryKey` must be
+  unique.
+
+**Tests:**
+
+- `tests/unit/gh8-auto-crud-contract_spec.js` covers every point of the issue.
+- `npm run test:e2e-hardening` adds GH-8 checks against a real SQL Server 2022:
+  page size settings and `total` (with filters), every returned row validates
+  against the `/openapi.json` row schema (Ajv), the generic `404`, and `409`
+  with no row changed for a non-unique key.
+
 ## 0.11.1
 
 ### Regression tests for the mssql pool and full lint coverage (2026-11-10)

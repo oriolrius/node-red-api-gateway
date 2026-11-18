@@ -16,6 +16,9 @@
 //  - #7 the real mssql pool: getPoolStatistics() and connection_pool_size on
 //       /metrics show the live pool; a saturated pool (dbPoolMax=1 held by an
 //       open transaction) answers 503 + Retry-After and recovers afterwards.
+//  - #8 the auto-CRUD contract: page size settings, the real COUNT(*) total,
+//       /openapi.json row schemas that every returned row validates against,
+//       a generic 404, and 409 for a non-unique primaryKey (no row changed).
 //
 // Run: npm run test:e2e-hardening
 // The SQL Server suite starts a throwaway container and is skipped when Docker
@@ -384,7 +387,7 @@ function dockerAvailable() {
 
 const sqlRunner = (external || dockerAvailable()) ? describe : describe.skip;
 
-sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
+sqlRunner("E2E #4/#7/#8: database errors, pool and auto-CRUD contract (real SQL Server)", function() {
     this.timeout(240000);
     const sql = require("mssql");
     const DB = "apigw_e2e";
@@ -427,7 +430,28 @@ sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
                 id INT PRIMARY KEY,
                 parent_id INT NOT NULL REFERENCES parents(id),
                 qty INT NOT NULL CHECK (qty >= 0)
-            );`, DB);
+            );
+            CREATE TABLE items (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                code NCHAR(4) NOT NULL,
+                big BIGINT NULL,
+                price DECIMAL(10,2) NULL,
+                active BIT NOT NULL DEFAULT 1,
+                created DATETIME NULL,
+                photo VARBINARY(MAX) NULL,
+                guid UNIQUEIDENTIFIER NOT NULL DEFAULT NEWID()
+            );
+            CREATE TABLE legacy (k INT NOT NULL, v NVARCHAR(10) NULL);`, DB);
+        await adminQuery(`
+            SET NOCOUNT ON;
+            DECLARE @i INT = 1;
+            WHILE @i <= 49 BEGIN
+                INSERT INTO items (code, big, price, active, created, photo)
+                VALUES (CONCAT('c', @i), 9007199254740993 + @i, @i * 1.5, CASE WHEN @i % 7 = 0 THEN 0 ELSE 1 END,
+                        DATEADD(MINUTE, @i, '2026-05-27T12:05:46.837'), CASE WHEN @i = 1 THEN 0xDEADBEEF ELSE NULL END);
+                SET @i += 1;
+            END;
+            INSERT INTO legacy (k, v) VALUES (1, 'a'), (1, 'b'), (2, 'c');`, DB);
     });
 
     after(function() {
@@ -445,6 +469,7 @@ sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
     async function deployCrud(opts = {}) {
         const srv = await deploy({
             cfg: Object.assign({}, baseCfg, opts.cfg || {}),
+            srv: opts.srv || {},
             cfgCreds,
             endpoints: opts.endpoints || [
                 crud("/parents", "POST", "parents", "create"),
@@ -484,7 +509,7 @@ sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
         const srv = await deployCrud();
         const res = await post(srv, "/parents", { id: 1, name: "dup" }, { "x-request-id": "e2e-dup-1" });
         assertSafeProblem(res, 409);
-        res.json.type.should.equal("https://api.example.com/errors/conflict");
+        res.json.type.should.equal("about:blank");
         res.json.requestId.should.equal("e2e-dup-1");
         res.headers["x-request-id"].should.equal("e2e-dup-1");
     });
@@ -585,7 +610,7 @@ sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
 
                 const res = await pending;
                 assertSafeProblem(res, 503);
-                res.json.type.should.equal("https://api.example.com/errors/service-busy");
+                res.json.type.should.equal("about:blank");
                 res.json.requestId.should.equal("e2e-busy-1");
                 res.headers.should.have.property("retry-after");
                 Number(res.headers["retry-after"]).should.be.above(0);
@@ -601,6 +626,111 @@ sqlRunner("E2E #4/#7: database errors and pool (real SQL Server)", function() {
             const ok = await httpRequest(srv.port, "/parents/700");
             ok.status.should.equal(200, ok.body);
             cfgNode.getPoolStatistics().pending.should.equal(0);
+        });
+    });
+    describe("#8 auto-CRUD contract", function() {
+        const Ajv = require("ajv/dist/2020");
+        const addFormats = require("ajv-formats");
+
+        async function deployItems() {
+            const pg = { paginationEnabled: true, defaultPageSize: 20, maxPageSize: 100, filteringEnabled: true, filterableFields: "active,code" };
+            return deployCrud({
+                srv: { openapiEnabled: true },
+                endpoints: [
+                    crud("/items", "GET", "items", "list", pg),
+                    crud("/items/:id", "GET", "items", "get"),
+                    crud("/items", "POST", "items", "create"),
+                    crud("/legacy/:k", "GET", "legacy", "get", { primaryKey: "k" }),
+                    crud("/legacy/:k", "PUT", "legacy", "update", { primaryKey: "k" }),
+                    crud("/legacy/:k", "DELETE", "legacy", "delete", { primaryKey: "k" })
+                ]
+            });
+        }
+
+        it("applies defaultPageSize/maxPageSize and returns the real total", async function() {
+            const srv = await deployItems();
+            const first = await httpRequest(srv.port, "/items");
+            first.status.should.equal(200, first.body);
+            first.json.data.length.should.equal(20);
+            first.json.should.containEql({ total: 49, limit: 20, offset: 0 });
+
+            const big = await httpRequest(srv.port, "/items?limit=1000");
+            big.json.data.length.should.equal(49);
+            big.json.limit.should.equal(100);
+
+            const last = await httpRequest(srv.port, "/items?limit=10&offset=40");
+            last.json.data.length.should.equal(9);
+            last.json.total.should.equal(49);
+
+            // 7 of the 49 rows have active = 0
+            const filtered = await httpRequest(srv.port, "/items?limit=2&filter[active]=1");
+            filtered.json.data.length.should.equal(2);
+            filtered.json.total.should.equal(42);
+        });
+
+        it("/openapi.json describes rows that every returned row validates against", async function() {
+            const srv = await deployItems();
+            const spec = (await httpRequest(srv.port, "/openapi.json")).json;
+            const list = spec.paths["/items"].get;
+            const envelope = list.responses["200"].content["application/json"].schema;
+            const row = envelope.properties.data.items;
+            row.properties.big.type.should.eql(["string", "null"]);
+            row.properties.price.type.should.eql(["number", "null"]);
+            row.properties.active.type.should.equal("boolean");
+            row.properties.code.maxLength.should.equal(4);
+            row.properties.id.readOnly.should.be.true();
+            list.parameters.find(p => p.name === "filter[active]").schema.should.eql({ type: "boolean" });
+            list.parameters.find(p => p.name === "limit").schema.maximum.should.equal(100);
+
+            const postOp = spec.paths["/items"].post;
+            postOp.requestBody.content["application/json"].schema.required.should.eql(["code"]);
+            postOp.responses["201"].content["application/json"].schema.should.eql(row);
+
+            const ajv = new Ajv({ strict: false, allErrors: true });
+            addFormats(ajv);
+            const validate = ajv.compile(envelope);
+            const all = await httpRequest(srv.port, "/items?limit=100");
+            validate(all.json).should.equal(true, JSON.stringify(validate.errors));
+            all.json.data[0].code.should.equal("c1  ");
+            all.json.data[0].photo.should.eql({ type: "Buffer", data: [0xde, 0xad, 0xbe, 0xef] });
+            all.json.data[0].big.should.equal("9007199254740994");
+            all.json.data[0].created.should.equal("2026-05-27T12:06:46.837Z");
+
+            const created = await post(srv, "/items", { code: "new" });
+            created.status.should.equal(201, created.body);
+            ajv.compile(row)(created.json).should.equal(true);
+        });
+
+        it("404 carries about:blank and a generic detail", async function() {
+            const srv = await deployItems();
+            const res = await httpRequest(srv.port, "/items/999999");
+            res.status.should.equal(404);
+            res.json.should.containEql({ type: "about:blank", title: "Not Found", status: 404, detail: "Resource not found" });
+            res.body.should.not.match(/items/);
+        });
+
+        it("a non-unique primaryKey answers 409 and changes no row", async function() {
+            const srv = await deployItems();
+            (await httpRequest(srv.port, "/legacy/1")).status.should.equal(409);
+
+            const put = await httpRequest(srv.port, "/legacy/1", {
+                method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ v: "z" })
+            });
+            assertSafeProblem(put, 409);
+            const del = await httpRequest(srv.port, "/legacy/1", { method: "DELETE" });
+            assertSafeProblem(del, 409);
+            const rows = await adminQuery("SELECT k, v FROM legacy WHERE k = 1 ORDER BY v", DB);
+            rows.recordset.should.eql([{ k: 1, v: "a" }, { k: 1, v: "b" }]);
+
+            // A unique match still works
+            (await httpRequest(srv.port, "/legacy/2")).json.should.eql({ k: 2, v: "c" });
+            const ok = await httpRequest(srv.port, "/legacy/2", {
+                method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ v: "d" })
+            });
+            ok.status.should.equal(200, ok.body);
+            ok.json.should.eql({ k: 2, v: "d" });
+            (await httpRequest(srv.port, "/legacy/2", { method: "DELETE" })).status.should.equal(204);
+            (await httpRequest(srv.port, "/legacy/2", { method: "DELETE" })).status.should.equal(404);
         });
     });
 });

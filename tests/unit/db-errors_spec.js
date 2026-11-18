@@ -1,6 +1,7 @@
 require("should");
 const {
-    DEFAULT_PROBLEM_TYPE_BASE,
+    DEFAULT_PROBLEM_TYPE,
+    SQL_NON_UNIQUE_KEY,
     getSqlErrorNumber,
     isPoolAcquireTimeout,
     classifyDbError,
@@ -54,9 +55,12 @@ describe("db-errors", function () {
     });
 
     describe("problemTypeUri", function () {
-        it("uses the historical default when no base is configured", function () {
-            problemTypeUri("", "not-found").should.equal(`${DEFAULT_PROBLEM_TYPE_BASE}not-found`);
-            problemTypeUri(undefined, "conflict").should.equal("https://api.example.com/errors/conflict");
+        // GH-8: never default to a third-party domain.
+        it("uses about:blank when no base is configured", function () {
+            DEFAULT_PROBLEM_TYPE.should.equal("about:blank");
+            problemTypeUri("", "not-found").should.equal("about:blank");
+            problemTypeUri(undefined, "conflict").should.equal("about:blank");
+            problemTypeUri("   ", "conflict").should.equal("about:blank");
         });
 
         it("joins custom bases with or without a trailing separator", function () {
@@ -82,6 +86,20 @@ describe("db-errors", function () {
         it("returns the raw message only when expose is set", function () {
             const r = buildDbErrorResponse(leaky, { operation: "create", expose: true });
             r.body.detail.should.equal(leaky.message);
+        });
+
+        it("uses the HTTP status phrase as title for about:blank", function () {
+            const r = buildDbErrorResponse(sqlError(208));
+            r.body.type.should.equal("about:blank");
+            r.body.title.should.equal("Internal Server Error");
+        });
+
+        // GH-8 section 6: the write guard THROWs 50409 when the key is not unique.
+        it("maps the non-unique key guard to 409 with a generic detail", function () {
+            const r = buildDbErrorResponse(sqlError(SQL_NON_UNIQUE_KEY, "primary key matched 3 rows"), { operation: "delete", typeBase: "urn:problem:" });
+            r.status.should.equal(409);
+            r.body.type.should.equal("urn:problem:non-unique-key");
+            r.body.detail.should.not.match(/primary key matched/);
         });
 
         it("builds the type from the configured base", function () {
@@ -113,7 +131,7 @@ describe("db-errors", function () {
         it("maps an acquire timeout to 503 busy with Retry-After", function () {
             const r = buildDbErrorResponse(new TarnTimeoutError(), { operation: "create" });
             r.status.should.equal(503);
-            r.body.type.should.equal(`${DEFAULT_PROBLEM_TYPE_BASE}service-busy`);
+            r.body.type.should.equal("about:blank");
             r.body.title.should.equal("Service Unavailable");
             r.headers.should.eql({ "Retry-After": "1" });
             classifyDbError(new TarnTimeoutError()).slug.should.equal("service-busy");

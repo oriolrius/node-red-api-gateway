@@ -11,6 +11,8 @@
             // SQL Server specific options
             dbEncrypt: { value: true },
             dbTrustServerCertificate: { value: false },
+            dbUseUTC: { value: true },
+            dbLowerCaseGuids: { value: false },
             // Connection pool settings
             dbPoolMin: { value: 0 },
             dbPoolMax: { value: 10 },
@@ -344,6 +346,18 @@
             <i class="fa fa-certificate"></i> Trust Server Certificate
         </label>
         <input type="checkbox" id="node-config-input-dbTrustServerCertificate" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row db-mssql-row">
+        <label for="node-config-input-dbUseUTC">
+            <i class="fa fa-clock-o"></i> Dates as UTC
+        </label>
+        <input type="checkbox" id="node-config-input-dbUseUTC" style="width: auto; margin-left: 5px;">
+    </div>
+    <div class="form-row db-mssql-row">
+        <label for="node-config-input-dbLowerCaseGuids">
+            <i class="fa fa-font"></i> Lower-case GUIDs
+        </label>
+        <input type="checkbox" id="node-config-input-dbLowerCaseGuids" style="width: auto; margin-left: 5px;">
     </div>
 
     <!-- Connection Pool Settings -->
@@ -688,7 +702,7 @@
     </div>
     <div class="form-row">
         <label for="node-config-input-problemTypeBaseUri"><i class="fa fa-link"></i> Problem Type Base</label>
-        <input type="text" id="node-config-input-problemTypeBaseUri" placeholder="https://api.example.com/errors/">
+        <input type="text" id="node-config-input-problemTypeBaseUri" placeholder="about:blank (e.g. https://api.mycompany.com/problems/)">
     </div>
 
     <!-- Logging Configuration Section -->
@@ -781,6 +795,15 @@
     <ul>
         <li><b>Encrypt Connection</b> - Enable TLS encryption for database connections</li>
         <li><b>Trust Server Certificate</b> - Trust self-signed certificates (for development)</li>
+        <li><b>Dates as UTC</b> (default: on) - the driver's <code>useUTC</code> option.
+            <code>datetime</code>, <code>datetime2</code>, <code>smalldatetime</code> and <code>date</code> columns
+            have no time zone. When on, the stored value is read and written as UTC: the API returns the stored
+            wall-clock time with a <code>Z</code> suffix, and a <code>Date</code> sent to the database is stored as
+            its UTC time. If the database stores local time, turn it off: the stored value is then read and written
+            in the time zone of the Node-RED process (the <code>Z</code> in the JSON then marks a real conversion).
+            <code>datetimeoffset</code> is not affected.</li>
+        <li><b>Lower-case GUIDs</b> (default: off) - the driver's <code>lowerCaseGuids</code> option.
+            <code>uniqueidentifier</code> values are returned in upper case unless this is on.</li>
     </ul>
 
     <h4>Connection Pool Settings</h4>
@@ -893,8 +916,10 @@
     <ul>
         <li><b>Problem Type Base</b> - Base URI for the RFC 7807 <code>type</code> of the auto-CRUD error
             responses; the gateway appends a slug (<code>not-found</code>, <code>conflict</code>,
-            <code>invalid-data</code>, <code>database-error</code>, <code>service-unavailable</code>).
-            Empty keeps the default <code>https://api.example.com/errors/</code>.
+            <code>invalid-data</code>, <code>database-error</code>, <code>service-unavailable</code>,
+            <code>service-busy</code>, <code>non-unique-key</code>).
+            Empty gives <code>about:blank</code> (the RFC 7807 default) with the HTTP status phrase as
+            <code>title</code>.
             Examples: <code>https://api.mycompany.com/problems/</code>, <code>urn:problem:</code></li>
     </ul>
 
